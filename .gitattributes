@@ -1,2 +1,4 @@
 *.c ident
+*.h ident
+*.s ident
 Makefile ident
