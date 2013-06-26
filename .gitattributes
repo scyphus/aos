@@ -1,1 +1,2 @@
-*.c	filter=indent
+*.c	filter=ident
+Makefile	filter=ident

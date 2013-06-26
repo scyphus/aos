@@ -17,7 +17,10 @@
 void
 usage(const char *prog)
 {
-    fprintf(stderr, "Usage: %s output-image-file mbr loader\r\n", prog);
+    fprintf(stderr,
+            "Usage: %s output-image-file mbr loader\r\n"
+            "\tAlign and merge `mbr' and `loader' to `output-image-file'\r\n",
+            prog);
     exit(EXIT_FAILURE);
 }
 
