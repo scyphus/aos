@@ -42,7 +42,7 @@ main(int argc, const char *const argv[])
     size_t n;
     size_t nw;
     off_t done;
-    unsigned char buf[512];
+    unsigned char buf[512];     /* Buffer must be >= 512 bytes */
 
     /* Get arguments */
     prog = argv[0];
