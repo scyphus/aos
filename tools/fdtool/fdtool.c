@@ -12,6 +12,7 @@
 #include <string.h>
 #include <unistd.h>
 
+/* 14.4MiB */
 #define FLOPPY_SIZE 1474560
 
 void
