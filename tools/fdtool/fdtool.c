@@ -19,7 +19,9 @@ usage(const char *prog)
 {
     fprintf(stderr,
             "Usage: %s output-image-file mbr loader\r\n"
-            "\tAlign and merge `mbr' and `loader' to `output-image-file'\r\n",
+            "\tAlign and merge `mbr' and `loader' to `output-image-file'.\r\n"
+            "\tThe size of `mbr' must be less than or equal to 510 bytes.\r\n"
+            "\tThe overall size must be less than or equal to 14.4MiB.\r\n",
             prog);
     exit(EXIT_FAILURE);
 }
