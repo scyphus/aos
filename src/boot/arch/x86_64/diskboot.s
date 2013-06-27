@@ -6,12 +6,12 @@
  */
 
 	.file	"diskboot.s"
+
+/* Text section */
 	.text
 
-	.code16
+	.code16			/* 16bit real mode */
 	.globl	start		/* Entry point */
-
-	.org	0x0,0x0
 
 start:
 /* Setup the segment registers for flag addressing and setup the stack. */
@@ -54,11 +54,10 @@ putc:
 	ret
 
 
-
-/* data section */
+/* Data section */
 	.data
 
-/* Saved drive */
+/* Saved boot drive */
 drive:
 	.byte	0
 

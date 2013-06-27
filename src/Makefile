@@ -12,13 +12,13 @@ CFLAGS=-Wall -mno-sse2 -mno-sse3 -fleading-underscore -nostdlib -m64
 
 ## MBR
 diskboot: boot/arch/$(ARCH)/diskboot.o
-	$(LD) -N -e start -Ttext 0x7c00 --oformat binary -o $@ $^
+	$(LD) -N -e start -Ttext=0x7c00 --oformat binary -o $@ $^
 
 loader: boot/arch/$(ARCH)/loader.o
-	$(LD) -N -e loader -Ttext 0x90000 --oformat binary -o $@ $^
+	$(LD) -N -e loader -Ttext=0x90000 --oformat binary -o $@ $^
 
 kpack: kernel/kernel.o
-	$(LD) -N -e _kmain -Ttext 0x100000 --oformat binary -o $@ $^
+	$(LD) -N -e _kmain -Ttext=0x100000 --oformat binary -o $@ $^
 
 .s.o:
 	$(AS) $(ASFLAGS) -c -o $@ $<
