@@ -106,7 +106,7 @@ main(int argc, const char *const argv[])
         return EXIT_FAILURE;
     }
 
-    /* Check the MBR size: 2 bytes for magic */
+    /* Check the MBR size: 2 bytes for boot signature */
     if ( mbrsize > MBR_SIZE - 2 ) {
         fprintf(stderr, "Invalid MBR size (MBR must be in 510 bytes)\n");
         return EXIT_FAILURE;
@@ -133,7 +133,7 @@ main(int argc, const char *const argv[])
         nw = fwrite(buf, 1, MBR_SIZE - 2 - cur, imgfp);
         cur += nw;
     }
-    /* Write magic (0x55 0xaa) */
+    /* Write magic (signature: 0x55 0xaa) */
     if ( EOF == fputc(0x55, imgfp) ) {
         perror("fputc");
         return EXIT_FAILURE;
