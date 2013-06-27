@@ -15,6 +15,7 @@
 /* 14.4MiB */
 #define FLOPPY_SIZE 1474560
 #define MBR_SIZE 512
+#define IPL_SIZE 446
 #define LOADER_SIZE 4096
 #define BUFFER_SIZE 512
 
@@ -22,10 +23,10 @@ void
 usage(const char *prog)
 {
     fprintf(stderr,
-            "Usage: %s output-image-file mbr loader kernel\r\n"
-            "\tAlign and merge `mbr', `loader', and kernel to"
+            "Usage: %s output-image-file ipl loader kernel\r\n"
+            "\tAlign and merge `ipl', `loader', and kernel to"
             " `output-image-file'.\r\n"
-            "\tThe size of `mbr' must be less than or equal to 510 bytes.\r\n"
+            "\tThe size of `ipl' must be less than or equal to 446 bytes.\r\n"
             "\tThe size of `loader' must be less than or equal to 4096"
             " bytes.\r\n"
             "\tThe overall size must be less than or equal to 14.4MiB.\r\n",
@@ -38,15 +39,15 @@ main(int argc, const char *const argv[])
 {
     const char *prog;
     const char *imgfname;
-    const char *mbrfname;
+    const char *iplfname;
     const char *loaderfname;
     const char *kernelfname;
     FILE *imgfp;
-    FILE *mbrfp;
+    FILE *iplfp;
     FILE *loaderfp;
     FILE *kernelfp;
     off_t cur;
-    off_t mbrsize;
+    off_t iplsize;
     off_t loadersize;
     size_t n;
     size_t nw;
@@ -59,7 +60,7 @@ main(int argc, const char *const argv[])
         usage(prog);
     }
     imgfname = argv[1];
-    mbrfname = argv[2];
+    iplfname = argv[2];
     loaderfname = argv[3];
     kernelfname = argv[4];
 
@@ -70,10 +71,10 @@ main(int argc, const char *const argv[])
         return EXIT_FAILURE;
     }
 
-    /* Open the mbr file */
-    mbrfp = fopen(mbrfname, "rb");
-    if ( NULL == mbrfp ) {
-        fprintf(stderr, "Cannot open %s\n", mbrfname);
+    /* Open the ipl file */
+    iplfp = fopen(iplfname, "rb");
+    if ( NULL == iplfp ) {
+        fprintf(stderr, "Cannot open %s\n", iplfname);
         return EXIT_FAILURE;
     }
 
@@ -91,42 +92,42 @@ main(int argc, const char *const argv[])
         return EXIT_FAILURE;
     }
 
-    /* Get the filesize of MBR */
-    if ( 0 != fseeko(mbrfp, 0, SEEK_END) ) {
+    /* Get the filesize of IPL */
+    if ( 0 != fseeko(iplfp, 0, SEEK_END) ) {
         perror("fseeko");
         return EXIT_FAILURE;
     }
-    mbrsize = ftello(mbrfp);
-    if ( -1 == mbrsize ) {
+    iplsize = ftello(iplfp);
+    if ( -1 == iplsize ) {
         perror("fseeko");
         return EXIT_FAILURE;
     }
-    if ( 0 != fseeko(mbrfp, 0, SEEK_SET) ) {
+    if ( 0 != fseeko(iplfp, 0, SEEK_SET) ) {
         perror("fseeko");
         return EXIT_FAILURE;
     }
 
-    /* Check the MBR size: 2 bytes for boot signature */
-    if ( mbrsize > MBR_SIZE - 2 ) {
-        fprintf(stderr, "Invalid MBR size (MBR must be in 510 bytes)\n");
+    /* Check the IPL size: 2 bytes for boot signature */
+    if ( iplsize > IPL_SIZE ) {
+        fprintf(stderr, "Invalid IPL size (IPL must be in 446 bytes)\n");
         return EXIT_FAILURE;
     }
 
-    /* Read MBR */
+    /* Read IPL */
     done = 0;
-    while ( done < mbrsize ) {
-        n = fread(buf+done, 1, mbrsize - done, mbrfp);
+    while ( done < iplsize ) {
+        n = fread(buf+done, 1, iplsize - done, iplfp);
         done += n;
     }
-    /* Write MBR to the image */
+    /* Write IPL to the image */
     done = 0;
-    while ( done < mbrsize ) {
-        n = fwrite(buf+done, 1, mbrsize - done, imgfp);
+    while ( done < iplsize ) {
+        n = fwrite(buf+done, 1, iplsize - done, imgfp);
         done += n;
     }
 
     /* Padding with 0 */
-    cur = mbrsize;
+    cur = iplsize;
     (void)memset(buf, 0, sizeof(buf));
     while ( cur < MBR_SIZE - 2 ) {
         /* Note: Enough buffer size to write */
@@ -229,7 +230,7 @@ main(int argc, const char *const argv[])
 
     /* Close the file */
     (void)fclose(imgfp);
-    (void)fclose(mbrfp);
+    (void)fclose(iplfp);
     (void)fclose(loaderfp);
     (void)fclose(kernelfp);
 
