@@ -14,14 +14,20 @@
 
 /* 14.4MiB */
 #define FLOPPY_SIZE 1474560
+#define MBR_SIZE 512
+#define LOADER_SIZE 4096
+#define BUFFER_SIZE 512
 
 void
 usage(const char *prog)
 {
     fprintf(stderr,
-            "Usage: %s output-image-file mbr loader\r\n"
-            "\tAlign and merge `mbr' and `loader' to `output-image-file'.\r\n"
+            "Usage: %s output-image-file mbr loader kernel\r\n"
+            "\tAlign and merge `mbr', `loader', and kernel to"
+            " `output-image-file'.\r\n"
             "\tThe size of `mbr' must be less than or equal to 510 bytes.\r\n"
+            "\tThe size of `loader' must be less than or equal to 4096"
+            " bytes.\r\n"
             "\tThe overall size must be less than or equal to 14.4MiB.\r\n",
             prog);
     exit(EXIT_FAILURE);
@@ -34,24 +40,28 @@ main(int argc, const char *const argv[])
     const char *imgfname;
     const char *mbrfname;
     const char *loaderfname;
+    const char *kernelfname;
     FILE *imgfp;
     FILE *mbrfp;
     FILE *loaderfp;
+    FILE *kernelfp;
     off_t cur;
     off_t mbrsize;
+    off_t loadersize;
     size_t n;
     size_t nw;
     off_t done;
-    unsigned char buf[512];     /* Buffer must be >= 512 bytes */
+    unsigned char buf[BUFFER_SIZE];     /* Buffer must be >= 512 bytes */
 
     /* Get arguments */
     prog = argv[0];
-    if ( 4 != argc ) {
+    if ( 5 != argc ) {
         usage(prog);
     }
     imgfname = argv[1];
     mbrfname = argv[2];
     loaderfname = argv[3];
+    kernelfname = argv[4];
 
     /* Open the output image file */
     imgfp = fopen(imgfname, "wb");
@@ -74,6 +84,13 @@ main(int argc, const char *const argv[])
         return EXIT_FAILURE;
     }
 
+    /* Open the kernel file */
+    kernelfp = fopen(kernelfname, "rb");
+    if ( NULL == loaderfp ) {
+        fprintf(stderr, "Cannot open %s\n", kernelfname);
+        return EXIT_FAILURE;
+    }
+
     /* Get the filesize of MBR */
     if ( 0 != fseeko(mbrfp, 0, SEEK_END) ) {
         perror("fseeko");
@@ -90,7 +107,7 @@ main(int argc, const char *const argv[])
     }
 
     /* Check the MBR size: 2 bytes for magic */
-    if ( mbrsize > 510 ) {
+    if ( mbrsize > MBR_SIZE - 2 ) {
         fprintf(stderr, "Invalid MBR size (MBR must be in 510 bytes)\n");
         return EXIT_FAILURE;
     }
@@ -108,14 +125,15 @@ main(int argc, const char *const argv[])
         done += n;
     }
 
-    /* Write magic (0x55 0xaa) */
+    /* Padding with 0 */
     cur = mbrsize;
     (void)memset(buf, 0, sizeof(buf));
-    while ( cur < 510 ) {
+    while ( cur < MBR_SIZE - 2 ) {
         /* Note: Enough buffer size to write */
-        nw = fwrite(buf, 1, 510 - cur, imgfp);
+        nw = fwrite(buf, 1, MBR_SIZE - 2 - cur, imgfp);
         cur += nw;
     }
+    /* Write magic (0x55 0xaa) */
     if ( EOF == fputc(0x55, imgfp) ) {
         perror("fputc");
         return EXIT_FAILURE;
@@ -128,13 +146,65 @@ main(int argc, const char *const argv[])
     cur++;
 
 
+    /* Get the filesize of loader */
+    if ( 0 != fseeko(loaderfp, 0, SEEK_END) ) {
+        perror("fseeko");
+        return EXIT_FAILURE;
+    }
+    loadersize = ftello(loaderfp);
+    if ( -1 == loadersize ) {
+        perror("fseeko");
+        return EXIT_FAILURE;
+    }
+    if ( 0 != fseeko(loaderfp, 0, SEEK_SET) ) {
+        perror("fseeko");
+        return EXIT_FAILURE;
+    }
+
+    /* Check the filesize of loader */
+    if ( loadersize > LOADER_SIZE ) {
+        fprintf(stderr, "Invalid loader size (loader must be in 4096 bytes)\n");
+        return EXIT_FAILURE;
+    }
+
     /* Copy loader program */
     while ( !feof(loaderfp) ) {
         n = fread(buf, 1, sizeof(buf), loaderfp);
         /* Write */
         done = 0;
         while ( done < n ) {
-            nw = fwrite(buf+done, 1, sizeof(buf) - done, imgfp);
+            nw = fwrite(buf+done, 1, n - done, imgfp);
+            done += nw;
+        }
+        cur += done;
+    }
+
+    /* Padding with 0 */
+    (void)memset(buf, 0, sizeof(buf));
+    while ( cur < MBR_SIZE + LOADER_SIZE ) {
+        /* Compute the size */
+        if ( MBR_SIZE + LOADER_SIZE - cur < sizeof(buf)  ) {
+            n = MBR_SIZE + LOADER_SIZE - cur;
+        } else {
+            n = sizeof(buf);
+        }
+        /* Write */
+        done = 0;
+        while ( done < n ) {
+            nw = fwrite(buf, 1, n - done, imgfp);
+            done += nw;
+        }
+        cur += done;
+    }
+
+
+    /* Copy kernel program */
+    while ( !feof(kernelfp) ) {
+        n = fread(buf, 1, sizeof(buf), kernelfp);
+        /* Write */
+        done = 0;
+        while ( done < n ) {
+            nw = fwrite(buf+done, 1, n - done, imgfp);
             done += nw;
         }
         cur += done;
@@ -143,6 +213,7 @@ main(int argc, const char *const argv[])
             return EXIT_FAILURE;
         }
     }
+
 
     /* Padding with zero */
     (void)memset(buf, 0, sizeof(buf));
@@ -155,10 +226,12 @@ main(int argc, const char *const argv[])
         cur += nw;
     }
 
+
     /* Close the file */
     (void)fclose(imgfp);
     (void)fclose(mbrfp);
     (void)fclose(loaderfp);
+    (void)fclose(kernelfp);
 
     return 0;
 }
