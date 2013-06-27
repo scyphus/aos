@@ -14,17 +14,17 @@
 	.globl	start		/* Entry point */
 
 start:
-/* Setup the segment registers for flag addressing and setup the stack. */
+/* Setup the stack and segment registers */
 	cld			/* Clear direction flag */
 				/* (inc di/si for str ops) */
-	xorw	%ax,%ax		/* Zero %ax */
+	xorw	%ax,%ax		/* %ax=0 */
 /* Setup stack */
 	movw	%ax,%ss
 	movw	$start,%sp
-/* Setup data segments */
+/* Setup data segments (%ds=0, %es=0) */
 	movw	%ax,%ds
 	movw	%ax,%es
-/* Save BIOS boot device */
+/* Save BIOS boot drive */
 	movb	%dl,drive
 /* Display the welcome message */
 	movw	$msg_welcome,%si	/* %ds:(%si) -> welcome message */
@@ -37,20 +37,21 @@ halt:
 
 /* Display a null-terminated string */
 putstr:
-	pushw	%bx
+	pushw	%bx		/* Save %bx */
 putstr.load:
 	lodsb			/* Load %al from %ds:(%si), then incl %si */
-	testb	%al,%al		/* Stop at null: could be orb */
-	jnz	putstr.putc	/* Output a character*/
-	popw	%bx
-	ret			/* return */
+	testb	%al,%al		/* Stop at null */
+	jnz	putstr.putc	/* Call the function to output %al */
+	popw	%bx		/* Restore %bx */
+	ret			/* Return if null is reached */
 putstr.putc:
-	call	putc		/* Output a character */
+	call	putc		/* Output a character %al */
 	jmp	putstr.load	/* Go to next character */
 putc:
-	movw	$0x7,%bx	/* Color code */
-	movb	$0xe,%ah	/* BIOS: put_char */
-	int	$0x10		/* call BIOS, print a character in %al */
+	movw	$0x7,%bx	/* %bh: Page number for text mode */
+				/* %bl: Color code for graphics mode */
+	movb	$0xe,%ah	/* BIOS: Put char in tty mode */
+	int	$0x10		/* Call BIOS, print a character in %al */
 	ret
 
 
