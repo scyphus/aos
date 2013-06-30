@@ -112,8 +112,8 @@ load_mm.1:
 	jmp	load_mm.error		/* Error otherwise */
 load_mm.2:
 /* 24-byte entry */
-	testl	$0x1,%es:20(%di)	/* Written 1 must be presented  */
-	jz	load_mm.error		/*  error if not */
+	testl	$0x1,%es:20(%di)	/* 1 must be present in the attribute */
+	jz	load_mm.error		/*  error if it's overwritten */
 load_mm.3:
 /* 20-byte entry or 24-byte entry coming from above */
 	testl	%ebx,%ebx		/* %ebx=0: No remaining info */
