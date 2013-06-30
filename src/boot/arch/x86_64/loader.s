@@ -10,6 +10,15 @@
 	.set	MME_SIZE,24		/* Memory map entry size */
 	.set	MME_SIGN,0x534d4150	/* MME signature (ascii "SMAP")  */
 
+	.set	VGA_TEXT_COLOR_80x25,0x03
+
+	.set	GDT_CODE64_SEL,0x08	/* Code64 selector */
+	.set	GDT_CODE32_SEL,0x10	/* Code32 selector */
+	.set	GDT_CODE16_SEL,0x18	/* Code16 selector */
+	.set	GDT_DATA_SEL,0x20	/* Data selector */
+
+	.set	KERNEL_STACK,0x7c00	/* Kernel stack */
+
 	.set	KERNEL_SEG,0x1000	/* Memory where to load kernel */
 	.set	KERNEL_OFF,0x0000	/*  segment and offset [1000:0000] */
 
@@ -32,6 +41,9 @@ loader:
 	movw	%ss,stack16.ss
 	movw	%sp,stack16.sp
 	movw	%cs,code16.cs
+/* Save descriptor table registers */
+	sidt	idtr16
+	sgdt	gdtr16
 
 /* Enable A20 address line */
 	call    enable_a20
@@ -51,9 +63,21 @@ loader:
 	movw	%ax,%di
 	call	load_mm		/* Load system address map to %es:%di */
 	movw	%ax,(BOOTINFO_BASE)
-	movl	(BOOTINFO_BASE+8),%eax
-	movl	%eax,%dr0
-	jmp	halt16
+
+/* Set VGA mode to 16bit color text mode */
+	movb	$VGA_TEXT_COLOR_80x25,%al
+	movb	$0x00,%ah
+	int	$0x10
+
+/* Turn on protected mode */
+	cli
+	lidt	idtr		/* Setupt temporary IDT */
+	lgdt	gdtr		/* Setupt temporary GDT */
+	movl	%cr0,%eax
+	orb	$0x1,%al	/* Enable protected mode */
+	movl	%eax,%cr0
+	ljmp	$GDT_CODE32_SEL,$entry32	/* Go into protected mode */
+						/*  and flush the pipline */
 
 
 /* Enable A20 */
@@ -133,7 +157,7 @@ load_mm.done:
 	ret
 
 
-/* Came into the real mode then immediately shutoff */
+/* Shutoff the machine using APM */
 shutoff16:
 /* Power off with APM */
 	movw	$0x5301,%ax	/* Connect APM interface */
@@ -158,7 +182,7 @@ shutoff16:
 	jmp	halt16
 
 
-/* Reentry point for real mode */
+/* Reentry point for real mode to shutoff */
 shutoff.reentry16:
 /* Setup stack pointer */
 	cli
@@ -172,6 +196,29 @@ shutoff.reentry16:
 halt16:
 	hlt
 	jmp	halt16
+
+
+	.align	16
+	.code32
+/* Entry point for 32bit protected mode */
+entry32:
+	/* %cs is automatically set after the long jump operation */
+	/* Setup stack */
+	movl	$GDT_DATA_SEL,%eax
+	movl	%eax,%ss
+	movl	%eax,%ds
+	movl	%eax,%es
+	movl	%eax,%fs
+	movl	%eax,%gs
+	movl	$KERNEL_STACK,%esp
+
+	jmp	halt32
+
+
+/* Halt (32bit mode) */
+halt32:
+	hlt
+	jmp	halt32
 
 
 /* Idle process */
@@ -191,4 +238,31 @@ stack16.sp:
 	.word	0x0
 code16.cs:
 	.word	0x0
+
+/* Saved IDT register */
+idtr16:
+	.word	0
+	.long	0
+/* Saved GDT register */
+gdtr16:
+	.word	0
+	.long	0
+
+
+/* Pseudo interrupt descriptor table */
+idtr:
+	.word	0x0
+	.long	0x0
+
+gdt:
+	.word	0x0,0x0,0x0,0x0		/* Null entry */
+	.word	0xffff,0x0,0x9a00,0xaf	/* Code64 */
+	.word	0xffff,0x0,0x9a00,0xcf	/* Code32 */
+	.word	0xffff,0x0,0x9a00,0x8f	/* Code16 */
+	.word	0xffff,0x0,0x9200,0xcf	/* Data */
+gdt.1:
+/* Pseudo global descriptor table register */
+gdtr:
+	.word	gdt.1-gdt-1		/* Limit */
+	.long	gdt			/* Address */
 
