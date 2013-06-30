@@ -27,16 +27,16 @@ Hirochika Asai
 
 ### Boot information structure
     struct sysaddrmap {
-        u64 num (number of entries)
-        u64 *sysaddrmap_entry (pointer to system address map entries)
+        u64 num; /* (number of entries) */
+        u64 *sysaddrmap_entry; /* (pointer to system address map entries) */
     }
 
 #### System address map entry
     struct sysaddrmap_entry {
-        u64 basee
-        u64 length
-        u32 type
-        u32 attr
+        u64 basee;
+        u64 len;
+        u32 type;
+        u32 attr;
     }
 
 
