@@ -15,6 +15,8 @@ Hirochika Asai
 - boot_cp0.2: Load kernel loader from MBR and jump there (and then immediately shutoff the machine using APM)
 
 ## Physical memory map
+    Start    End      Description
+    ---------------------------------------------------------
     00000500 00007bff Stack in real mode
     00007c00 00007dff MBR
     00007e00 00007fff free
