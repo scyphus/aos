@@ -14,3 +14,12 @@ Hirochika Asai
 - boot_cp0.1: Simple boot example (just printing a welcome message and stop CPU.)
 - boot_cp0.2: Load kernel loader from MBR and jump there (and then immediately shutoff the machine using APM)
 
+## Physical memory map
+00000500 00007bff Stack in real mode
+00007c00 00007dff MBR
+00007e00 00007fff free
+00008000 00008fff boot information
+00009000 00009fff kernel loader
+0000a000 0000ffff free (researved for kernel loader)
+00010000 0001ffff kernel
+
