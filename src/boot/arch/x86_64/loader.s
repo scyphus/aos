@@ -5,10 +5,13 @@
  *      Hirochika Asai  <asai@scyphus.co.jp>
  */
 
-	.set	KERNEL_SEG,0x0900	/* Memory where to load kernel loader */
-	.set	KERNEL_OFF,0x0000	/*  segment and offset [0900:0000] */
-	.set	KERNEL_SIZE,0x8		/* Size of kernel loader in sectors */
-	.set	SECTOR_SIZE,0x200       /* 0x200 for FD, 0x800 for CD */
+	.set	BOOTINFO_BASE,0x8000	/* Boot information base address */
+	.set	BOOTINFO_SIZE,0x100	/* Size of boot info structure */
+	.set	MME_SIZE,24		/* Memory map entry size */
+	.set	MME_SIGN,0x534d4150	/* MME signature (ascii "SMAP")  */
+
+	.set	KERNEL_SEG,0x1000	/* Memory where to load kernel */
+	.set	KERNEL_OFF,0x0000	/*  segment and offset [1000:0000] */
 
 	.file	"loader.s"
 
@@ -33,7 +36,25 @@ loader:
 /* Enable A20 address line */
 	call    enable_a20
 
-	jmp	shutoff16
+/* Reset the boot information structure */
+	xorl	%eax,%eax
+	movl	$BOOTINFO_BASE,%ebx
+	movl	$BOOTINFO_SIZE,%ecx
+	shrl	$2,%ecx
+1:	movl	%eax,(%ebx)
+	addl	$4,%ebx
+	loop	1b
+/* Load memory map entries */
+	movw	%ax,%es
+	movw	$BOOTINFO_BASE+BOOTINFO_SIZE,%ax
+	movw	%ax,(BOOTINFO_BASE+8)
+	movw	%ax,%di
+	call	load_mm		/* Load system address map to %es:%di */
+	movw	%ax,(BOOTINFO_BASE)
+	movl	(BOOTINFO_BASE+8),%eax
+	movl	%eax,%dr0
+	jmp	halt16
+
 
 /* Enable A20 */
 enable_a20:
@@ -57,14 +78,60 @@ enable_a20.3:
 	sti			/* Enable interrupts */
 	ret			/* Return to caller */
 
+
 /*
  * Load memory map entries from BIOS
  *   Input:
  *     %es:%di: Destination
- *   Affected:
- *     %ax
- *     %bx
+ *   Return:
+ *     %ax: The number of entries
  */
+load_mm:
+	pushl	%ebx
+	pushl	%ecx
+	pushw	%di
+	pushw	%bp
+	xorl	%ebx,%ebx		/* Continuation value for int 0x15 */
+	xorw	%bp,%bp			/* Counter */
+load_mm.1:
+	movl	$0x1,%ecx		/* Write 1 once */
+	movl	%ecx,%es:20(%di)	/*  to check support ACPI >=3.x? */
+/* Read the system address map */
+	movl	$0xe820,%eax
+	movl	$MME_SIGN,%edx		/* Set the signature */
+	movl	$MME_SIZE,%ecx		/* Set the buffer size */
+	int	$0x15			/* Query system address map */
+	jc	load_mm.error		/* Error */
+	cmpl	$MME_SIGN,%eax		/* Check the signature SMAP */
+	jne	load_mm.error
+
+	cmpl	$24,%ecx		/* Check the read buffer size */
+	je	load_mm.2		/*  %ecx==24 */
+	cmpl	$20,%ecx
+	je	load_mm.3		/*  %ecx==20 */
+	jmp	load_mm.error		/* Error otherwise */
+load_mm.2:
+/* 24-byte entry */
+	testl	$0x1,%es:20(%di)	/* Written 1 must be presented  */
+	jz	load_mm.error		/*  error if not */
+load_mm.3:
+/* 20-byte entry or 24-byte entry coming from above */
+	testl	%ebx,%ebx		/* %ebx=0: No remaining info */
+	jz	load_mm.done		/* jz/je */
+load_mm.4:
+	incw	%bp			/* Increment the number of entries */
+	addw	$MME_SIZE,%di		/* Next entry */
+	jmp	load_mm.1		/* Load remaining entries */
+load_mm.error:
+	stc				/* Set CF */
+load_mm.done:
+	movw	%bp,%ax			/* Return value */
+	popw	%bp
+	popw	%di
+	popl	%ecx
+	popl	%ebx
+	ret
+
 
 /* Came into the real mode then immediately shutoff */
 shutoff16:
@@ -90,6 +157,7 @@ shutoff16:
 
 	jmp	halt16
 
+
 /* Reentry point for real mode */
 shutoff.reentry16:
 /* Setup stack pointer */
@@ -98,6 +166,7 @@ shutoff.reentry16:
 	movw	stack16.sp,%sp
 	sti
 	jmp	shutoff16
+
 
 /* Halt (16bit mode) */
 halt16:

@@ -26,10 +26,14 @@ Hirochika Asai
     00010000 0001ffff  kernel
 
 ### Boot information structure
+    /* The size of boot information must be aligned on 4 byte boundaries */
+    /* 0x0000--0x000f */
     struct sysaddrmap {
-        u64 num; /* (number of entries) */
-        u64 *sysaddrmap_entry; /* (pointer to system address map entries) */
+        u64 num;               /* Number of entries */
+        u64 *sysaddrmap_entry; /* Pointer to system address map entries */
     }
+    /* 0x0010--0x0100 */
+    /* reserved for future use */
 
 #### System address map entry
     struct sysaddrmap_entry {
