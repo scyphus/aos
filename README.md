@@ -11,5 +11,6 @@ when we start the development of operating system from scratch.
 Hirochika Asai
 
 ## Checkpoints
-boot_cp0.1: Simple boot example (just printing a welcome message and stop CPU.)
+- boot_cp0.1: Simple boot example (just printing a welcome message and stop CPU.)
+- boot_cp0.2: Load kernel loader from MBR and jump there (and then immediately shutoff the machine using APM)
 

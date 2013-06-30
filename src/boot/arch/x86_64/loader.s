@@ -8,6 +8,7 @@
 	.set	KERNEL_SEG,0x0900	/* Memory where to load kernel loader */
 	.set	KERNEL_OFF,0x0000	/*  segment and offset [0900:0000] */
 	.set	KERNEL_SIZE,0x8		/* Size of kernel loader in sectors */
+	.set	SECTOR_SIZE,0x200       /* 0x200 for FD, 0x800 for CD */
 
 	.file	"loader.s"
 
@@ -24,8 +25,14 @@
  *   %ss:%sp=0x0000:0x7c00 (=0x7c00)
  */
 loader:
+/* Save parameters */
+	movw	%ss,stack16.ss
+	movw	%sp,stack16.sp
+	movw	%cs,code16.cs
+
 /* Enable A20 address line */
 	call    enable_a20
+
 	jmp	shutoff16
 
 /* Enable A20 */
@@ -50,6 +57,15 @@ enable_a20.3:
 	sti			/* Enable interrupts */
 	ret			/* Return to caller */
 
+/*
+ * Load memory map entries from BIOS
+ *   Input:
+ *     %es:%di: Destination
+ *   Affected:
+ *     %ax
+ *     %bx
+ */
+
 /* Came into the real mode then immediately shutoff */
 shutoff16:
 /* Power off with APM */
@@ -72,11 +88,38 @@ shutoff16:
 	movw	$0x3,%cx	/* Off */
 	int	$0x15
 
-	jmp	halt16		/* For the case of failure */
+	jmp	halt16
+
+/* Reentry point for real mode */
+shutoff.reentry16:
+/* Setup stack pointer */
+	cli
+	movw	stack16.ss,%ss
+	movw	stack16.sp,%sp
+	sti
+	jmp	shutoff16
 
 /* Halt (16bit mode) */
 halt16:
 	hlt
 	jmp	halt16
 
+
+/* Idle process */
+idle:
+	sti
+	hlt
+	cli
+	jmp	idle
+
+
+	.align	16
+	.data
+/* Data for reentry to real mode */
+stack16.ss:
+	.word	0x0
+stack16.sp:
+	.word	0x0
+code16.cs:
+	.word	0x0
 
