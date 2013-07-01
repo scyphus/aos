@@ -22,7 +22,7 @@ Hirochika Asai
     00007c00 00007dff  MBR
     00007e00 00007fff  free
     00008000 00008fff  boot information
-    00009000 00009fff  kernel loader
+    00009000 00009fff  boot monitor
     0000a000 0000ffff  free (researved for kernel loader)
     00010000 0001ffff  kernel
 

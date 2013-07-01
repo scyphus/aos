@@ -31,17 +31,16 @@
 /* Text section */
 	.text
 
-	.globl	loader		/* Entry point */
-	.globl	putstr
+	.globl	bootmon		/* Entry point */
 
 	.code16			/* 16bit real mode */
 
 /*
- * Kernel loader
+ * Boot monitor
  *   %cs:%ip=0x0900:0x0000 (=0x9000)
  *   %ss:%sp=0x0000:0x7c00 (=0x7c00)
  */
-loader:
+bootmon:
 /* Save parameters */
 	movw	%ss,stack16.ss
 	movw	%sp,stack16.sp
