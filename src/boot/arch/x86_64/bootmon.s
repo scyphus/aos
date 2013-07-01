@@ -104,8 +104,10 @@ bootmon:
 	cmpw	$0,%ax
 	jz	2f
 	movw	bootmode,%ax
-	cmpw	$0,%ax
-	jnz	2f
+	cmpw	$1,%ax
+	je	2f
+	cmpw	$2,%ax
+	je	shutoff16
 	jmp	1b
 
 2:
