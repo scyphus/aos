@@ -5,28 +5,8 @@
  *      Hirochika Asai  <asai@scyphus.co.jp>
  */
 
-	.set	BOOTINFO_BASE,0x8000	/* Boot information base address */
-	.set	BOOTINFO_SIZE,0x100	/* Size of boot info structure */
-	.set	MME_SIZE,24		/* Memory map entry size */
-	.set	MME_SIGN,0x534d4150	/* MME signature (ascii "SMAP")  */
-
-	.set	VGA_TEXT_COLOR_80x25,0x03
-
-	.set	IVT_IRQ0,0x20		/* IRQ0=0x20 */
-	.set	IVT_IRQ8,0x28		/* IRQ8=0x28 */
-
-
-	.set	GDT_CODE64_SEL,0x08	/* Code64 selector */
-	.set	GDT_CODE32_SEL,0x10	/* Code32 selector */
-	.set	GDT_CODE16_SEL,0x18	/* Code16 selector */
-	.set	GDT_DATA_SEL,0x20	/* Data selector */
-
-	.set	KERNEL_STACK,0x7c00	/* Kernel stack */
-
-	.set	KERNEL_SEG,0x1000	/* Memory where to load kernel */
-	.set	KERNEL_OFF,0x0000	/*  segment and offset [1000:0000] */
-
-	.file	"loader.s"
+	.include	"asmconst.h"
+	.file		"loader.s"
 
 /* Text section */
 	.text
@@ -99,25 +79,52 @@ bootmon:
 	movb	$0xff,%al
 	outb	%al,$0xa1
 
-1:	hlt
+/* Wait for interaction */
+wait:
+	hlt
 	movw	counter,%ax
 	cmpw	$0,%ax
-	jz	2f
+	jz	boot		/* Timeout then boot */
 	movw	bootmode,%ax
 	cmpw	$1,%ax
-	je	2f
+	je	boot		/* Pressed 1 (boot) */
 	cmpw	$2,%ax
-	je	shutoff16
-	jmp	1b
+	je	shutoff16	/* Pressed 2 (power off) */
+	jmp	wait
 
-2:
+boot:
 	/* Mask all interrupts (i8259) */
 	movb	$0xff,%al
 	outb	%al,$0x21
 	movb	$0xff,%al
 	outb	%al,$0xa1
-1:	hlt
-	jmp	1b
+
+	/* Reset the boot information structure */
+	xorl	%eax,%eax
+	movl	$BOOTINFO_BASE,%ebx
+	movl	$BOOTINFO_SIZE,%ecx
+	shrl	$2,%ecx
+1:	movl	%eax,(%ebx)
+	addl	$4,%ebx
+	loop	1b
+
+	/* Load memory map entries */
+	movw	%ax,%es
+	movw	$BOOTINFO_BASE+BOOTINFO_SIZE,%ax
+	movw	%ax,(BOOTINFO_BASE+8)
+	movw	%ax,%di
+	call	load_mm		/* Load system address map to %es:%di */
+	movw	%ax,(BOOTINFO_BASE)
+
+	/* Turn on protected mode */
+	cli
+	lidt	idtr		/* Setupt temporary IDT */
+	lgdt	gdtr		/* Setupt temporary GDT */
+	movl	%cr0,%eax
+	orb	$0x1,%al	/* Enable protected mode */
+	movl	%eax,%cr0
+	ljmp	$GDT_CODE32_SEL,$entry32	/* Go into protected mode */
+						/*  and flush the pipline */
 
 
 /* Initialize i8259 interrupt controller */
@@ -269,41 +276,6 @@ intr_int33:
 	popw	%ax
 	iret
 
-
-
-
-/* Reset the boot information structure */
-	xorl	%eax,%eax
-	movl	$BOOTINFO_BASE,%ebx
-	movl	$BOOTINFO_SIZE,%ecx
-	shrl	$2,%ecx
-1:	movl	%eax,(%ebx)
-	addl	$4,%ebx
-	loop	1b
-/* Load memory map entries */
-	movw	%ax,%es
-	movw	$BOOTINFO_BASE+BOOTINFO_SIZE,%ax
-	movw	%ax,(BOOTINFO_BASE+8)
-	movw	%ax,%di
-	call	load_mm		/* Load system address map to %es:%di */
-	movw	%ax,(BOOTINFO_BASE)
-
-
-/* Mask all interrupts (i8259) */
-	movb	$0xff,%al
-	outb	%al,$0x21
-	movb	$0xff,%al
-	outb	%al,$0xa1
-
-/* Turn on protected mode */
-	cli
-	lidt	idtr		/* Setupt temporary IDT */
-	lgdt	gdtr		/* Setupt temporary GDT */
-	movl	%cr0,%eax
-	orb	$0x1,%al	/* Enable protected mode */
-	movl	%eax,%cr0
-	ljmp	$GDT_CODE32_SEL,$entry32	/* Go into protected mode */
-						/*  and flush the pipline */
 
 
 /* Enable A20 */
@@ -469,38 +441,6 @@ putbmsg.putc:
 	stosw
 	jmp	putbmsg.load
 
-
-
-
-	.align	16
-	.code32
-/* Entry point for 32bit protected mode */
-entry32:
-	/* %cs is automatically set after the long jump operation */
-	/* Setup stack */
-	movl	$GDT_DATA_SEL,%eax
-	movl	%eax,%ss
-	movl	%eax,%ds
-	movl	%eax,%es
-	movl	%eax,%fs
-	movl	%eax,%gs
-	movl	$KERNEL_STACK,%esp
-
-	jmp	halt32
-
-
-/* Halt (32bit mode) */
-halt32:
-	hlt
-	jmp	halt32
-
-
-/* Idle process */
-idle:
-	sti
-	hlt
-	cli
-	jmp	idle
 
 
 /* Data section */

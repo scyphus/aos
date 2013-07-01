@@ -7,14 +7,19 @@
 #
 
 ARCH=x86_64
-ASFLAGS=-nostdlib
-CFLAGS=-Wall -mno-sse2 -mno-sse3 -fleading-underscore -nostdlib -m64
+
+diskboot: ASFLAGS=-nostdlib -I./boot/arch/$(ARCH)/
+bootmon: ASFLAGS=-nostdlib -I./boot/arch/$(ARCH)/
+kpack: ASFLAGS=-nostdlib
+kpack: CFLAGS=-Wall -mno-sse2 -mno-sse3 -fleading-underscore -nostdlib -m64
 
 ## MBR
 diskboot: boot/arch/$(ARCH)/diskboot.o
 	$(LD) -N -e start -Ttext=0x7c00 --oformat binary -o $@ $^
 
-bootmon: boot/arch/$(ARCH)/bootmon.o
+bootmon: boot/arch/$(ARCH)/bootmon.o \
+	boot/arch/$(ARCH)/entry32.o \
+	boot/arch/$(ARCH)/entry64.o
 	$(LD) -N -e bootmon -Ttext=0x09000 --oformat binary -o $@ $^
 
 kpack: kernel/arch/$(ARCH)/asm.o kernel/kernel.o

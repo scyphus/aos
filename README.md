@@ -17,14 +17,18 @@ Hirochika Asai
 
 ## Physical memory map
     Start    End       Description
-    ---------------------------------------------------------
-    00000500 00007bff  Default stack in real/protected/long mode
+    ----------------------------------------------------------
+    00000500 00007bff  Default stack in real mode
     00007c00 00007dff  MBR
     00007e00 00007fff  free
     00008000 00008fff  boot information
     00009000 00009fff  boot monitor
     0000a000 0000ffff  free (reserved for boot monitor)
     00010000 0001ffff  kernel
+    00020000 00078fef  kernel stack
+    00078ff0 00078fff  16 byte free range
+    00079000 0007ffff  page table (at least 24KiB = 6 * 4KiB)
+    00080000 000fffff  free or reserved
 
 ### Boot information structure
     /* The size of boot information must be aligned on 4 byte boundaries */
