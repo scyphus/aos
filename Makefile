@@ -17,9 +17,9 @@ tools: fdtool
 fdimage:
 	@echo "Make sure tools are compiled."
 	make -C src diskboot
-	make -C src loader
+	make -C src bootmon
 	make -C src kpack
-	./tools/fdtool/fdtool ./aos.img src/diskboot src/loader src/kpack
+	./tools/fdtool/fdtool ./aos.img src/diskboot src/bootmon src/kpack
 
 image: fdimage
 

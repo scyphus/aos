@@ -12,6 +12,10 @@
 
 	.set	VGA_TEXT_COLOR_80x25,0x03
 
+	.set	IVT_IRQ0,0x20		/* IRQ0=0x20 */
+	.set	IVT_IRQ8,0x28		/* IRQ8=0x28 */
+
+
 	.set	GDT_CODE64_SEL,0x08	/* Code64 selector */
 	.set	GDT_CODE32_SEL,0x10	/* Code32 selector */
 	.set	GDT_CODE16_SEL,0x18	/* Code16 selector */
@@ -28,6 +32,7 @@
 	.text
 
 	.globl	loader		/* Entry point */
+	.globl	putstr
 
 	.code16			/* 16bit real mode */
 
@@ -48,6 +53,224 @@ loader:
 /* Enable A20 address line */
 	call    enable_a20
 
+/* Set VGA mode to 16bit color text mode */
+	movb	$VGA_TEXT_COLOR_80x25,%al
+	movb	$0x00,%ah
+	int	$0x10
+
+/* Mask all interrupts (i8259) */
+	movb	$0xff,%al
+	outb	%al,$0x21
+	movb	$0xff,%al
+	outb	%al,$0xa1
+
+/* Setup interrupt handlers */
+	call	init_i8259
+
+	xorw	%ax,%ax
+	movw	%ax,%es
+	movw	$intr_int32,%ax
+	movw	$(IVT_IRQ0),%bx
+	call	setup_inthandler
+
+	xorw	%ax,%ax
+	movw	%ax,%es
+	movw	$intr_int33,%ax
+	movw	$(IVT_IRQ0+1),%bx
+	call	setup_inthandler
+
+/* Reset counter */
+	movw	$1000,%ax
+	movw	%ax,counter
+	movw	$0,%ax
+	movw	%ax,bootmode
+
+/* Print out boot message */
+	movw	$0,%ax
+	movw	%ax,%ds
+	movw	$msg_bootopt,%si
+	call	putstr
+
+/* Initialize PIT */
+	call	init_pit
+
+/* Unmask timer/keyboard interrupt (i8259) */
+	movb	$0xfc,%al
+	outb	%al,$0x21
+	movb	$0xff,%al
+	outb	%al,$0xa1
+
+1:	hlt
+	movw	counter,%ax
+	cmpw	$0,%ax
+	jz	2f
+	movw	bootmode,%ax
+	cmpw	$0,%ax
+	jnz	2f
+	jmp	1b
+
+2:
+	/* Mask all interrupts (i8259) */
+	movb	$0xff,%al
+	outb	%al,$0x21
+	movb	$0xff,%al
+	outb	%al,$0xa1
+1:	hlt
+	jmp	1b
+
+
+/* Initialize i8259 interrupt controller */
+init_i8259:
+	pushw	%ax
+	/* ICW1 */
+	movb	$0x11,%al	/* PIC ICW1 */
+	outb	%al,$0x20	/* Master PIC command */
+	movb	$0x11,%al
+	outb	%al,$0xa0	/* Slave PIC command */
+	/* ICW2 */
+	movb	$IVT_IRQ0,%al	/* Master PIC ICW2 IRQ0=0x20 */
+	outb	%al,$0x21	/* Master PIC data */
+	movb	$IVT_IRQ8,%al	/* Slave PIC ICW2 IRQ8=0x28 */
+	outb	%al,$0xa1	/* Slave PIC data */
+	/* ICW3 */
+	movb	$0x04,%al	/* Master PIC ICW3 */
+	outb	%al,$0x21	/* Master PIC data */
+	movb	$0x02,%al	/* Slave PIC ICW3 */
+	outb	%al,$0xa1	/* Slave PIC data */
+	/* ICW4 */
+	movb	$0x01,%al	/* Master PIC ICW4 */
+	outb	%al,$0x21	/* Master PIC data */
+	movb	$0x01,%al	/* Slave PIC ICW4 */
+	outb	%al,$0xa1	/* Slave PIC data */
+	/* Return */
+	popw	%ax
+	ret
+
+
+/* Initialize programmable interval timer  */
+init_pit:
+	pushw	%ax
+	movb	$(0x00|0x30|0x06),%al
+	outb	%al,$0x43
+	movw	$0x2e9c,%ax	/* Frequency=100Hz: 1193181.67/100 */
+	outb	%al,$0x40	/* Counter 0 */
+	movb	%ah,%al
+	outb	%al,$0x40	/* Counter 0 */
+	popw	%ax
+	ret
+
+/*
+ * Setup interrupt vector
+ *   %es: code segment
+ *   %ax: instruction pointer
+ *   %bx: interrupt vector number
+ */
+setup_inthandler:
+	pushw	%bx
+	shlw	$2,%bx
+	movw	%ax,(%bx)
+	addw	$2,%bx
+	movw	%es,(%bx)
+	popw	%bx
+	ret
+
+/*
+ * Timer interrupt handler
+ */
+intr_int32:
+	pushw	%ax
+	pushw	%ds
+	pushw	%si
+
+	movw	counter,%ax
+	decw	%ax
+	movw	%ax,counter
+	movb	$100,%dl
+	divb	%dl		/* Q=%al, R=%ah */
+	xorb	%ah,%ah
+	movb	$10,%dl
+	divb	%dl
+	addb	$'0',%al
+	addb	$'0',%ah
+	movw	%ax,msg_count
+
+	xorw	%ax,%ax
+	movw	%ax,%ds
+	movw	$msg_countdown,%si
+	call	putbmsg
+
+	/* EOI for PIC1 */
+	movb	$0x20,%al
+	outb	%al,$0x20
+
+	popw	%si
+	popw	%ds
+	popw	%ax
+	iret
+
+	pushw	%ax
+	/* Output '1' */
+	movw	counter,%ax
+	incw	%ax
+	movw	%ax,counter
+	movb	$10,%dl
+	divb	%dl		/* Q=%al, R=%ah */
+	movb	%ah,%al
+	addb	$'0',%al
+	call	putc
+	movb	$0x08,%al
+	call	putc
+
+	/* EOI for PIC1 */
+	movb	$0x20,%al
+	outb	%al,$0x20
+	popw	%ax
+	iret
+
+/*
+ * Keyboard interrupt handler
+ */
+intr_int33:
+	pushw	%ax
+	/* Scan code from keyboard controller */
+	inb	$0x60,%al
+	/* Check it is pressed or released? */
+	testb	$0x80,%al
+	jnz	4f		/* Jump if released */
+	cmpb	$2,%al		/* '1' is pressed */
+	jnz	1f
+	/* Output '1' */
+	movb	$'1',%al
+	call	putc
+	movw	$1,bootmode
+	jmp	3f
+1:
+	cmpb	$3,%al		/* '2' is pressed */
+	jnz	2f
+	/* Output '2' */
+	movb	$'2',%al
+	call	putc
+	movw	$2,bootmode
+	jmp	3f
+2:
+	/* Output ' ' for other keys */
+	movb	$' ',%al
+	call	putc
+	movw	$0,bootmode
+3:
+	/* Backspace */
+	movb	$0x08,%al
+	call	putc
+4:
+	/* EOI for PIC1 */
+	movb	$0x20,%al
+	outb	%al,$0x20
+	popw	%ax
+	iret
+
+
+
+
 /* Reset the boot information structure */
 	xorl	%eax,%eax
 	movl	$BOOTINFO_BASE,%ebx
@@ -64,10 +287,12 @@ loader:
 	call	load_mm		/* Load system address map to %es:%di */
 	movw	%ax,(BOOTINFO_BASE)
 
-/* Set VGA mode to 16bit color text mode */
-	movb	$VGA_TEXT_COLOR_80x25,%al
-	movb	$0x00,%ah
-	int	$0x10
+
+/* Mask all interrupts (i8259) */
+	movb	$0xff,%al
+	outb	%al,$0x21
+	movb	$0xff,%al
+	outb	%al,$0xa1
 
 /* Turn on protected mode */
 	cli
@@ -198,6 +423,54 @@ halt16:
 	jmp	halt16
 
 
+
+
+/* Display a null-terminated string */
+putstr:
+putstr.load:
+	lodsb			/* Load %al from %ds:(%si), then incl %si */
+	testb	%al,%al		/* Stop at null */
+	jnz	putstr.putc	/* Call the function to output %al */
+	ret			/* Return if null is reached */
+putstr.putc:
+	call	putc		/* Output a character %al */
+	jmp	putstr.load	/* Go to next character */
+putc:
+	pushw	%bx		/* Save %bx */
+	movw	$0x7,%bx	/* %bh: Page number for text mode */
+				/* %bl: Color code for graphics mode */
+	movb	$0xe,%ah	/* BIOS: Put char in tty mode */
+	int	$0x10		/* Call BIOS, print a character in %al */
+	popw	%bx		/* Restore %bx */
+	ret
+
+/*
+ * Bottom-line message
+ *   %ds:%si --> 0xb800:**
+ */
+putbmsg:
+	pushw	%ax
+	pushw	%es
+	pushw	%di
+	movw	$0xb800,%ax
+	movw	%ax,%es
+	movw	$(80*24*2),%di
+putbmsg.load:
+	lodsb			/* Load %al from %ds:(%si) , then incl %si */
+	testb	%al,%al		/* Stop at null */
+	jnz	putbmsg.putc	/* Call the function to output %al */
+	popw	%di
+	popw	%es
+	popw	%ax
+	ret
+putbmsg.putc:
+	movb	$0x7,%ah
+	stosw
+	jmp	putbmsg.load
+
+
+
+
 	.align	16
 	.code32
 /* Entry point for 32bit protected mode */
@@ -229,8 +502,16 @@ idle:
 	jmp	idle
 
 
+/* Data section */
 	.align	16
 	.data
+/* Counter for boot monitor */
+counter:
+	.word	0x0
+/* Boot mode */
+bootmode:
+	.word	0x0
+
 /* Data for reentry to real mode */
 stack16.ss:
 	.word	0x0
@@ -266,3 +547,14 @@ gdtr:
 	.word	gdt.1-gdt-1		/* Limit */
 	.long	gdt			/* Address */
 
+/* Messages */
+msg_bootopt:
+	.ascii	"Select one:\r\n\n"
+	.ascii	"\t1: Boot (64 bit mode)\r\n"
+	.ascii	"\t2: Power off\r\n"
+	.asciz	"Press key:[ ]\x08\x08"
+
+msg_countdown:
+	.ascii	"AOS will boot in "
+msg_count:
+	.asciz	"00 sec."

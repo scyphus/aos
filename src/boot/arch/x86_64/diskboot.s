@@ -144,21 +144,21 @@ halt:
 
 /* Display a null-terminated string */
 putstr:
-	pushw	%bx		/* Save %bx */
 putstr.load:
 	lodsb			/* Load %al from %ds:(%si), then incl %si */
 	testb	%al,%al		/* Stop at null */
 	jnz	putstr.putc	/* Call the function to output %al */
-	popw	%bx		/* Restore %bx */
 	ret			/* Return if null is reached */
 putstr.putc:
 	call	putc		/* Output a character %al */
 	jmp	putstr.load	/* Go to next character */
 putc:
+	pushw	%bx		/* Save %bx */
 	movw	$0x7,%bx	/* %bh: Page number for text mode */
 				/* %bl: Color code for graphics mode */
 	movb	$0xe,%ah	/* BIOS: Put char in tty mode */
 	int	$0x10		/* Call BIOS, print a character in %al */
+	popw	%bx		/* Restore %bx */
 	ret
 
 /* Twiddle a bar */
@@ -211,7 +211,7 @@ twiddle_chars:
 
 /* Messages */
 msg_welcome:
-	.asciz	"Welcome!\r\n\nLet's get it started.\r\n\n"
+	.asciz	"Welcome to AOS!\r\n\nLet's get it started.\r\n\n"
 msg_readerror:
 	.ascii  "Read Error: 0x"
 hex_error:

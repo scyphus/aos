@@ -7,10 +7,7 @@
 
 /* $Id$ */
 
-void
-kmain(void)
-{
-}
+
 
 /*
  * Local variables:
