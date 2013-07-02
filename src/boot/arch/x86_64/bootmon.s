@@ -106,6 +106,10 @@ boot:
 	jnc	cpuerror
 	btl	$9,%edx		/* Onboard APIC */
 	jnc	cpuerror
+	btl	$25,%edx	/* SSE */
+	jnc	cpuerror
+	btl	$26,%edx	/* SSE2 */
+	jnc	cpuerror
 	movl	$0x80000001,%eax
 	cpuid
 	btl	$29,%edx	/* Intel 64 support */
@@ -441,8 +445,7 @@ read:
 	movw	%cx,-12(%bp)
 read.retry:
 	movw	-8(%bp),%ax	/* Get the saved %dx from the stack */
-	//movb	%ah,%al		/*  (Note: same as movb -7(%bp),%al */
-	movb	$1,%al
+	movb	%ah,%al		/*  (Note: same as movb -7(%bp),%al */
 	movb	$0x02,%ah       /* BIOS: Read sectors from drive */
 	movw	-10(%bp),%cx	/* Get the saved %cx from the stack */
 	int	$0x13		/* CHS=%ch,%dh,%cl, drive=%dl, count=%al */
