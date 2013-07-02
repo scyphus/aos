@@ -17,8 +17,11 @@
 static int cursor;
 static unsigned char vga_text[VGA_TEXTMODE_XY];
 
+/*
+ * Update cursor
+ */
 void
-update_cursor(void)
+vga_update_cursor(void)
 {
     u16 val;
     u16 addr = 0x3d4;
@@ -31,35 +34,38 @@ update_cursor(void)
     __asm__ __volatile__ ( "outw %%ax,%%dx" : : "a"(val), "d"(addr) );
 }
 
+/*
+ * Put a character to VGA display
+ */
 void
 vga_putc(int c)
 {
     int i;
-    unsigned long addr;
-    unsigned short *ptr;
+    u64 addr;
+    u16 *ptr;
 
     addr = VGA_VRAM_TEXTMODE;
 
-    ptr = (unsigned short *)(addr + (cursor) * 2);
-    *ptr = (0x07 << 8) | (unsigned char)c;
+    ptr = (u16 *)(addr + (cursor) * 2);
+    *ptr = (0x07 << 8) | (u8)c;
     vga_text[cursor] = c;
     cursor++;
 
     /* Draw it again */
     if ( cursor == VGA_TEXTMODE_XY ) {
         for ( i = 0; i < VGA_TEXTMODE_XY - VGA_TEXTMODE_X; i++ ) {
-            ptr = (unsigned short *)(addr + i * 2);
+            ptr = (u16 *)(addr + i * 2);
             vga_text[i] = vga_text[i + VGA_TEXTMODE_X];
             *ptr = (0x07 << 8) | vga_text[i];
         }
         for ( ; i < VGA_TEXTMODE_XY; i++ ) {
-            ptr = (unsigned short *)(addr + i * 2);
+            ptr = (u16 *)(addr + i * 2);
             vga_text[i] = ' ';
             *ptr = (0x07 << 8) | vga_text[i];
         }
         cursor -= VGA_TEXTMODE_X;
     }
-    update_cursor();
+    vga_update_cursor();
 }
 
 /*
