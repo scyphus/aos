@@ -39,19 +39,6 @@ entry64:
 	movw	$0x3d4,%dx
 	outw	%ax,%dx
 
-	//call	_cstart
-
-	/* Get CPU information */
-	movq    $0x01,%rax
-	cpuid
-
-	movw	$0x1b,%rcx	/* IA32_APIC_BASE MSR */
-	rdmsr
-	movq	%rax,%dr0
-	movq	%rdx,%dr1
-	/* APIC BASE [35:12], x1APIC [11], x2APIC [10], BSP [8] */
-
-
 	/* Jump to the kernel main function */
 	pushq	$GDT_CODE64_SEL
 	pushq	$KERNEL_MAIN
