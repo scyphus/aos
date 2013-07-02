@@ -5,9 +5,9 @@
  *      Hirochika Asai  <asai@scyphus.co.jp>
  */
 
-	.set	LOADER_SEG,0x0900	/* Memory where to load kernel loader */
-	.set	LOADER_OFF,0x0000	/*  segment and offset [0900:0000] */
-	.set	LOADER_SIZE,0x8		/* Size of kernel loader in sectors */
+	.set	BOOTMON_SEG,0x0900	/* Memory where to load kernel loader */
+	.set	BOOTMON_OFF,0x0000	/*  segment and offset [0900:0000] */
+	.set	BOOTMON_SIZE,0x8	/* Size of kernel loader in sectors */
 
 	/* Disk information */
 	.set	HEAD_SIZE,18            /* 18 sectors per head/track */
@@ -42,19 +42,19 @@ start:
 	movw	$msg_welcome,%si	/* %ds:(%si) -> welcome message */
 	call	putstr
 
-/* Read the kernel loader */
-load_loader:
+/* Read the boot monitor */
+load_bootmon:
 /* Load 0x8 sectors (4KiB) from the sector next to MBR */
 	pushw	%es
-	movw	$LOADER_SEG,%ax
+	movw	$BOOTMON_SEG,%ax
 	movw	%ax,%es
-	movw	$LOADER_OFF,%bx
-	movb	$LOADER_SIZE,%dh
+	movw	$BOOTMON_OFF,%bx
+	movb	$BOOTMON_SIZE,%dh
 	movw	$0x1,%ax		/* from LBA 1 */
 	call	read
 	popw	%es
 /* Jump to the kernel loader */
-	ljmp	$LOADER_SEG,$LOADER_OFF
+	ljmp	$BOOTMON_SEG,$BOOTMON_OFF
 
 /* Read %dh sectors starting at LBA (logical block address) %ax on drive %dl
    into %es:[%bx] */
