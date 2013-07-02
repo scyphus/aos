@@ -39,12 +39,40 @@ entry64:
 	movw	$0x3d4,%dx
 	outw	%ax,%dx
 
+	//call	_cstart
+
+	/* Get CPU information */
+	movq    $0x01,%rax
+	cpuid
+
+	movw	$0x1b,%rcx	/* IA32_APIC_BASE MSR */
+	rdmsr
+	movq	%rax,%dr0
+	movq	%rdx,%dr1
+	/* APIC BASE [35:12], x1APIC [11], x2APIC [10], BSP [8] */
+
+
 	/* Jump to the kernel main function */
-	/* ToDo */
+	pushq	$GDT_CODE64_SEL
+	pushq	$KERNEL_MAIN
+	lretq
 
 
 /* Halt (64bit mode) */
 halt64:
 	hlt
 	jmp	halt64
+
+
+
+
+
+/* Data section */
+	.align	16
+	.data
+cursor:
+	.word	0x0
+/* Messages */
+msg_welcome:
+	.asciz	"Welcome to 64bit long mode\r\n\n"
 

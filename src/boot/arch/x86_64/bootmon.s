@@ -92,7 +92,20 @@ wait:
 	je	shutoff16	/* Pressed 2 (power off) */
 	jmp	wait
 
+/* Boot */
 boot:
+	/* Check the CPU specification */
+	movl	$1,%eax
+	cpuid
+	btl	$6,%edx		/* PAE */
+	jnc	cpuerror
+	btl	$9,%edx		/* Onboard APIC */
+	jnc	cpuerror
+	movl	$0x80000001,%eax
+	cpuid
+	btl	$29,%edx	/* Intel 64 support */
+	jnc	cpuerror
+
 	/* Mask all interrupts (i8259) */
 	movb	$0xff,%al
 	outb	%al,$0x21
@@ -125,6 +138,14 @@ boot:
 	movl	%eax,%cr0
 	ljmp	$GDT_CODE32_SEL,$entry32	/* Go into protected mode */
 						/*  and flush the pipline */
+
+/* Display CPU error message */
+cpuerror:
+	movw	$0,%ax
+	movw	%ax,%ds
+	movw	$msg_cpuerror,%si
+	call	putstr
+	jmp	halt16
 
 
 /* Initialize i8259 interrupt controller */
@@ -160,7 +181,7 @@ init_pit:
 	pushw	%ax
 	movb	$(0x00|0x30|0x06),%al
 	outb	%al,$0x43
-	movw	$0x2e9c,%ax	/* Frequency=100Hz: 1193181.67/100 */
+	movw	$0x2e9b,%ax	/* Frequency=100Hz: 1193181.67/100 */
 	outb	%al,$0x40	/* Counter 0 */
 	movb	%ah,%al
 	outb	%al,$0x40	/* Counter 0 */
@@ -495,7 +516,11 @@ msg_bootopt:
 	.ascii	"\t2: Power off\r\n"
 	.asciz	"Press key:[ ]\x08\x08"
 
+msg_cpuerror:
+	.asciz	"\r\n\nUnsupported CPU.\r\n\n"
+
 msg_countdown:
 	.ascii	"AOS will boot in "
 msg_count:
 	.asciz	"00 sec."
+

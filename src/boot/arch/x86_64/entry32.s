@@ -81,7 +81,6 @@ pg_setup.2:
 	lret
 
 
-
 /* Halt (32bit mode) */
 halt32:
 	hlt

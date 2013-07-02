@@ -10,6 +10,9 @@ when we start the development of operating system from scratch.
 ## Developer
 Hirochika Asai
 
+## ToDo
+- Design and implement glue between the boot monitor and the kernel.
+
 ## Checkpoints
 - boot_cp0.1: Simple boot example (just printing a welcome message and stop CPU)
 - boot_cp0.2: Load kernel loader from MBR and jump there (and then immediately shutoff the machine using APM)
@@ -30,6 +33,7 @@ Hirochika Asai
     00078ff0 00078fff  16 byte free range
     00079000 0007ffff  page table (at least 24KiB = 6 * 4KiB)
     00080000 000fffff  free or reserved
+    00100000 --------
 
 ### Boot information structure
     /* The size of boot information must be aligned on 4 byte boundaries */
