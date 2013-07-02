@@ -12,8 +12,8 @@
 
 	.set	VGA_TEXT_COLOR_80x25,0x03
 
-	.set	IVT_IRQ0,0x20		/* IRQ0=0x20 */
-	.set	IVT_IRQ8,0x28		/* IRQ8=0x28 */
+	.set	IVT_IRQ0,0x08		/* IRQ0=0x08 (BIOS default) */
+	.set	IVT_IRQ8,0x70		/* IRQ8=0x70 (BIOS default) */
 
 
 	.set	GDT_CODE64_SEL,0x08	/* Code64 selector */

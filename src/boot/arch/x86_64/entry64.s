@@ -52,8 +52,6 @@ halt64:
 
 
 
-
-
 /* Data section */
 	.align	16
 	.data

@@ -53,6 +53,8 @@ load_bootmon:
 	movw	$0x1,%ax		/* from LBA 1 */
 	call	read
 	popw	%es
+/* Parameters to boot monitor */
+	movb	drive,%dl
 /* Jump to the kernel loader */
 	ljmp	$BOOTMON_SEG,$BOOTMON_OFF
 
@@ -107,6 +109,8 @@ read.fail:
 read.error:				/* We do not restore the stack */
 	movb	%ah,%al			/* Save error */
 	movw	$hex_error,%di		/* Format it as hex */
+	xorw	%bx,%bx
+	movw	%bx,%es
 	call	hex8
 	movw	$msg_readerror,%si	/* Display the read error message */
 	jmp	error

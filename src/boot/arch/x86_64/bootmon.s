@@ -5,7 +5,17 @@
  *      Hirochika Asai  <asai@scyphus.co.jp>
  */
 
+	.set	KERNEL_LBA,0x9		/* Kernel is located at LBA 9 */
+	.set	KERNEL_SIZE,0x80	/* 128 sectors (64KiB) */
+	/* Disk information */
+	.set	HEAD_SIZE,18            /* 18 sectors per head/track */
+	.set	CYLINDER_SIZE,2         /* 2 heads per cylinder */
+	.set	NUM_RETRIES,3		/* Number of times to retry to read */
+	.set	ERRCODE_TIMEOUT,0x80	/* Error code: timeout */
+
+	/* Include other constant values */
 	.include	"asmconst.h"
+
 	.file		"loader.s"
 
 /* Text section */
@@ -19,8 +29,11 @@
  * Boot monitor
  *   %cs:%ip=0x0900:0x0000 (=0x9000)
  *   %ss:%sp=0x0000:0x7c00 (=0x7c00)
+ *   %dl: drive
  */
 bootmon:
+/* Parameters from IPL */
+	movb	%dl,drive
 /* Save parameters */
 	movw	%ss,stack16.ss
 	movw	%sp,stack16.sp
@@ -37,14 +50,8 @@ bootmon:
 	movb	$0x00,%ah
 	int	$0x10
 
-/* Mask all interrupts (i8259) */
-	movb	$0xff,%al
-	outb	%al,$0x21
-	movb	$0xff,%al
-	outb	%al,$0xa1
-
-/* Setup interrupt handlers */
-	call	init_i8259
+/* Disable interrupt */
+	cli
 
 	xorw	%ax,%ax
 	movw	%ax,%es
@@ -73,11 +80,8 @@ bootmon:
 /* Initialize PIT */
 	call	init_pit
 
-/* Unmask timer/keyboard interrupt (i8259) */
-	movb	$0xfc,%al
-	outb	%al,$0x21
-	movb	$0xff,%al
-	outb	%al,$0xa1
+/* Enable interrupt */
+	sti
 
 /* Wait for interaction */
 wait:
@@ -94,6 +98,7 @@ wait:
 
 /* Boot */
 boot:
+	cli
 	/* Check the CPU specification */
 	movl	$1,%eax
 	cpuid
@@ -105,12 +110,6 @@ boot:
 	cpuid
 	btl	$29,%edx	/* Intel 64 support */
 	jnc	cpuerror
-
-	/* Mask all interrupts (i8259) */
-	movb	$0xff,%al
-	outb	%al,$0x21
-	movb	$0xff,%al
-	outb	%al,$0xa1
 
 	/* Reset the boot information structure */
 	xorl	%eax,%eax
@@ -129,8 +128,18 @@ boot:
 	call	load_mm		/* Load system address map to %es:%di */
 	movw	%ax,(BOOTINFO_BASE)
 
+	/* Load the kernel: Load 0x80 sectors (64KiB) from 0x1200 (LBA #9) */
+	movb	drive,%dl
+	movl	$KERNEL_MAIN,%eax
+	shrl	$4,%eax
+	movw	%ax,%es
+	movl	$KERNEL_MAIN,%ebx
+	andl	$0xf,%ebx
+	movb	$KERNEL_SIZE,%dh
+	movw	$KERNEL_LBA,%ax	/* from LBA 9 */
+	call	read
+
 	/* Turn on protected mode */
-	cli
 	lidt	idtr		/* Setupt temporary IDT */
 	lgdt	gdtr		/* Setupt temporary GDT */
 	movl	%cr0,%eax
@@ -146,35 +155,6 @@ cpuerror:
 	movw	$msg_cpuerror,%si
 	call	putstr
 	jmp	halt16
-
-
-/* Initialize i8259 interrupt controller */
-init_i8259:
-	pushw	%ax
-	/* ICW1 */
-	movb	$0x11,%al	/* PIC ICW1 */
-	outb	%al,$0x20	/* Master PIC command */
-	movb	$0x11,%al
-	outb	%al,$0xa0	/* Slave PIC command */
-	/* ICW2 */
-	movb	$IVT_IRQ0,%al	/* Master PIC ICW2 IRQ0=0x20 */
-	outb	%al,$0x21	/* Master PIC data */
-	movb	$IVT_IRQ8,%al	/* Slave PIC ICW2 IRQ8=0x28 */
-	outb	%al,$0xa1	/* Slave PIC data */
-	/* ICW3 */
-	movb	$0x04,%al	/* Master PIC ICW3 */
-	outb	%al,$0x21	/* Master PIC data */
-	movb	$0x02,%al	/* Slave PIC ICW3 */
-	outb	%al,$0xa1	/* Slave PIC data */
-	/* ICW4 */
-	movb	$0x01,%al	/* Master PIC ICW4 */
-	outb	%al,$0x21	/* Master PIC data */
-	movb	$0x01,%al	/* Slave PIC ICW4 */
-	outb	%al,$0xa1	/* Slave PIC data */
-	/* Return */
-	popw	%ax
-	ret
-
 
 /* Initialize programmable interval timer  */
 init_pit:
@@ -417,8 +397,6 @@ halt16:
 	jmp	halt16
 
 
-
-
 /* Display a null-terminated string */
 putstr:
 putstr.load:
@@ -437,6 +415,120 @@ putc:
 	int	$0x10		/* Call BIOS, print a character in %al */
 	popw	%bx		/* Restore %bx */
 	ret
+
+
+/* Read %dh sectors starting at LBA (logical block address) %ax on drive %dl
+   into %es:[%bx] */
+read:
+	pushw	%bp		/* Save the base pointer */
+	movw	%sp,%bp		/* Copy the stack pointer to the base pointer */
+/* Save registers */
+	movw	%ax,-2(%bp)
+	movw	%bx,-4(%bp)
+	movw	%cx,-6(%bp)
+	movw	%dx,-8(%bp)
+	/* u16 track:sector -10(%bp) */
+	/* u16 counter -12(%bp) */
+	subw	$12,%sp
+
+/* Convert LBA to CHS */
+	call	lba2chs		/* Convert LBA %ax to CHS (%ch,%dh,%cl) */
+	movw	%cx,-10(%bp)	/* Save %cx to the stack */
+/* Restore %bx */
+	movw	-4(%bp),%bx
+/* Reset counter */
+	xorw	%cx,%cx
+	movw	%cx,-12(%bp)
+read.retry:
+	movw	-8(%bp),%ax	/* Get the saved %dx from the stack */
+	//movb	%ah,%al		/*  (Note: same as movb -7(%bp),%al */
+	movb	$1,%al
+	movb	$0x02,%ah       /* BIOS: Read sectors from drive */
+	movw	-10(%bp),%cx	/* Get the saved %cx from the stack */
+///
+	pushl	%eax
+	xorl	%eax,%eax
+	movw	%dx,%ax
+	movl	%eax,%dr0
+	popl	%eax
+///
+	int	$0x13		/* CHS=%ch,%dh,%cl, drive=%dl, count=%al */
+				/*  to %es:[%bx] (results in %ax,%cf)  */
+///
+	pushl	%eax
+	movl	$0x1234,%eax
+	movl	%eax,%dr0
+	popl	%eax
+///
+	jc	read.fail	/* Fail (%cf=1) */
+
+/* Restore registers */
+	movw	-8(%bp),%dx
+	movw	-6(%bp),%cx
+	movw	-4(%bp),%bx
+	movw	-2(%bp),%ax
+	movw	%bp,%sp		/* Restore the stack pointer and base pointer */
+	popw	%bp
+	ret
+read.fail:
+	movw	-12(%bp),%cx
+	incw	%cx
+	movw	%cx,-12(%bp)
+	cmpw	$NUM_RETRIES,%cx
+	ja	read.error		/* Exceed retries */
+	cmpb	$ERRCODE_TIMEOUT,%ah	/* Timeout? */
+	je	read.retry		/* Yes, then retry */
+read.error:				/* We do not restore the stack */
+	movb	%ah,%al			/* Save error */
+	movw	$hex_error,%di		/* Format it as hex */
+	xorw	%bx,%bx
+	movw	%bx,%es
+	call	hex8
+	movw	$msg_readerror,%si	/* Display the read error message */
+	jmp	readerror
+
+/* LBA: %ax into CHS %ch,%dh,%cl */
+lba2chs:
+	pushw	%bx		/* Save */
+	pushw	%dx
+/* Compute sector */
+	xorw	%dx,%dx
+	movw	$HEAD_SIZE,%bx
+	divw	%bx		/* %dx:%ax / %bx; %ax:quotient, %dx:remainder */
+	incb	%dl
+	movb	%dl,%cl		/* Sector */
+/* Compute head and track */
+	xorw	%dx,%dx
+	movw	$CYLINDER_SIZE,%bx
+	divw	%bx		/* %dx:%ax / %bx */
+	movw	%dx,%bx		/* Save the remainder to %bx */
+	popw	%dx		/* Restore %dx*/
+	movb	%bl,%dh		/* Head */
+	movb	%bl,%ch		/* Track */
+	popw	%bx		/* Restore %bx */
+	ret
+
+/* Display error message at %si and then halt. */
+readerror:
+	call	putstr			/* Display error message */
+	jmp	halt16
+
+/* Convert AL to hex char, saving the result to [EDI]. */
+hex8:
+	pushl	%eax
+/* Do upper 4 */
+	shrb	$0x4,%al
+	call	hex8.1
+	popl	%eax
+hex8.1:
+	andb	$0xf,%al	/* Get lower 4 */
+	cmpb	$0xa,%al	/* Convert  : CF=1 if %al < $0xa */
+	sbbb	$0x69,%al	/*  to hex  : %al<-%al - $0x69 - CF */
+	das			/*  digit   : BCD */
+	orb	$0x20,%al	/* To lower case */
+	stosb			/* Save char to %di and inc %di */
+	ret			/* (Recursive) */
+
 
 /*
  * Bottom-line message
@@ -509,6 +601,10 @@ gdtr:
 	.word	gdt.1-gdt-1		/* Limit */
 	.long	gdt			/* Address */
 
+/* Saved boot drive */
+drive:
+	.byte	0
+
 /* Messages */
 msg_bootopt:
 	.ascii	"Select one:\r\n\n"
@@ -524,3 +620,7 @@ msg_countdown:
 msg_count:
 	.asciz	"00 sec."
 
+msg_readerror:
+	.ascii  "\r\n\nRead Error: 0x"
+hex_error:
+	.asciz  "00\r\r"

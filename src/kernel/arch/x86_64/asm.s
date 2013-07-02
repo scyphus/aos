@@ -16,6 +16,7 @@
  * Kernel main function
  */
 _kmain:
+	sti
 	jmp	idle
 
 

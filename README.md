@@ -12,6 +12,9 @@ Hirochika Asai
 
 ## ToDo
 - Design and implement glue between the boot monitor and the kernel.
+- Implement a simple disk driver in the boot monitor to load the kernel (to
+  higher address space).  Note that it's now implemented with BIOS function
+  in boot/arch/x86_64/bootmon.s.
 
 ## Checkpoints
 - boot_cp0.1: Simple boot example (just printing a welcome message and stop CPU)
