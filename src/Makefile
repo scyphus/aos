@@ -11,7 +11,8 @@ ARCH=x86_64
 diskboot: ASFLAGS=-nostdlib -I./boot/arch/$(ARCH)/
 bootmon: ASFLAGS=-nostdlib -I./boot/arch/$(ARCH)/
 kpack: ASFLAGS=-nostdlib
-kpack: CFLAGS=-Wall -mno-sse2 -mno-sse3 -fleading-underscore -nostdlib -m64
+kpack: CFLAGS=-I./include \
+	-Wall -mno-sse2 -mno-sse3 -fleading-underscore -nostdlib -m64
 
 ## MBR
 diskboot: boot/arch/$(ARCH)/diskboot.o

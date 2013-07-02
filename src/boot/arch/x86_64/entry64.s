@@ -50,14 +50,3 @@ halt64:
 	hlt
 	jmp	halt64
 
-
-
-/* Data section */
-	.align	16
-	.data
-cursor:
-	.word	0x0
-/* Messages */
-msg_welcome:
-	.asciz	"Welcome to 64bit long mode\r\n\n"
-
