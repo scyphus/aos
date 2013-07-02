@@ -445,21 +445,8 @@ read.retry:
 	movb	$1,%al
 	movb	$0x02,%ah       /* BIOS: Read sectors from drive */
 	movw	-10(%bp),%cx	/* Get the saved %cx from the stack */
-///
-	pushl	%eax
-	xorl	%eax,%eax
-	movw	%dx,%ax
-	movl	%eax,%dr0
-	popl	%eax
-///
 	int	$0x13		/* CHS=%ch,%dh,%cl, drive=%dl, count=%al */
 				/*  to %es:[%bx] (results in %ax,%cf)  */
-///
-	pushl	%eax
-	movl	$0x1234,%eax
-	movl	%eax,%dr0
-	popl	%eax
-///
 	jc	read.fail	/* Fail (%cf=1) */
 
 /* Restore registers */
