@@ -6,7 +6,7 @@
  */
 
 	.set	KERNEL_LBA,0x9		/* Kernel is located at LBA 9 */
-	.set	KERNEL_SIZE,0x80	/* 128 sectors (64KiB) */
+	.set	KERNEL_SIZE,0x40	/* 64 sectors (32KiB) */
 	/* Disk information */
 	.set	HEAD_SIZE,18            /* 18 sectors per head/track */
 	.set	CYLINDER_SIZE,2         /* 2 heads per cylinder */
@@ -80,12 +80,11 @@ bootmon:
 /* Initialize PIT */
 	call	init_pit
 
-/* Enable interrupt */
-	sti
-
 /* Wait for interaction */
 wait:
+	sti
 	hlt
+	cli
 	movw	counter,%ax
 	cmpw	$0,%ax
 	jz	boot		/* Timeout then boot */
@@ -98,10 +97,11 @@ wait:
 
 /* Boot */
 boot:
-	cli
 	/* Check the CPU specification */
 	movl	$1,%eax
 	cpuid
+	btl	$5,%edx		/* MSR support */
+	jnc	cpuerror
 	btl	$6,%edx		/* PAE */
 	jnc	cpuerror
 	btl	$9,%edx		/* Onboard APIC */
@@ -192,11 +192,15 @@ setup_inthandler:
  */
 intr_int32:
 	pushw	%ax
+	pushw	%dx
 	pushw	%ds
 	pushw	%si
 
 	movw	counter,%ax
+	testw	%ax,%ax
+	jz	1f
 	decw	%ax
+1:
 	movw	%ax,counter
 	movb	$100,%dl
 	divb	%dl		/* Q=%al, R=%ah */
@@ -218,25 +222,7 @@ intr_int32:
 
 	popw	%si
 	popw	%ds
-	popw	%ax
-	iret
-
-	pushw	%ax
-	/* Output '1' */
-	movw	counter,%ax
-	incw	%ax
-	movw	%ax,counter
-	movb	$10,%dl
-	divb	%dl		/* Q=%al, R=%ah */
-	movb	%ah,%al
-	addb	$'0',%al
-	call	putc
-	movb	$0x08,%al
-	call	putc
-
-	/* EOI for PIC1 */
-	movb	$0x20,%al
-	outb	%al,$0x20
+	popw	%dx
 	popw	%ax
 	iret
 
@@ -449,7 +435,7 @@ read.retry:
 	movb	$0x02,%ah       /* BIOS: Read sectors from drive */
 	movw	-10(%bp),%cx	/* Get the saved %cx from the stack */
 	int	$0x13		/* CHS=%ch,%dh,%cl, drive=%dl, count=%al */
-				/*  to %es:[%bx] (results in %ax,%cf)  */
+				/*  to %es:[%bx] (results in %ax,%cf) */
 	jc	read.fail	/* Fail (%cf=1) */
 
 /* Restore registers */
@@ -597,9 +583,9 @@ drive:
 
 /* Messages */
 msg_bootopt:
-	.ascii	"Select one:\r\n\n"
-	.ascii	"\t1: Boot (64 bit mode)\r\n"
-	.ascii	"\t2: Power off\r\n"
+	.ascii	"Select one:\r\n"
+	.ascii	"    1: Boot (64 bit mode)\r\n"
+	.ascii	"    2: Power off\r\n"
 	.asciz	"Press key:[ ]\x08\x08"
 
 msg_cpuerror:
