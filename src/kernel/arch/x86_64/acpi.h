@@ -12,6 +12,8 @@
 
 #include <aos/const.h>
 
+#define ACPI_TMR_HZ 3579545
+
 struct acpi_rsdp {
     char signature[8];
     u8 checksum;

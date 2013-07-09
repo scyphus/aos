@@ -31,7 +31,20 @@ struct idtr {
 void idt_setup_intr_gate(int, void *);
 void idt_init(void);
 
+
+void intr_gpf(void);
 u64 rdtsc(void);
+u64 rdmsr(u64);
+void pause(void);
+int is_invariant_tsc(void);
+int get_cpu_family(void);
+int get_cpu_model(void);
+
+int acpi_load_rsdp(void);
+
+
+extern u64 ioapic_base;
+extern u64 pm_tmr_port;
 
 #endif /* _KERNEL_H */
 
