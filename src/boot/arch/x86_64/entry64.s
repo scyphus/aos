@@ -18,6 +18,7 @@
 	.code64
 
 entry64:
+	cli
 	xorl	%eax,%eax
 	movl	%eax,%ds
 	movl	%eax,%es

@@ -18,6 +18,14 @@
 	.code32
 /* Entry point for 32bit protected mode */
 entry32:
+	cli
+
+	/* Mask all interrupts (i8259) */
+	movb	$0xff,%al
+	outb	%al,$0x21
+	movb	$0xff,%al
+	outb	%al,$0xa1
+
 	/* %cs is automatically set after the long jump operation */
 	/* Setup stack */
 	movl	$GDT_DATA_SEL,%eax
