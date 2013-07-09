@@ -34,7 +34,8 @@ Hirochika Asai
     00008000 00008fff  boot information
     00009000 00009fff  boot monitor
     0000a000 0000ffff  free (reserved for boot monitor)
-    00010000 0001ffff  kernel
+    00010000 00017fff  kernel
+    00018000 0001ffff  free (reserved for kernel)
     00020000 00078fef  kernel stack
     00078ff0 00078fff  16 byte free range
     00079000 0007ffff  page table (at least 24KiB = 6 * 4KiB)
