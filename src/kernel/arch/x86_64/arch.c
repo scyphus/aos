@@ -35,12 +35,20 @@ struct sysaddrmap_entry {
 
 static int cursor;
 static unsigned char vga_text[VGA_TEXTMODE_XY];
-void apic_test(void);
 
+static u64 cpu_freq;
+static u64 fsb_freq;
+
+void apic_test(void);
 void search_clock_sources(void);
 
 
 #define BOOTINFO_BASE 0x8000
+#define TRAMPOLINE_ADDR         0x20000
+#define TRAMPOLINE_MAX_SIZE     4096
+
+void trampoline(void);
+void trampoline_end(void);
 
 void
 arch_init(void)
@@ -64,14 +72,76 @@ arch_init(void)
     //idt_setup_intr_gate(32, &intr_lapic_int32);
 
 
+    /* Stop i8254 timer */
     i8254_stop_timer();
 
+    /* Initialize VGA display */
     cursor = 0;
+
+    int i;
+
+    /* IPI: 4KiB boundry */
+    u64 tsz = trampoline_end - trampoline;
+    if ( tsz > TRAMPOLINE_MAX_SIZE ) {
+        /* Error */
+        // panic
+        return;
+    }
+    /* Copy trampoline */
+    for ( i = 0; i < tsz; i++ ) {
+        *(u8 *)((u64)TRAMPOLINE_ADDR + i) = *(u8 *)((u64)trampoline + i);
+    }
+    /* Get and clear P.2014 */
+    u32 icrl;
+    u32 icrh;
+    /* INIT */
+    __asm__ __volatile__ ("movq $0xfee00300,%%rdx; movl (%%rdx),%%eax; andl $~0xcdfff,%%eax" : "=a"(icrl) : );
+    __asm__ __volatile__ ("movq $0xfee00310,%%rdx; movl (%%rdx),%%eax; andl $0x00ffffff,%%eax" : "=a"(icrh) : );
+    icrl |= 0x0500; /* 101: INIT */
+    icrl |= 0x4000; /* level = assert */
+    /* triger = edge */
+    /* destination = physical */
+    /* destination shorthand = no shorthand */
+    icrl |= (TRAMPOLINE_ADDR >> 12) & 0xff; /* Vector: FIXME assertion */
+    icrh |= (1 << 24); /* Destination APIC ID */
+    __asm__ __volatile__ ("movq $0xfee00300,%%rdx; movl %%eax,(%%rdx)" : : "a"(icrl) );
+    __asm__ __volatile__ ("movq $0xfee00310,%%rdx; movl %%eax,(%%rdx)" : : "a"(icrh) );
+
+    kprintf("ICR %.8x %.8x\r\n", icrh, icrl);
+    arch_busy_usleep(1000000);
+
+    /* STARTUP */
+    __asm__ __volatile__ ("movq $0xfee00300,%%rdx; movl (%%rdx),%%eax; andl $~0xcdfff,%%eax" : "=a"(icrl) : );
+    __asm__ __volatile__ ("movq $0xfee00310,%%rdx; movl (%%rdx),%%eax; andl $0x00ffffff,%%eax" : "=a"(icrh) : );
+    icrl |= 0x0600; /* 110: Startup */
+    icrl |= 0x4000; /* level = assert */
+    /* triger = edge */
+    /* destination = physical */
+    /* destination shorthand = no shorthand */
+    icrl |= (TRAMPOLINE_ADDR >> 12) & 0xff; /* Vector: FIXME assertion */
+    icrh |= (1 << 24); /* Destination APIC ID */
+    __asm__ __volatile__ ("movq $0xfee00300,%%rdx; movl %%eax,(%%rdx)" : : "a"(icrl) );
+    __asm__ __volatile__ ("movq $0xfee00310,%%rdx; movl %%eax,(%%rdx)" : : "a"(icrh) );
+
+    kprintf("ICR %.8x %.8x\r\n", icrh, icrl);
+    arch_busy_usleep(1000);
+
+    /* Startup again */
+    __asm__ __volatile__ ("movq $0xfee00300,%%rdx; movl %%eax,(%%rdx)" : : "a"(icrl) );
+    __asm__ __volatile__ ("movq $0xfee00310,%%rdx; movl %%eax,(%%rdx)" : : "a"(icrh) );
+    arch_busy_usleep(1000);
+
+    // $0xfee00300 &=~0xcdfff
+    // $0xfee00310
+    //__asm__ __volatile__ ("movq %%rax,%%dr0" :: "a"(taddr) );
+
+    //kprintf("size %x\r\n", taddr);
+    //__asm__ __volatile__ ("movq %%rax,%%dr0" :: "a"(taddr) );
+
 
     struct bootinfo *bi;
     bi = (struct bootinfo *)BOOTINFO_BASE;
     kprintf("SYSTEM ADDRESS MAP\r\n");
-    int i;
     for ( i = 0; i < bi->sysaddrmap.n; i++ ) {
         kprintf("%.16x %.16x %d\r\n", bi->sysaddrmap.entries[i].base,
                 bi->sysaddrmap.entries[i].len, bi->sysaddrmap.entries[i].type);
@@ -112,6 +182,7 @@ arch_init(void)
     kprintf("%.16x\r\n", acpi_pm_tmr_port);
     kprintf("%.16x\r\n", acpi_ioapic_base);
 
+#if 0
     u64 tc0, tc1;
     u64 pc0, pc1;
     u32 t0, t1, t2;
@@ -152,7 +223,7 @@ arch_init(void)
 
     arch_busy_usleep(1000000);
     kprintf("Test\r\n");
-
+#endif
 
 #if 0
 

@@ -26,6 +26,7 @@ bootmon: boot/arch/$(ARCH)/bootmon.o \
 
 ## Kernel
 kpack: kernel/arch/$(ARCH)/asm.o kernel/kernel.o \
+	kernel/arch/$(ARCH)/trampoline.o \
 	kernel/arch/$(ARCH)/arch.o \
 	kernel/arch/$(ARCH)/desc.o \
 	kernel/arch/$(ARCH)/acpi.o \

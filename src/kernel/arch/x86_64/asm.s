@@ -275,7 +275,7 @@ _intr_gpf:
 	/* APIC_BASE */
 	andq	$0xfffffffffffff000,%rdx
 	movl	0x20(%rdx),%eax	/*APIC_ID*/
-	movq	%rax,%dr0
+	//movq	%rax,%dr0
 
 	movl	0xb0(%rdx),%eax
 	xorl	%eax,%eax
@@ -326,8 +326,8 @@ _apic_test:
 	movw	$0x1b,%rcx
 	rdmsr
 	
-	movq	%rax,%dr0
-	movq	%rdx,%dr1
+	//movq	%rax,%dr0
+	//movq	%rdx,%dr1
 	
 	shlq	$32,%rdx
 	addq	%rax,%rdx
@@ -429,7 +429,7 @@ _apic_test:
 	/* Multiply by 100 (100Hz) */
 	movl	$100,%ebx
 	mull	%ebx		/* %edx:%eax <- %eax * %ebx */
-	movq	%rax,%dr0
+	//movq	%rax,%dr0
 
 	movl	%eax,(apic_hz)
 
