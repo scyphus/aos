@@ -54,7 +54,7 @@ Hirochika Asai
 
 #### System address map entry
     struct sysaddrmap_entry {
-        u64 basee;
+        u64 base;
         u64 len;
         u32 type;
         u32 attr;

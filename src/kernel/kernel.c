@@ -10,157 +10,9 @@
 #include <aos/const.h>
 #include "kernel.h"
 
-#define VGA_VRAM_TEXTMODE       0x000b8000
-#define VGA_TEXTMODE_X          80
-#define VGA_TEXTMODE_Y          25
-#define VGA_TEXTMODE_XY         (VGA_TEXTMODE_X * VGA_TEXTMODE_Y)
+void arch_putc(int);
+void arch_init(void);
 
-static int cursor;
-static unsigned char vga_text[VGA_TEXTMODE_XY];
-void apic_test(void);
-
-/*
- * Update cursor
- */
-void
-vga_update_cursor(void)
-{
-    u16 val;
-    u16 addr = 0x3d4;
-
-    /* Low */
-    val = ((cursor & 0xff) << 8) | 0x0f;
-    __asm__ __volatile__ ( "outw %%ax,%%dx" : : "a"(val), "d"(addr) );
-    /* High */
-    val = (((cursor >> 8) & 0xff) << 8) | 0x0e;
-    __asm__ __volatile__ ( "outw %%ax,%%dx" : : "a"(val), "d"(addr) );
-}
-
-/*
- * Put a character to VGA display
- */
-void
-vga_putc(int c)
-{
-    int i;
-    u64 addr;
-    u16 *ptr;
-
-    addr = VGA_VRAM_TEXTMODE;
-
-    if ( '\r' == c ) {
-        /* Carriage return */
-        cursor = cursor / VGA_TEXTMODE_X * VGA_TEXTMODE_X;
-    } else if ( '\n' == c ) {
-        /* New line */
-        cursor = cursor + VGA_TEXTMODE_X;
-    } else {
-        /* Other characters */
-        ptr = (u16 *)(addr + (cursor) * 2);
-        *ptr = (0x07 << 8) | (u8)c;
-        vga_text[cursor] = c;
-        cursor++;
-    }
-
-    /* Draw it again */
-    if ( cursor >= VGA_TEXTMODE_XY ) {
-        for ( i = 0; i < VGA_TEXTMODE_XY - VGA_TEXTMODE_X; i++ ) {
-            ptr = (u16 *)(addr + i * 2);
-            vga_text[i] = vga_text[i + VGA_TEXTMODE_X];
-            *ptr = (0x07 << 8) | vga_text[i];
-        }
-        for ( ; i < VGA_TEXTMODE_XY; i++ ) {
-            ptr = (u16 *)(addr + i * 2);
-            vga_text[i] = ' ';
-            *ptr = (0x07 << 8) | vga_text[i];
-        }
-        cursor -= VGA_TEXTMODE_X;
-    }
-    vga_update_cursor();
-}
-
-void
-print_reg(u64 x)
-{
-    int i;
-    int c;
-    for ( i = 0; i < 16; i++ ) {
-        c = (x>>(64-i*4-4))&0xf;
-        if ( c < 10 ) {
-            vga_putc('0'+c);
-        } else {
-            vga_putc('a'+c-10);
-        }
-    }
-}
-
-/*
- * Compute TSC frequency
- */
-u64
-calib_tsc_freq(void)
-{
-    return 0;
-}
-
-u64
-get_invariant_tsc_frequency(void)
-{
-    u64 val;
-    int family;
-    int model;
-
-    /* Check invariant TSC support first */
-    if ( !is_invariant_tsc() ) {
-        /* Invariant TSC is not available */
-        return 0;
-    }
-
-    /* MSR_PLATFORM_INFO */
-    val = rdmsr(0xce);
-    /* Get maximum non-turbo ratio [15:8] */
-    val = (val >> 8) & 0xff;
-
-    family = get_cpu_family();
-    model = get_cpu_model();
-    if ( 0x06 == family && (0x2a == model || 0x2d == model || 0x3a == model) ) {
-        /* SandyBridge (06_2AH, 06_2DH) and IvyBridge (06_3AH) */
-        val *= 100000000; /* 100 MHz */
-    } else if ( 0x06 == family
-                && (0x1a == model || 0x1e == model || 0x1f == model
-                    || 0x25 == model || 0x2c == model || 0x2e == model
-                    || 0x2f == model) ) {
-        /* Nehalem (06_1AH, 06_1EH, 06_1FH, 06_2EH)
-           and Westmere (06_2FH, 06_2CH, 06_25H) */
-        val *= 133330000; /* 133.33 MHz */
-    } else {
-        /* Unknown model */
-        val = 0;
-    }
-
-    return val;
-}
-
-/*
- * Search clock sources
- */
-void
-search_clock_sources(void)
-{
-    u64 tscfreq;
-
-    /* Get invariant TSC frequency */
-    tscfreq = get_invariant_tsc_frequency();
-    if ( tscfreq ) {
-        vga_putc('F');
-        vga_putc('q');
-        vga_putc(':');
-        print_reg(tscfreq);
-        vga_putc('.');
-    }
-
-    /* Get ACPI */
-}
 
 typedef __builtin_va_list va_list;
 #define va_start(ap, last)      __builtin_va_start((ap), (last))
@@ -176,9 +28,9 @@ typedef __builtin_va_list va_list;
 
 
 int
-kprintf_putc(int c)
+kputc(int c)
 {
-    vga_putc(c);
+    arch_putc(c);
     return 0;
 }
 
@@ -188,9 +40,9 @@ kprintf_percent(int pad)
     int i;
 
     for ( i = 0; i < pad; i++ ) {
-        kprintf_putc(' ');
+        kputc(' ');
     }
-    kprintf_putc('%');
+    kputc('%');
 
     return 0;
 }
@@ -217,14 +69,18 @@ kprintf_decimal(long long int val, int zero, int pad, int prec)
         buf[ptr] = r + '0';
         ptr++;
     }
+    if ( !ptr ) {
+        buf[ptr] = '0';
+        ptr++;
+    }
 
     /* Padding */
     if ( pad > prec && pad > ptr ) {
         for ( i = 0; i < pad - prec; i++ ) {
             if ( zero ) {
-                kprintf_putc('0');
+                kputc('0');
             } else {
-                kprintf_putc(' ');
+                kputc(' ');
             }
         }
     }
@@ -232,13 +88,13 @@ kprintf_decimal(long long int val, int zero, int pad, int prec)
     /* Precision */
     if ( prec > ptr ) {
         for ( i = 0; i < prec - ptr; i++ ) {
-            kprintf_putc('0');
+            kputc('0');
         }
     }
 
     /* Value */
     for ( i = 0; i < ptr; i++ ) {
-        kprintf_putc(buf[ptr - i - 1]);
+        kputc(buf[ptr - i - 1]);
     }
 
 
@@ -274,14 +130,18 @@ kprintf_hexdecimal(unsigned long long int val, int zero, int pad, int prec,
         }
         ptr++;
     }
+    if ( !ptr ) {
+        buf[ptr] = '0';
+        ptr++;
+    }
 
     /* Padding */
     if ( pad > prec && pad > ptr ) {
         for ( i = 0; i < pad - prec && i < pad - ptr ; i++ ) {
             if ( zero ) {
-                kprintf_putc('0');
+                kputc('0');
             } else {
-                kprintf_putc(' ');
+                kputc(' ');
             }
         }
     }
@@ -289,13 +149,13 @@ kprintf_hexdecimal(unsigned long long int val, int zero, int pad, int prec,
     /* Precision */
     if ( prec > ptr ) {
         for ( i = 0; i < prec - ptr; i++ ) {
-            kprintf_putc('0');
+            kputc('0');
         }
     }
 
     /* Value */
     for ( i = 0; i < ptr; i++ ) {
-        kprintf_putc(buf[ptr - i - 1]);
+        kputc(buf[ptr - i - 1]);
     }
 
 
@@ -306,7 +166,7 @@ int
 kprintf_string(const char *s)
 {
     while ( *s ) {
-        kprintf_putc(*s);
+        kputc(*s);
         s++;
     }
     return 0;
@@ -438,11 +298,11 @@ kprintf(const char *fmt, ...)
                 kprintf_string(s);
                 fmt++;
             } else {
-                vga_putc('%');
+                kputc('%');
                 fmt = fmt_tmp;
             }
         } else {
-            kprintf_putc(*fmt);
+            kputc(*fmt);
             fmt++;
         }
     }
@@ -457,74 +317,10 @@ kprintf(const char *fmt, ...)
  * Entry point to C function from asm.s
  */
 void
-cstart(void)
+kmain(void)
 {
-    idt_init();
-    apic_test();
-
-    cursor = 0;
-    char *str = "Welcome to AOS!  Now this message is printed by C function.";
-
-    kprintf("%s\r\n", str);
-
-    idt_setup_intr_gate(13, &intr_gpf);
-
-    u64 x;
-    /* MSR_PERF_STAT */
-    x = rdmsr(0x198);
-    kprintf("%.16x\r\n", x);
-    /* MSR_PLATFORM_ID */
-    x = rdmsr(0x17);
-    kprintf("%.16x\r\n", x);
-    /* MSR_PLATFORM_INFO */
-    x = rdmsr(0xce);
-    kprintf("%.16x\r\n", x);
-
-    __asm__ __volatile__ ("movl $0x80000007,%%eax;cpuid;movq %%rdx,%%rax" : "=a"(x) : );
-    kprintf("%.16x\r\n", x);
-
-    __asm__ __volatile__ ("movl $0x1,%%eax;cpuid" : "=a"(x) : );
-    kprintf("%.16x\r\n", x);
-
-    /* MSR_FSB_FREQ */
-    x = rdmsr(0xcd);
-    kprintf("%.16x\r\n", x);
-
-    search_clock_sources();
-
-    acpi_load_rsdp();
-
-    kprintf("\r\n");
-    print_reg(pm_tmr_port);
-    kprintf("\r\n");
-    print_reg(ioapic_base);
-    kprintf("\r\n");
-
-
-    __asm__ __volatile__ ("inl %%dx,%%eax" : "=a"(x) : "d"(pm_tmr_port) );
-    print_reg(x);
-
-    kprintf("\r\n");
-    __asm__ __volatile__ ("inl %%dx,%%eax" : "=a"(x) : "d"(pm_tmr_port) );
-    print_reg(x);
-
-
-#if 0
-
-    u64 tsc1;
-    u64 tsc2;
-    vga_putc('x');
-    vga_putc('/');
-    tsc1 = rdtsc();
-    for ( ;; ) {
-        tsc2 = rdtsc();
-        if ( tsc2 - tsc1 > 266660000000 ) {
-            break;
-        }
-        pause();
-    }
-    vga_putc('y');
-#endif
+    /* Initialize architecture-related devices */
+    arch_init();
 
 }
 

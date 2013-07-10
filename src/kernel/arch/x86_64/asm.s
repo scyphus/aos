@@ -19,9 +19,18 @@
 	.file	"asm.s"
 
 	.text
-	.globl	_kmain		/* Entry point */
+	.globl	_kstart		/* Entry point */
 	.globl	_pause
 	.globl	_rdtsc
+	.globl	_inb
+	.globl	_inw
+	.globl	_inl
+	.globl	_outb
+	.globl	_outw
+	.globl	_outl
+	.globl	_sfence
+	.globl	_lfence
+	.globl	_mfence
 	.globl	_rdmsr
 	.globl	_is_invariant_tsc
 	.globl	_get_cpu_family
@@ -29,14 +38,15 @@
 	.globl	_intr_null
 	.globl	_intr_gpf
 	.globl	_apic_test
+	.globl	_asm_ioapic_map_intr
 
 	.code64
 
 /*
  * Kernel main function
  */
-_kmain:
-	call	_cstart
+_kstart:
+	call	_kmain
 	jmp	idle
 
 halt:
@@ -54,6 +64,85 @@ idle:
 _pause:
 	pause
 	ret
+
+/* int inb(int port); */
+_inb:
+	movw	%di,%dx
+	xorq	%rax,%rax
+	inb	%dx,%al
+	ret
+
+/* int inw(int port); */
+_inw:
+	movw	%di,%dx
+	xorq	%rax,%rax
+	inw	%dx,%ax
+	ret
+
+/* int inl(int port); */
+_inl:
+	movw	%di,%dx
+	xorq	%rax,%rax
+	inl	%dx,%eax
+	ret
+
+/* void outb(int port, int value); */
+_outb:
+	movw	%di,%dx
+	movw	%si,%ax
+	outb	%al,%dx
+	ret
+
+/* void outw(int port, int value); */
+_outw:
+	movw	%di,%dx
+	movw	%si,%ax
+	outw	%ax,%dx
+	ret
+
+/* void outl(int port, int value); */
+_outl:
+	movw	%di,%dx
+	movl	%esi,%eax
+	outl	%eax,%dx
+	ret
+
+_sfence:
+	sfence
+	ret
+_lfence:
+	lfence
+	ret
+_mfence:
+	mfence
+	ret
+
+/* void asm_ioapic_map_intr(u64 src, u64 dst, u64 ioapic_base); */
+_asm_ioapic_map_intr:
+	/* Copy arguments */
+	movq	%rdi,%rax	/* src */
+	movq	%rsi,%rcx	/* dst */
+	/* rdx = ioapic_base*/
+
+	/* *(u32 *)(ioapic_base + 0x00) = dst * 2 + 0x10 */
+	shlq	$2,%rcx		/* dst * 2 */
+	addq	$0x10,%rcx	/* dst * 2 + 0x10 */
+	sfence
+	movl	%ecx,0x00(%rdx)
+	/* *(u32 *)(ioapic_base + 0x10) = (u32)src */
+	sfence
+	movl	%eax,0x10(%rdx)
+	shrq	$32,%rax
+	/* *(u32 *)(ioapic_base + 0x00) = dst * 2 + 0x10 + 1 */
+	addq	$1,%rcx		/* dst * 2 + 0x10 + 1 */
+	sfence
+	movl	%ecx,0x00(%rdx)
+	/* *(u32 *)(ioapic_base + 0x10) = (u32)(src >> 32) */
+	sfence
+	movl	%eax,0x10(%rdx)
+
+	ret
+
 
 /* u64 rdtsc(void); */
 _rdtsc:
@@ -139,8 +228,8 @@ _intr_null:
 	pushq	%rdx
 	/* APIC EOI */
 	movq	(apic_base),%rdx
-	addq	$APIC_EOI,%rdx
-	movq	$0,(%rdx)
+	//addq	$APIC_EOI,%rdx
+	movq	$0,APIC_EOI(%rdx)
 	popq	%rdx
 	iretq
 
@@ -157,6 +246,71 @@ _intr_gpf:
 	popq	%rbp
 	addq	$0x8,%rsp
 	iretq
+
+/* Beggining of interrupt handler */
+	.macro	intr_lapic_irq irq
+	pushq	%rax
+	pushq	%rbx
+	pushq	%rcx
+	pushq	%rdx
+	pushq	%r8
+	pushq	%r9
+	pushq	%r10
+	pushq	%r11
+	pushq	%r12
+	pushq	%r13
+	pushq	%r14
+	pushq	%r15
+	pushq	%rsi
+	pushq	%rdi
+	pushq	%rbp
+	pushw	%fs
+	pushw	%gs
+
+	/* EOI for APIC */
+	movw	$0x1b,%rcx
+	rdmsr
+	shlq	$32,%rdx
+	addq	%rax,%rdx
+	/* APIC_BASE */
+	andq	$0xfffffffffffff000,%rdx
+	movl	0x20(%rdx),%eax	/*APIC_ID*/
+	movq	%rax,%dr0
+
+	movl	0xb0(%rdx),%eax
+	xorl	%eax,%eax
+	movl	%eax,(%rdx)
+	.endm
+
+	.macro	intr_lapic_irq_done
+	popw	%gs
+	popw	%fs
+	popq	%rbp
+	popq	%rdi
+	popq	%rsi
+	popq	%r15
+	popq	%r14
+	popq	%r13
+	popq	%r12
+	popq	%r11
+	popq	%r10
+	popq	%r9
+	popq	%r8
+	popq	%rdx
+	popq	%rcx
+	popq	%rbx
+	popq	%rax
+	.endm
+
+_intr_lapic_int32:
+	intr_lapic_irq 0
+	intr_lapic_irq_done
+	iretq
+
+_intr_lapic_int33:
+	ret
+
+
 
 
 _apic_test:
@@ -196,33 +350,33 @@ _apic_test:
 
 
 	movl	apic_base,%edx
-	addl	$APIC_LVT_TMR,%edx
-	movl	$0x10,(%edx)		/* Disable */
+	//addl	$APIC_LVT_TMR,%edx
+	movl	$0x10,APIC_LVT_TMR(%edx)	/* Disable */
 
 	movl	apic_base,%edx
-	addl	$APIC_LVT_PERF,%edx
-	movl	$0x100,(%edx)		/* NMI */
+	//addl	$APIC_LVT_PERF,%edx
+	movl	$0x100,APIC_LVT_PERF(%edx)	/* NMI */
 
 	/* GLOBAL APIC ENABLE FLAG MUST BE 1 */
 
 	/* Spurious interrupt vector register: default vector 0xff */
 	movl	apic_base,%edx
-	addl	$APIC_SIVR,%edx
-	movl	(%edx),%eax
+	//addl	$APIC_SIVR,%edx
+	movl	APIC_SIVR(%edx),%eax
 	orl	$0x100,%eax	/* Enable */
-	movl	%eax,(%edx)
+	movl	%eax,APIC_SIVR(%edx)
 
 	/* APIC Timer */
 	movl	apic_base,%edx
-	addl	$APIC_LVT_TMR,%edx
+	//addl	$APIC_LVT_TMR,%edx
 	movl	$0,%eax
-	movl	%eax,(%edx)
+	movl	%eax,APIC_LVT_TMR(%edx)
 
 	/* Divide configuration register */
 	movl	apic_base,%edx
-	addl	$APIC_TMRDIV,%edx
+	//addl	$APIC_TMRDIV,%edx
 	movl	$0x03,%eax
-	movl	%eax,(%edx)
+	movl	%eax,APIC_TMRDIV(%edx)
 
 	xorl	%ebx,%ebx
 	decl	%ebx
@@ -248,8 +402,8 @@ _apic_test:
 	outb	%al,%dx
 	/* Reset APIC timer*/
 	movq	apic_base,%rdx
-	addq	$APIC_INITTMR,%rdx
-	movl	%ebx,(%rdx)
+	//addq	$APIC_INITTMR,%rdx
+	movl	%ebx,APIC_INITTMR(%rdx)
 	/* Wait until PIT counter reaches zero */
 	movw	$0x61,%dx
 1:
@@ -259,12 +413,12 @@ _apic_test:
 	jz	1b
 	/* Stop APIC Timer */
 	movq	apic_base,%rdx
-	addq	$APIC_LVT_TMR,%rdx
-	movw	$0x10,(%rdx)		/* APIC disable */
+	//addq	$APIC_LVT_TMR,%rdx
+	movw	$0x10,APIC_LVT_TMR(%rdx)		/* APIC disable */
 	/* Get current counter value (from 0xffffffff) */
 	movq	apic_base,%rdx
-	addq	$APIC_CURTMR,%rdx
-	movl	(%rdx),%ebx
+	//addq	$APIC_CURTMR,%rdx
+	movl	APIC_CURTMR(%rdx),%ebx
 
 	/* To positive value */
 	xorl	%eax,%eax
@@ -313,7 +467,7 @@ lapic_read:
 	popq	%rdx
 	ret
 
-lapic_uspin:
+lapic_uwait:
 	pushq	%rbp
 	movq	%rsp,%rbp
 

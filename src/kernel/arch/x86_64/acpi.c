@@ -9,9 +9,10 @@
 
 #include <aos/const.h>
 #include "acpi.h"
+#include "arch.h"
 
-u64 ioapic_base;
-u64 pm_tmr_port;
+u64 acpi_ioapic_base;
+u64 acpi_pm_tmr_port;
 
 /*
  * Compute checksum
@@ -85,9 +86,7 @@ acpi_parse_apic(struct acpi_sdt_hdr *sdt)
         case 1:
             /* I/O APIC */
             ioapic = (struct acpi_sdt_apic_ioapic *)hdr;
-            ioapic_base = ioapic->addr;
-            //__asm__ __volatile__ ("movq %0,%%rax; movq %%rax,%%dr2" :: "r"((u64)ioapic->addr) );
-            //__asm__ __volatile__ ("movq %0,%%rax; movq %%rax,%%dr0" :: "r"((u64)apic->local_controller_addr) );
+            acpi_ioapic_base = ioapic->addr;
             break;
         case 2:
             /* Interrupt Source Override */
@@ -120,13 +119,13 @@ acpi_parse_fadt(struct acpi_sdt_hdr *sdt)
             /* Must be 1 (System I/O) */
             return -1;
         }
-        pm_tmr_port = fadt->x_pm_timer_block.addr;
-        if ( !pm_tmr_port ) {
-            pm_tmr_port = fadt->pm_timer_block;
+        acpi_pm_tmr_port = fadt->x_pm_timer_block.addr;
+        if ( !acpi_pm_tmr_port ) {
+            acpi_pm_tmr_port = fadt->pm_timer_block;
         }
     } else {
         /* Revision  */
-        pm_tmr_port = fadt->pm_timer_block;
+        acpi_pm_tmr_port = fadt->pm_timer_block;
     }
 
     return 0;
@@ -200,13 +199,13 @@ acpi_rsdp_search_range(u64 start, u64 end)
 
 /* Load Root System Description Pointer in ACPI */
 int
-acpi_load_rsdp(void)
+acpi_load(void)
 {
     u16 ebda;
     u64 ebda_addr;
 
-    pm_tmr_port = 0;
-    ioapic_base = 0;
+    acpi_pm_tmr_port = 0;
+    acpi_ioapic_base = 0;
 
     /* Check 1KB of EBDA, first */
     ebda = *(u16 *)0x040e;
@@ -220,6 +219,42 @@ acpi_load_rsdp(void)
     /* Check main BIOS area */
     return acpi_rsdp_search_range(0xe0000, 0x100000);
 }
+
+u32
+acpi_get_timer(void)
+{
+    return inl(acpi_pm_tmr_port) & 0xffffff;
+}
+
+/*
+ * Wait
+ */
+void
+acpi_busy_usleep(u64 usec)
+{
+    u64 clk;
+    u64 acc;
+    u64 cur;
+    u64 prev;
+
+    /* usec to count */
+    clk = (ACPI_TMR_HZ * usec) / 1000000;
+
+    prev = acpi_get_timer();
+    acc = 0;
+    while ( acc < clk ) {
+        cur = acpi_get_timer();
+        if ( cur < prev ) {
+            /* Overflow */
+            acc += 0x1000000 + cur - prev;
+        } else {
+            acc += cur - prev;
+        }
+        prev = cur;
+        pause();
+    }
+}
+
 
 /*
  * Local variables:

@@ -8,7 +8,7 @@
 /* $Id$ */
 
 #include <aos/const.h>
-#include "../../kernel.h"
+#include "desc.h"
 
 #define CODE_SEL_RING0  0x8
 #define IDT_PRESENT     0x80
@@ -55,7 +55,9 @@ idt_init(void)
         idt_setup_intr_gate(i, &intr_null);
     }
 
-    __asm__ __volatile__ ( "lidt _idtr" );
+    void *x = &idtr;
+    //__asm__ __volatile__ ( "lidt _idtr" );
+    __asm__ __volatile__ ( "lidt (%0)" : : "p"(x) );
 }
 
 /*

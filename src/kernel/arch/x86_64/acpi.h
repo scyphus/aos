@@ -143,6 +143,9 @@ struct acpi_sdt_fadt {
 
 } __attribute__ ((packed));
 
+int acpi_load(void);
+void acpi_busy_usleep(u64);
+
 #endif /* _KERNEL_ACPI_H */
 
 /*

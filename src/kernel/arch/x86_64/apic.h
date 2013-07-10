@@ -7,12 +7,12 @@
 
 /* $Id$ */
 
-#ifndef _KERNEL_H
-#define _KERNEL_H
+#ifndef _KERNEL_APIC_H
+#define _KERNEL_APIC_H
 
-int kprintf(const char *fmt, ...);
 
-#endif /* _KERNEL_H */
+
+#endif /* _KERNEL_APIC_H */
 
 /*
  * Local variables:

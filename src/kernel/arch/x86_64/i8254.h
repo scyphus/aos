@@ -7,12 +7,13 @@
 
 /* $Id$ */
 
-#ifndef _KERNEL_H
-#define _KERNEL_H
+#ifndef _KERNEL_I8254_H
+#define _KERNEL_I8254_H
 
-int kprintf(const char *fmt, ...);
+void i8254_start_timer(int);
+void i8254_stop_timer(void);
 
-#endif /* _KERNEL_H */
+#endif /* _KERNEL_I8254_H */
 
 /*
  * Local variables:

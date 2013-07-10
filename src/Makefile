@@ -26,9 +26,12 @@ bootmon: boot/arch/$(ARCH)/bootmon.o \
 
 ## Kernel
 kpack: kernel/arch/$(ARCH)/asm.o kernel/kernel.o \
+	kernel/arch/$(ARCH)/arch.o \
 	kernel/arch/$(ARCH)/desc.o \
-	kernel/arch/$(ARCH)/acpi.o
-	$(LD) -N -e _kmain -Ttext=0x10000 --oformat binary -o $@ $^
+	kernel/arch/$(ARCH)/acpi.o \
+	kernel/arch/$(ARCH)/apic.o \
+	kernel/arch/$(ARCH)/i8254.o
+	$(LD) -N -e _kstart -Ttext=0x10000 --oformat binary -o $@ $^
 
 .s.o:
 	$(AS) $(ASFLAGS) -c -o $@ $<
