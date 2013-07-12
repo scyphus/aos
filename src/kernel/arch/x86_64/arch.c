@@ -14,24 +14,13 @@
 #include "acpi.h"
 #include "apic.h"
 #include "i8254.h"
+#include "bootinfo.h"
 
 #define VGA_VRAM_TEXTMODE       0x000b8000
 #define VGA_TEXTMODE_X          80
 #define VGA_TEXTMODE_Y          25
 #define VGA_TEXTMODE_XY         (VGA_TEXTMODE_X * VGA_TEXTMODE_Y)
 
-struct bootinfo {
-    struct sysaddrmap {
-        u64 n;
-        struct sysaddrmap_entry *entries;
-    } sysaddrmap;
-};
-struct sysaddrmap_entry {
-    u64 base;
-    u64 len;
-    u32 type;
-    u32 attr;
-};
 
 static int cursor;
 static unsigned char vga_text[VGA_TEXTMODE_XY];
@@ -43,7 +32,7 @@ void apic_test(void);
 void search_clock_sources(void);
 
 
-#define BOOTINFO_BASE 0x8000
+#define BOOTINFO_BASE           0x8000
 #define TRAMPOLINE_ADDR         0x70000
 #define TRAMPOLINE_MAX_SIZE     0x2000
 
@@ -53,6 +42,9 @@ void trampoline_end(void);
 void
 arch_bsp_init(void)
 {
+    /* Initialize VGA display */
+    cursor = 0;
+
     /* Find configuration using ACPI */
     acpi_load();
 
@@ -75,8 +67,6 @@ arch_bsp_init(void)
     /* Stop i8254 timer */
     i8254_stop_timer();
 
-    /* Initialize VGA display */
-    cursor = 0;
 
     int i;
     kprintf("Booting CPU #%d\r\n", 1);

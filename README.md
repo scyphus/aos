@@ -38,17 +38,17 @@ Hirochika Asai
     00010000 00017fff  kernel
     00018000 0001ffff  free (reserved for kernel)
     00020000 00078fff  free
-    00070000 00078fff  trampoline
-    00079000 0007ffff  page table (at least 24KiB = 6 * 4KiB)
+    00070000 00077fff  trampoline (32KiB)
+    00078000 0007ffff  page table (at least 24KiB = 6 * 4KiB)
     00080000 000fffff  free or reserved (We don't use here)
     ----------------------------------------------------------
-    00100000 0010ffff  BSP (tss, stack)
-    00110000 0011ffff  AP #1
-    00120000 0012ffff  AP #2
-    00130000 0013ffff  AP #3
-    ....     00ffffff  for processors
+    00100000 00ffffff  free
     ----------------------------------------------------------
-    01000000 --------  memory
+    01000000 0100ffff  BSP (tss, stack)
+    01010000 0101ffff  AP #1
+    ....     01ffffff  for processors
+    ----------------------------------------------------------
+    02000000 --------  memory
 
 ### Boot information structure
     /* The size of boot information must be aligned on 4 byte boundaries */
@@ -81,11 +81,11 @@ Hirochika Asai
 ##### Per-processor (core)
 - Registers
 - Local APIC
-- GDT
-- IDT
+- GDT (?)
+- IDT (?)
 - TSS
 - Stack
-- Page table
+- Page table (?)
 
 ##### Per-host
 - Memory

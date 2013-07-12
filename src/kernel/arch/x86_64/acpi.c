@@ -81,7 +81,8 @@ acpi_parse_apic(struct acpi_sdt_hdr *sdt)
         case 0:
             /* Local APIC */
             lapic = (struct acpi_sdt_apic_lapic *)hdr;
-            (void)lapic;
+            kprintf("CPU #%d, Local APIC = %d (%x)\r\n", lapic->cpu_id,
+                    lapic->apic_id, lapic->flags);
             break;
         case 1:
             /* I/O APIC */

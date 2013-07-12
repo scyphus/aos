@@ -5,9 +5,8 @@
  *      Hirochika Asai  <asai@scyphus.co.jp>
  */
 
-	.set	AP_GDT_CODE64_SEL,0x08
-	.set	AP_GDT_CODE32_SEL,0x10
-	.file	"tranmpoline.s"
+	.include	"asmconst.h"
+	.file		"tranmpoline.s"
 
 /* Text section */
 	.text
@@ -24,13 +23,13 @@ _trampoline:
 	movw	%ax,%ds
 
 	/* Setup GDT and IDT */
-	lidt	(idtr - _trampoline)
-	lgdt	(gdtr - _trampoline)
+	lidt	(idtr-_trampoline)
+	lgdt	(gdtr-_trampoline)
 	/* Turn on protected mode */
 	movl	%cr0,%eax
 	orb	$0x1,%al	/* Enable protected mode */
 	movl	%eax,%cr0
-	ljmp	$AP_GDT_CODE32_SEL,$(ap_entry32-0x10000)	/* Go into protected mode */
+	ljmpl	$AP_GDT_CODE32_SEL,$ap_entry32	/* Go into protected mode */
 
 /* Data section */
 	.align	16
@@ -44,7 +43,7 @@ idtr:
 gdt:
 	.word	0x0,0x0,0x0,0x0		/* Null entry */
 	.word	0xffff,0x0,0x9a00,0xaf	/* Code64 */
-	.word	0xffff,0x0,0x9a01,0xcf	/* Code32 */
+	.word	0xffff,0x0,0x9a00,0xcf	/* Code32 */
 	.word	0xffff,0x0,0x9a00,0x8f	/* Code16 */
 	.word	0xffff,0x0,0x9200,0xcf	/* Data */
 gdt.1:

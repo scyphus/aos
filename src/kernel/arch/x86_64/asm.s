@@ -20,6 +20,7 @@
 
 	.text
 	.globl	kstart64		/* Entry point */
+	.globl	apstart64		/* Application processor */
 	.globl	_pause
 	.globl	_rdtsc
 	.globl	_inb
@@ -47,6 +48,10 @@
  */
 kstart64:
 	call	_kmain
+	jmp	idle
+
+apstart64:
+	call	_apmain
 	jmp	idle
 
 halt:
@@ -142,6 +147,7 @@ _asm_ioapic_map_intr:
 	movl	%eax,0x10(%rdx)
 
 	ret
+
 
 
 /* u64 rdtsc(void); */

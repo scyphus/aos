@@ -12,6 +12,8 @@
 
 int kprintf(const char *fmt, ...);
 
+void arch_bsp_init(void);
+
 #endif /* _KERNEL_H */
 
 /*

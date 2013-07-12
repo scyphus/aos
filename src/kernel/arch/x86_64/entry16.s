@@ -25,15 +25,6 @@ kstart:
 	cmpl	$kstart,%eax
 	jne	error
 
-	/* Setup GDT */
-	//movl	$kstart,%ebx
-	//movl	$(gdt-kstart),%edx
-	//movw	%bx,(GDT_CODE32_SEL+2)(%edx)
-	//movw	(GDT_CODE32_SEL+4)(%edx),%ax
-	//shrl	$16,%ebx
-	//orb	%bl,%al
-	//movw	%ax,(GDT_CODE32_SEL+4)(%edx)
-
 	/* Setup temporary IDT and GDT */
 	lidt	idtr-kstart
 	lgdt	gdtr-kstart

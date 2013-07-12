@@ -51,7 +51,7 @@ int
 kprintf_decimal(long long int val, int zero, int pad, int prec)
 {
     long long int q;
-    int r;
+    long long int r;
     int ptr;
     int sz;
     int i;
@@ -106,14 +106,14 @@ kprintf_hexdecimal(unsigned long long int val, int zero, int pad, int prec,
                    int cap)
 {
     unsigned long long int q;
-    int r;
+    unsigned long long int r;
     int ptr;
     int sz;
     int i;
     char *buf;
 
     /* Calculate the maximum buffer size */
-    sz = 2 * sizeof(long long int);
+    sz = 2 * sizeof(unsigned long long int);
     buf = alloca(sz);
 
     ptr = 0;
@@ -192,6 +192,9 @@ kprintf(const char *fmt, ...)
     int d;
     long int ld;
     long long int lld;
+    unsigned int u;
+    unsigned long int lu;
+    unsigned long long int llu;
 
 
     va_start(ap, fmt);
@@ -266,31 +269,31 @@ kprintf(const char *fmt, ...)
             } else if ( 'x' == *fmt ) {
                 switch ( mod ) {
                 case PRINTF_MOD_LONG:
-                    ld = va_arg(ap, long int);
-                    kprintf_hexdecimal(ld, zero, pad, prec, 0);
+                    lu = va_arg(ap, unsigned long int);
+                    kprintf_hexdecimal(lu, zero, pad, prec, 0);
                     break;
                 case PRINTF_MOD_LONGLONG:
-                    lld = va_arg(ap, long long int);
-                    kprintf_hexdecimal(lld, zero, pad, prec, 0);
+                    llu = va_arg(ap, unsigned long long int);
+                    kprintf_hexdecimal(llu, zero, pad, prec, 0);
                     break;
                 default:
-                    d = va_arg(ap, int);
-                    kprintf_hexdecimal(d, zero, pad, prec, 0);
+                    u = va_arg(ap, unsigned int);
+                    kprintf_hexdecimal(u, zero, pad, prec, 0);
                 }
                 fmt++;
             } else if ( 'X' == *fmt ) {
                 switch ( mod ) {
                 case PRINTF_MOD_LONG:
-                    ld = va_arg(ap, long int);
-                    kprintf_hexdecimal(ld, zero, pad, prec, 1);
+                    lu = va_arg(ap, unsigned long int);
+                    kprintf_hexdecimal(lu, zero, pad, prec, 1);
                     break;
                 case PRINTF_MOD_LONGLONG:
-                    lld = va_arg(ap, long long int);
-                    kprintf_hexdecimal(lld, zero, pad, prec, 1);
+                    llu = va_arg(ap, unsigned long long int);
+                    kprintf_hexdecimal(llu, zero, pad, prec, 1);
                     break;
                 default:
-                    d = va_arg(ap, int);
-                    kprintf_hexdecimal(d, zero, pad, prec, 1);
+                    u = va_arg(ap, unsigned int);
+                    kprintf_hexdecimal(u, zero, pad, prec, 1);
                 }
                 fmt++;
             } else if ( 's' == *fmt ) {
@@ -313,15 +316,30 @@ kprintf(const char *fmt, ...)
     return 0;
 }
 
+u32 hoge;
+
 /*
  * Entry point to C function from asm.s
  */
 void
 kmain(void)
 {
+    hoge = 0;
     /* Initialize architecture-related devices */
     arch_bsp_init();
+    //kprintf("Hoge XX\r\n");
+    kprintf("Hoge = #%x\r\n", hoge);
+}
 
+
+void
+apmain(void)
+{
+    u32 x;
+
+    __asm__ __volatile__ ("movl $0xfee00000,%%edx; movl 0x20(%%edx),%%eax; shrl $24,%%eax" : "=a"(x) : );
+    kprintf("AP #%d started\r\n", x);
+    hoge = x;
 }
 
 

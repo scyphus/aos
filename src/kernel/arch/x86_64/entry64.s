@@ -41,9 +41,7 @@ entry64:
 	outw	%ax,%dx
 
 	/* Jump to the kernel main function */
-	pushq	$GDT_CODE64_SEL
-	pushq	$kstart64
-	lretq
+	jmp	kstart64
 
 
 /* Halt (64bit mode) */
