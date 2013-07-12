@@ -320,7 +320,7 @@ void
 kmain(void)
 {
     /* Initialize architecture-related devices */
-    arch_init();
+    arch_bsp_init();
 
 }
 

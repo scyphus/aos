@@ -10,7 +10,7 @@ ARCH=x86_64
 
 diskboot: ASFLAGS=-nostdlib -I./boot/arch/$(ARCH)/
 bootmon: ASFLAGS=-nostdlib -I./boot/arch/$(ARCH)/
-kpack: ASFLAGS=-nostdlib
+kpack: ASFLAGS=-nostdlib -I./kernel/arch/$(ARCH)/
 kpack: CFLAGS=-I./include \
 	-Wall -mno-sse3 -fleading-underscore -nostdlib -m64
 
@@ -19,20 +19,22 @@ diskboot: boot/arch/$(ARCH)/diskboot.o
 	$(LD) -N -e start -Ttext=0x7c00 --oformat binary -o $@ $^
 
 ## Boot monitor
-bootmon: boot/arch/$(ARCH)/bootmon.o \
-	boot/arch/$(ARCH)/entry32.o \
-	boot/arch/$(ARCH)/entry64.o
+bootmon: boot/arch/$(ARCH)/bootmon.o
 	$(LD) -N -e bootmon -Ttext=0x09000 --oformat binary -o $@ $^
 
 ## Kernel
-kpack: kernel/arch/$(ARCH)/asm.o kernel/kernel.o \
-	kernel/arch/$(ARCH)/trampoline.o \
+kpack: 	kernel/arch/$(ARCH)/entry16.o \
+	kernel/arch/$(ARCH)/entry32.o \
+	kernel/arch/$(ARCH)/entry64.o \
+	kernel/arch/$(ARCH)/asm.o \
+	kernel/kernel.o \
+	kernel/arch/$(ARCH)/trampoline.o kernel/arch/$(ARCH)/ap_asm.o \
 	kernel/arch/$(ARCH)/arch.o \
 	kernel/arch/$(ARCH)/desc.o \
 	kernel/arch/$(ARCH)/acpi.o \
 	kernel/arch/$(ARCH)/apic.o \
 	kernel/arch/$(ARCH)/i8254.o
-	$(LD) -N -e _kstart -Ttext=0x10000 --oformat binary -o $@ $^
+	$(LD) -N -e kstart -Ttext=0x10000 --oformat binary -o $@ $^
 
 .s.o:
 	$(AS) $(ASFLAGS) -c -o $@ $<

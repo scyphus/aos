@@ -13,7 +13,6 @@
 
 	.globl	entry32		/* Entry point */
 
-
 	.align	16
 	.code32
 /* Entry point for 32bit protected mode */
@@ -34,7 +33,7 @@ entry32:
 	movl	%eax,%es
 	movl	%eax,%fs
 	movl	%eax,%gs
-	movl	$KERNEL_STACK,%esp
+	movl	$BSP_STACK,%esp
 
 	/* Enable PAE */
 	movl	$0x20,%eax		/* CR4[bit 5] = PAE */

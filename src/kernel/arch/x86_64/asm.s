@@ -19,7 +19,7 @@
 	.file	"asm.s"
 
 	.text
-	.globl	_kstart		/* Entry point */
+	.globl	kstart64		/* Entry point */
 	.globl	_pause
 	.globl	_rdtsc
 	.globl	_inb
@@ -45,7 +45,7 @@
 /*
  * Kernel main function
  */
-_kstart:
+kstart64:
 	call	_kmain
 	jmp	idle
 

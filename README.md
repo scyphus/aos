@@ -28,20 +28,27 @@ Hirochika Asai
 ## Physical memory map
     Start    End       Description
     ----------------------------------------------------------
-    00000500 00007bff  Default stack in real mode
+    00000500 00007bff  Default stack in boot monitor
     00007c00 00007dff  MBR
     00007e00 00007fff  free
     00008000 00008fff  boot information
     00009000 00009fff  boot monitor
     0000a000 0000ffff  free (reserved for boot monitor)
+    ----------------------------------------------------------
     00010000 00017fff  kernel
     00018000 0001ffff  free (reserved for kernel)
-    00020000 00020fff  trampoline
-    00021000 00078fef  kernel stack
-    00078ff0 00078fff  16 byte free range
+    00020000 00078fff  free
+    00070000 00078fff  trampoline
     00079000 0007ffff  page table (at least 24KiB = 6 * 4KiB)
-    00080000 000fffff  free or reserved
-    00100000 --------
+    00080000 000fffff  free or reserved (We don't use here)
+    ----------------------------------------------------------
+    00100000 0010ffff  BSP (tss, stack)
+    00110000 0011ffff  AP #1
+    00120000 0012ffff  AP #2
+    00130000 0013ffff  AP #3
+    ....     00ffffff  for processors
+    ----------------------------------------------------------
+    01000000 --------  memory
 
 ### Boot information structure
     /* The size of boot information must be aligned on 4 byte boundaries */
@@ -61,7 +68,27 @@ Hirochika Asai
         u32 attr;
     }
 
+## Memo
 
+### Multiprocessor / Multicore system
 
+#### Trampoline
+- %cs == vector # specified in ICR
+- %ip == 0
+- %ds == 0
 
+#### Devices per-processor or per-host
+##### Per-processor (core)
+- Registers
+- Local APIC
+- GDT
+- IDT
+- TSS
+- Stack
+- Page table
 
+##### Per-host
+- Memory
+- I/O APIC
+- i8254 (Programmable Interval Timer)
+- i8259 (Programmable Interrupt Controller)

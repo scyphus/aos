@@ -21,8 +21,8 @@
 	.set	GDT_CODE16_SEL,0x18	/* Code16 selector */
 	.set	GDT_DATA_SEL,0x20	/* Data selector */
 
-	.set	KERNEL_MAIN,0x10000	/* Memory where to load kernel */
+	.set	KERNEL_SEG,0x1000	/* Memory where to load kernel */
 
-	.set	KERNEL_STACK,0x00078ff0	/* Kernel stack */
 	.set	KERNEL_PGT,0x00079000	/* Page table */
+	.set	BSP_STACK,0x0010fff0	/* Bootstrap processor stack */
 

@@ -18,6 +18,8 @@
 
 	.file		"loader.s"
 
+	.org	0x0,0x0
+
 /* Text section */
 	.text
 
@@ -134,23 +136,15 @@ boot:
 
 	/* Load the kernel: Load 0x80 sectors (64KiB) from 0x1200 (LBA #9) */
 	movb	drive,%dl
-	movl	$KERNEL_MAIN,%eax
-	shrl	$4,%eax
+	movw	$KERNEL_SEG,%ax
 	movw	%ax,%es
-	movl	$KERNEL_MAIN,%ebx
-	andl	$0xf,%ebx
+	movl	$(KERNEL_SEG<<4),%ebx
 	movb	$KERNEL_SIZE,%dh
 	movw	$KERNEL_LBA,%ax	/* from LBA 9 */
 	call	read
 
-	/* Turn on protected mode */
-	lidt	idtr		/* Setupt temporary IDT */
-	lgdt	gdtr		/* Setupt temporary GDT */
-	movl	%cr0,%eax
-	orb	$0x1,%al	/* Enable protected mode */
-	movl	%eax,%cr0
-	ljmp	$GDT_CODE32_SEL,$entry32	/* Go into protected mode */
-						/*  and flush the pipline */
+	ljmp	$(KERNEL_SEG),$0
+
 
 /* Display CPU error message */
 cpuerror:
@@ -559,23 +553,6 @@ gdtr16:
 	.word	0
 	.long	0
 
-
-/* Pseudo interrupt descriptor table */
-idtr:
-	.word	0x0
-	.long	0x0
-
-gdt:
-	.word	0x0,0x0,0x0,0x0		/* Null entry */
-	.word	0xffff,0x0,0x9a00,0xaf	/* Code64 */
-	.word	0xffff,0x0,0x9a00,0xcf	/* Code32 */
-	.word	0xffff,0x0,0x9a00,0x8f	/* Code16 */
-	.word	0xffff,0x0,0x9200,0xcf	/* Data */
-gdt.1:
-/* Pseudo global descriptor table register */
-gdtr:
-	.word	gdt.1-gdt-1		/* Limit */
-	.long	gdt			/* Address */
 
 /* Saved boot drive */
 drive:

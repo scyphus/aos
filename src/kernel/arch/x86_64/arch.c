@@ -44,14 +44,14 @@ void search_clock_sources(void);
 
 
 #define BOOTINFO_BASE 0x8000
-#define TRAMPOLINE_ADDR         0x20000
-#define TRAMPOLINE_MAX_SIZE     4096
+#define TRAMPOLINE_ADDR         0x70000
+#define TRAMPOLINE_MAX_SIZE     0x2000
 
 void trampoline(void);
 void trampoline_end(void);
 
 void
-arch_init(void)
+arch_bsp_init(void)
 {
     /* Find configuration using ACPI */
     acpi_load();
@@ -79,12 +79,13 @@ arch_init(void)
     cursor = 0;
 
     int i;
-
+    kprintf("Booting CPU #%d\r\n", 1);
     /* IPI: 4KiB boundry */
     u64 tsz = trampoline_end - trampoline;
     if ( tsz > TRAMPOLINE_MAX_SIZE ) {
         /* Error */
         // panic
+        kprintf("ERROR\r\n");
         return;
     }
     /* Copy trampoline */
@@ -130,6 +131,10 @@ arch_init(void)
     __asm__ __volatile__ ("movq $0xfee00300,%%rdx; movl %%eax,(%%rdx)" : : "a"(icrl) );
     __asm__ __volatile__ ("movq $0xfee00310,%%rdx; movl %%eax,(%%rdx)" : : "a"(icrh) );
     arch_busy_usleep(1000);
+
+    u16 foo;
+    __asm__ __volatile__ ("movw (0x7e00),%%ax" : "=a"(foo) : );
+    kprintf("FOO=%x\r\n", foo);
 
     // $0xfee00300 &=~0xcdfff
     // $0xfee00310
@@ -245,6 +250,10 @@ arch_init(void)
 
 }
 
+void
+arch_ap_init(void)
+{
+}
 
 /*
  * Update cursor

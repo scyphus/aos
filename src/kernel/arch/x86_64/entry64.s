@@ -42,7 +42,7 @@ entry64:
 
 	/* Jump to the kernel main function */
 	pushq	$GDT_CODE64_SEL
-	pushq	$KERNEL_MAIN
+	pushq	$kstart64
 	lretq
 
 
