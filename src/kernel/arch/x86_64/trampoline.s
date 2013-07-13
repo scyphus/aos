@@ -19,12 +19,6 @@
 _trampoline:
 	cli
 
-	/* For debugging */
-	movw	$0xb800,%ax
-	movw	%ax,%ds
-	movw	$0x0778,%ax
-	movw	%ax,0xf9e
-
 	movw	%cs,%ax
 	movw	%ax,%ds
 

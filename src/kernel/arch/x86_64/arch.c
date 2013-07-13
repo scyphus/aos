@@ -27,8 +27,6 @@ void search_clock_sources(void);
 void trampoline(void);
 void trampoline_end(void);
 
-void intr_test(void);
-
 void
 arch_bsp_init(void)
 {
@@ -57,7 +55,6 @@ arch_bsp_init(void)
 
     /* Set general protection fault handler */
     idt_setup_intr_gate(13, &intr_gpf);
-    idt_setup_intr_gate(38, &intr_test);
 
     /* Initialize local APIC */
     //lapic_init();

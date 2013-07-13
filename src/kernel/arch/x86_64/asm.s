@@ -277,21 +277,6 @@ _intr_null:
 
 	iretq
 
-_intr_test:
-	pushq	%rdx
-	/* APIC EOI */
-	movq	$0xfee00000,%rdx
-	//addq	$APIC_EOI,%rdx
-	movq	$0,APIC_EOI(%rdx)
-
-	movq	$0xb8000,%rdx
-	addb	$'!',%al
-	movb	$0x07,%ah
-	movw	%ax,0xf9c(%rdx)
-
-	popq	%rdx
-	iretq
-
 
 /* Interrupt handler for general protection fault */
 _intr_gpf:
