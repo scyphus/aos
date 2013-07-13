@@ -46,7 +46,7 @@ Hirochika Asai
     ----------------------------------------------------------
     00100000 00ffffff  free (fore memory management?)
     ----------------------------------------------------------
-    01000000 0100ffff  BSP (tss, stack)
+    01000000 0100ffff  BSP (flags, tss, stack)
     01010000 0101ffff  AP #1
     ....     01ffffff  for processors
     ----------------------------------------------------------
@@ -88,17 +88,24 @@ Hirochika Asai
 ### Multiprocessor / Multicore system
 
 #### Trampoline
-- %cs == vector # specified in ICR
-- %ip == 0
-- %ds == 0
+1. send an INIT IPI
+   wait 10ms
+2. send a START IPI
+   wait 200us
+3. send another START IPI
+   wait 200us
+4. trampoline at the processor we are starting
+-- %cs == vector # specified in ICR
+-- %ip == 0
+-- %ds == 0
 
 #### Devices per-processor or per-host
 ##### Per-processor (core)
 - Registers
 - Local APIC
-- GDT (?)
-- IDT (?)
-- TSS
+- GDTR
+- IDTR
+- TSS (TR)
 - Stack
 - Page table (?)
 
@@ -107,6 +114,8 @@ Hirochika Asai
 - I/O APIC
 - i8254 (Programmable Interval Timer)
 - i8259 (Programmable Interrupt Controller)
+- GDT
+- IDT
 
 ### Tips
 - `movl data,%regl' clears most significant 32 bits of %regl

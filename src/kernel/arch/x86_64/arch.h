@@ -37,20 +37,12 @@
 /* Also defined in asmconst.h */
 #define	P_DATA_SIZE     0x10000
 #define P_DATA_BASE     0x1000000
+#define P_TSS_OFFSET    0x20
 #define P_STACK_GUARD   0x10
 
-
-/* Assertion: #P * 16 (TSS) + [1 (Null) + 2 (code and data) * 4 (rings)] * 8
-              + 18 (gdtr) */
-#if (MAX_PROCESSORS * 16 + (1 + 2 * 4) * 8 + 18) >= GDT_MAX_SIZE
-#error "The size of the global descriptor table is invalid."
-#endif
-
-/* Assertion: #IDT * 16 + 18 (idtr)*/
-#if (IDT_NR * 16 + 18) >= IDT_MAX_SIZE
-#error "The size of the interrupt descriptor table is invalid."
-#endif
-
+/*
+ * TSS
+ */
 struct tss {
     u32 reserved1;
     u32 rsp0l;
@@ -80,6 +72,30 @@ struct tss {
     u16 reserved6;
     u16 iomap;
 } __attribute__ ((packed));
+
+/*
+ * Data space for each processor
+ */
+struct p_data_head {
+    u32 flags;          /* bit 0: enabled, bit 1: ready */
+    u32 cpu_id;
+    u32 reserved[6];
+    struct tss tss;
+    /* Stack and stack guard follow */
+} __attribute__ ((packed));
+
+
+/* Assertion: #P * 16 (TSS) + [1 (Null) + 2 (code and data) * 4 (rings)] * 8
+              + 18 (gdtr) */
+#if (MAX_PROCESSORS * 16 + (1 + 2 * 4) * 8 + 18) >= GDT_MAX_SIZE
+#error "The size of the global descriptor table is invalid."
+#endif
+
+/* Assertion: #IDT * 16 + 18 (idtr)*/
+#if (IDT_NR * 16 + 18) >= IDT_MAX_SIZE
+#error "The size of the interrupt descriptor table is invalid."
+#endif
+
 
 
 void intr_gpf(void);

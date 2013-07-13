@@ -41,6 +41,7 @@
 	.globl	_get_cpu_model
 	.globl	_this_cpu
 	.globl	_intr_null
+	.globl	_intr_test
 	.globl	_intr_gpf
 	.globl	_apic_test
 	.globl	_asm_ioapic_map_intr
@@ -269,11 +270,28 @@ checktsc:
 _intr_null:
 	pushq	%rdx
 	/* APIC EOI */
-	movq	(apic_base),%rdx
+	movq	$0xfee00000,%rdx
 	//addq	$APIC_EOI,%rdx
 	movq	$0,APIC_EOI(%rdx)
 	popq	%rdx
+
 	iretq
+
+_intr_test:
+	pushq	%rdx
+	/* APIC EOI */
+	movq	$0xfee00000,%rdx
+	//addq	$APIC_EOI,%rdx
+	movq	$0,APIC_EOI(%rdx)
+
+	movq	$0xb8000,%rdx
+	addb	$'!',%al
+	movb	$0x07,%ah
+	movw	%ax,0xf9c(%rdx)
+
+	popq	%rdx
+	iretq
+
 
 /* Interrupt handler for general protection fault */
 _intr_gpf:

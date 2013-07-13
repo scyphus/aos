@@ -27,9 +27,13 @@ void search_clock_sources(void);
 void trampoline(void);
 void trampoline_end(void);
 
+void intr_test(void);
+
 void
 arch_bsp_init(void)
 {
+    u8 cpu_id[MAX_PROCESSORS];
+
     /* Initialize VGA display */
     vga_init();
 
@@ -37,7 +41,7 @@ arch_bsp_init(void)
     acpi_load();
 
     /* Count the number of processors (APIC) */
-    /* for TSS */
+
 
     /* Initialize global descriptor table */
     gdt_init();
@@ -53,6 +57,7 @@ arch_bsp_init(void)
 
     /* Set general protection fault handler */
     idt_setup_intr_gate(13, &intr_gpf);
+    idt_setup_intr_gate(38, &intr_test);
 
     /* Initialize local APIC */
     //lapic_init();
@@ -67,9 +72,20 @@ arch_bsp_init(void)
     /* Stop i8254 timer */
     i8254_stop_timer();
 
+    u32 apicinfo;
+    __asm__ __volatile__ ( "movq $0x1b,%%rcx; rdmsr" : "=a"(apicinfo) : );
+    kprintf("APIC_BASE=%.16x\r\n", apicinfo);
+    //__asm__ __volatile__ ( "sti" );
 
+    /* Spurious interrupt vector register: default vector 0xff */
+    __asm__ __volatile__ ( "movq $0xfee00000,%rdx; movl 0x0f0(%rdx),%eax;orl $0x100,%eax; movl %eax,0x0f0(%rdx)" );
+    /* Error handler */
+    __asm__ __volatile__ ( "movq $0xfee00000,%rdx; movl 0x370(%rdx),%eax;andl $0xffffff00,%eax; orl $38,%eax; movl %eax,0x370(%rdx)" );
+
+    u8 bootap = 1;
     int i;
-    kprintf("Booting CPU #%d\r\n", 1);
+    kprintf("Current CPU's local APIC ID=%d\r\n", this_cpu());
+    kprintf("Booting AP (lapic=#%d)\r\n", bootap);
     /* IPI: 4KiB boundry */
     u64 tsz = trampoline_end - trampoline;
     if ( tsz > TRAMPOLINE_MAX_SIZE ) {
@@ -93,13 +109,21 @@ arch_bsp_init(void)
     /* triger = edge */
     /* destination = physical */
     /* destination shorthand = no shorthand */
-    icrl |= (TRAMPOLINE_ADDR >> 12) & 0xff; /* Vector: FIXME assertion */
-    icrh |= (1 << 24); /* Destination APIC ID */
+    /*icrl |= (TRAMPOLINE_ADDR >> 12) & 0xff;*/ /* Not required */
+    //icrh |= ((u32)bootap << 24); /* Destination APIC ID */
+    icrl |= 0xc0000; /* broadcast excluding self */
     __asm__ __volatile__ ("movq $0xfee00300,%%rdx; movl %%eax,(%%rdx)" : : "a"(icrl) );
     __asm__ __volatile__ ("movq $0xfee00310,%%rdx; movl %%eax,(%%rdx)" : : "a"(icrh) );
 
     kprintf("ICR %.8x %.8x\r\n", icrh, icrl);
-    arch_busy_usleep(1000000);
+    arch_busy_usleep(10000);
+
+    __asm__ __volatile__ ("movq $0xfee00300,%%rdx; movl (%%rdx),%%eax" : "=a"(apicinfo) : );
+    kprintf("ACPI Info: %.8x\r\n", apicinfo);
+
+    u32 err;
+    __asm__ __volatile__ ("movq $0xfee00280,%%rdx; movl (%%rdx),%%eax" : "=a"(err) : );
+    kprintf("Error(1): %.8x\r\n", err);
 
     /* STARTUP */
     __asm__ __volatile__ ("movq $0xfee00300,%%rdx; movl (%%rdx),%%eax; andl $~0xcdfff,%%eax" : "=a"(icrl) : );
@@ -110,21 +134,28 @@ arch_bsp_init(void)
     /* destination = physical */
     /* destination shorthand = no shorthand */
     icrl |= (TRAMPOLINE_ADDR >> 12) & 0xff; /* Vector: FIXME assertion */
-    icrh |= (1 << 24); /* Destination APIC ID */
+    icrl |= 0xc0000; /* broadcast excluding self */
+    //icrh |= ((u32)bootap << 24); /* Destination APIC ID */
     __asm__ __volatile__ ("movq $0xfee00300,%%rdx; movl %%eax,(%%rdx)" : : "a"(icrl) );
     __asm__ __volatile__ ("movq $0xfee00310,%%rdx; movl %%eax,(%%rdx)" : : "a"(icrh) );
 
     kprintf("ICR %.8x %.8x\r\n", icrh, icrl);
-    arch_busy_usleep(1000);
+    arch_busy_usleep(200);
+
+    __asm__ __volatile__ ("movq $0xfee00280,%%rdx; movl (%%rdx),%%eax" : "=a"(err) : );
+    kprintf("Error(2): %.8x\r\n", err);
 
     /* Startup again */
     __asm__ __volatile__ ("movq $0xfee00300,%%rdx; movl %%eax,(%%rdx)" : : "a"(icrl) );
     __asm__ __volatile__ ("movq $0xfee00310,%%rdx; movl %%eax,(%%rdx)" : : "a"(icrh) );
-    arch_busy_usleep(1000);
+    arch_busy_usleep(200);
 
+
+#if 0
     u16 foo;
     __asm__ __volatile__ ("movw (0x7e00),%%ax" : "=a"(foo) : );
     kprintf("FOO=%x\r\n", foo);
+#endif
 
     // $0xfee00300 &=~0xcdfff
     // $0xfee00310
@@ -134,6 +165,7 @@ arch_bsp_init(void)
     //__asm__ __volatile__ ("movq %%rax,%%dr0" :: "a"(taddr) );
 
 
+#if 0
     struct bootinfo *bi;
     bi = (struct bootinfo *)BOOTINFO_BASE;
     kprintf("SYSTEM ADDRESS MAP\r\n");
@@ -141,6 +173,7 @@ arch_bsp_init(void)
         kprintf("%.16x %.16x %d\r\n", bi->sysaddrmap.entries[i].base,
                 bi->sysaddrmap.entries[i].len, bi->sysaddrmap.entries[i].type);
     }
+#endif
     kprintf("-----------------------------------\r\n");
 
 

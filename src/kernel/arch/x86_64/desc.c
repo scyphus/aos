@@ -149,8 +149,8 @@ gdt_init(void)
         gdt_tss = (struct gdt_desc_tss *)(GDT_ADDR + GDT_TSS_SEL_BASE
                                           + (i * 2 * 8));
         gdt_setup_desc_tss(gdt_tss,
-                           P_DATA_BASE + i * P_DATA_SIZE,
-                           sizeof(struct tss) - 1, 0x9, 0, 1);
+                           P_DATA_BASE + i * P_DATA_SIZE + P_TSS_OFFSET,
+                           sizeof(struct tss) - 1, 0x9, 0, 0);
     }
 }
 

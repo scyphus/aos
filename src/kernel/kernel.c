@@ -331,7 +331,7 @@ kprintf(const char *fmt, ...)
     return 0;
 }
 
-u32 hoge;
+static int lock;
 
 /*
  * Entry point to C function from asm.s
@@ -339,11 +339,11 @@ u32 hoge;
 void
 kmain(void)
 {
-    hoge = 0;
+    lock = 0;
     /* Initialize architecture-related devices */
     arch_bsp_init();
     //kprintf("Hoge XX\r\n");
-    kprintf("Hoge = #%x\r\n", hoge);
+    arch_busy_usleep(1000000);
 }
 
 
@@ -351,11 +351,11 @@ void
 apmain(void)
 {
     u32 x;
-
+    spin_lock(&lock);
     __asm__ __volatile__ ("movl $0xfee00000,%%edx; movl 0x20(%%edx),%%eax; shrl $24,%%eax" : "=a"(x) : );
-    hoge = x;
-    arch_busy_usleep(3000000);
+    arch_busy_usleep(100000);
     kprintf("AP #%d started\r\n", x);
+    spin_unlock(&lock);
 }
 
 
