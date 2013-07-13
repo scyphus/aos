@@ -172,6 +172,9 @@ kprintf_string(const char *s)
     return 0;
 }
 
+/*
+ * Format and print a message
+ */
 int
 kprintf(const char *fmt, ...)
 {
@@ -325,7 +328,6 @@ kprintf(const char *fmt, ...)
         }
     }
 
-
     va_end(ap);
 
     return 0;
@@ -334,28 +336,34 @@ kprintf(const char *fmt, ...)
 static int lock;
 
 /*
- * Entry point to C function from asm.s
+ * Entry point to C function for BSP called from asm.s
  */
 void
 kmain(void)
 {
+    /* Initialize the lock varialbe */
     lock = 0;
+
     /* Initialize architecture-related devices */
     arch_bsp_init();
-    //kprintf("Hoge XX\r\n");
-    arch_busy_usleep(1000000);
 }
 
-
+/*
+ * Entry point to C function for AP called from asm.s
+ */
 void
 apmain(void)
 {
     u32 x;
-    spin_lock(&lock);
-    __asm__ __volatile__ ("movl $0xfee00000,%%edx; movl 0x20(%%edx),%%eax; shrl $24,%%eax" : "=a"(x) : );
+
+    /* Initialize this AP */
+    arch_ap_init();
+
     arch_busy_usleep(100000);
+    arch_spin_lock(&lock);
+    __asm__ __volatile__ ("movl $0xfee00000,%%edx; movl 0x20(%%edx),%%eax; shrl $24,%%eax" : "=a"(x) : );
     kprintf("AP #%d started\r\n", x);
-    spin_unlock(&lock);
+    arch_spin_unlock(&lock);
 }
 
 

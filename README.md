@@ -11,6 +11,8 @@ when we start the development of operating system from scratch.
 Hirochika Asai
 
 ## ToDo
+- Somehow convert local APIC ID to CPU ID (using ACPI table)
+### Future work
 - Design and implement glue between the boot monitor and the kernel.
 - Implement a simple disk driver in the boot monitor to load the
   kernel (to higher address space).  Note that it's now implemented

@@ -76,8 +76,8 @@ struct tss {
 /*
  * Data space for each processor
  */
-struct p_data_head {
-    u32 flags;          /* bit 0: enabled, bit 1: ready */
+struct p_data {
+    u32 flags;          /* bit 0: enabled (working); bit 1 reserved */
     u32 cpu_id;
     u32 reserved[6];
     struct tss tss;
@@ -126,8 +126,6 @@ int this_cpu(void);
 int acpi_load_rsdp(void);
 
 void asm_ioapic_map_intr(u64, u64, u64);
-
-void arch_busy_usleep(u64);
 
 /* spinlock.s */
 void spin_lock(int *);

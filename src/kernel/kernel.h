@@ -10,9 +10,20 @@
 #ifndef _KERNEL_H
 #define _KERNEL_H
 
+#include <aos/const.h>
+
+
 int kprintf(const char *fmt, ...);
 
+/* Architecture-dependent functions */
 void arch_bsp_init(void);
+void arch_ap_init(void);
+
+void arch_putc(int);
+void arch_busy_usleep(u64);
+
+void arch_spin_lock(int *);
+void arch_spin_unlock(int *);
 
 #endif /* _KERNEL_H */
 

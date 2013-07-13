@@ -41,7 +41,6 @@
 	.globl	_get_cpu_model
 	.globl	_this_cpu
 	.globl	_intr_null
-	.globl	_intr_test
 	.globl	_intr_gpf
 	.globl	_apic_test
 	.globl	_asm_ioapic_map_intr

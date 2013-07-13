@@ -30,8 +30,6 @@ void trampoline_end(void);
 void
 arch_bsp_init(void)
 {
-    u8 cpu_id[MAX_PROCESSORS];
-
     /* Initialize VGA display */
     vga_init();
 
@@ -52,6 +50,11 @@ arch_bsp_init(void)
     /* Initialize TSS and load it */
     tss_init();
     tr_load(this_cpu());
+
+    struct p_data *pdata;
+    pdata = P_DATA_BASE + this_cpu() * P_DATA_SIZE;
+    pdata->flags |= 1;
+
 
     /* Set general protection fault handler */
     idt_setup_intr_gate(13, &intr_gpf);
@@ -177,9 +180,18 @@ arch_bsp_init(void)
     apic_test();
 
     char *str = "Welcome to AOS!  Now this message is printed by C function.";
-
     kprintf("%s\r\n", str);
 
+    arch_busy_usleep(1000000);
+    for ( i = 0; i < MAX_PROCESSORS; i++ ) {
+        pdata = P_DATA_BASE + i * P_DATA_SIZE;
+        if ( pdata->flags & 1 ) {
+            kprintf("Processor #%d is running.\r\n", i);
+        }
+    }
+
+
+#if 0
 
     u64 x;
     /* MSR_PERF_STAT */
@@ -206,6 +218,7 @@ arch_bsp_init(void)
 
     kprintf("%.16x\r\n", acpi_pm_tmr_port);
     kprintf("%.16x\r\n", acpi_ioapic_base);
+#endif
 
 #if 0
     u64 tc0, tc1;
@@ -264,6 +277,10 @@ arch_ap_init(void)
 
     /* Load task register */
     tr_load(this_cpu());
+
+    struct p_data *pdata;
+    pdata = P_DATA_BASE + this_cpu() * P_DATA_SIZE;
+    pdata->flags |= 1;
 
 }
 
@@ -355,6 +372,23 @@ arch_busy_usleep(u64 usec)
     acpi_busy_usleep(usec);
 }
 
+/*
+ * Lock with spinlock
+ */
+void
+arch_spin_lock(int *lock)
+{
+    spin_lock(lock);
+}
+
+/*
+ * Unlock with spinlock
+ */
+void
+arch_spin_unlock(int *lock)
+{
+    spin_unlock(lock);
+}
 
 /*
  * Local variables:
