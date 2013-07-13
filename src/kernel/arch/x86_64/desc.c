@@ -13,10 +13,12 @@
 
 #define IDT_PRESENT     0x80
 #define IDT_INTGATE     0x0e
-struct idt_gate_desc idt[256];
 void intr_null(void);
 void intr_gp(void);
 
+/*
+ * Setup gate descriptor
+ */
 static void
 idt_setup_gate_desc(int nr, u64 base, u16 selector, u8 flags)
 {
@@ -35,6 +37,10 @@ idt_setup_gate_desc(int nr, u64 base, u16 selector, u8 flags)
     idt->target_hi = (u16)((base & 0xffffffff00000000UL) >> 32);
     idt->reserved2 = 0;
 }
+
+/*
+ * Setup interrupt gate of interrupt descriptor table
+ */
 void
 idt_setup_intr_gate(int nr, void *target)
 {
@@ -42,6 +48,9 @@ idt_setup_intr_gate(int nr, void *target)
                         IDT_PRESENT | IDT_INTGATE);
 }
 
+/*
+ * Initialize interrupt descriptor table
+ */
 void
 idt_init(void)
 {
@@ -49,7 +58,7 @@ idt_init(void)
     int i;
 
     idtr = (struct idtr *)(IDT_ADDR + sizeof(struct idt_gate_desc) * IDT_NR);
-    idtr->base = (u64)idt;
+    idtr->base = IDT_ADDR;
     idtr->size = IDT_NR * sizeof(struct idt_gate_desc) - 1;
 
     for ( i = 0; i < 256; i++ ) {
@@ -57,6 +66,9 @@ idt_init(void)
     }
 }
 
+/*
+ * Load interrupt descriptor table
+ */
 void
 idt_load(void)
 {
@@ -66,6 +78,9 @@ idt_load(void)
     lidt(idtr);
 }
 
+/*
+ * Setup global descriptor table entry
+ */
 void
 gdt_setup_desc(struct gdt_desc *e, u32 base, u32 limit, u8 type, u8 dpl,
                u8 lbit, u8 dbit, u8 gbit)
@@ -79,6 +94,9 @@ gdt_setup_desc(struct gdt_desc *e, u32 base, u32 limit, u8 type, u8 dpl,
         | ((base>>24) & 0xff);
 }
 
+/*
+ * Setup global descriptor table for TSS
+ */
 void
 gdt_setup_desc_tss(struct gdt_desc_tss *e, u64 base, u32 limit, u8 type, u8 dpl,
                    u8 gbit)
@@ -95,6 +113,9 @@ gdt_setup_desc_tss(struct gdt_desc_tss *e, u64 base, u32 limit, u8 type, u8 dpl,
     e->w7 = 0;
 }
 
+/*
+ * Initialize global descriptor table
+ */
 void
 gdt_init(void)
 {
@@ -133,6 +154,9 @@ gdt_init(void)
     }
 }
 
+/*
+ * Load global descriptor table
+ */
 void
 gdt_load(void)
 {
@@ -142,6 +166,9 @@ gdt_load(void)
     lgdt(gdtr, GDT_RING0_CODE_SEL);
 }
 
+/*
+ * Initialize all TSS
+ */
 void
 tss_init(void)
 {
@@ -181,6 +208,9 @@ tss_init(void)
     }
 }
 
+/*
+ * Load task register for nr-th processor
+ */
 void
 tr_load(int nr)
 {
