@@ -31,12 +31,18 @@ kpack: 	kernel/arch/$(ARCH)/entry16.o \
 	kernel/arch/$(ARCH)/trampoline.o \
 	kernel/arch/$(ARCH)/ap_entry32.o \
 	kernel/arch/$(ARCH)/ap_entry64.o \
+	kernel/arch/$(ARCH)/spinlock.o \
 	kernel/arch/$(ARCH)/arch.o \
 	kernel/arch/$(ARCH)/desc.o \
 	kernel/arch/$(ARCH)/acpi.o \
 	kernel/arch/$(ARCH)/apic.o \
+	kernel/arch/$(ARCH)/vga.o \
 	kernel/arch/$(ARCH)/i8254.o
 	$(LD) -N -e kstart -Ttext=0x10000 --oformat binary -o $@ $^
+
+## Dependencies
+kernel/arch/$(ARCH)/arch.o: kernel/arch/$(ARCH)/arch.h
+
 
 .s.o:
 	$(AS) $(ASFLAGS) -c -o $@ $<

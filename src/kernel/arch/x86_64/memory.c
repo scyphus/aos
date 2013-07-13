@@ -7,7 +7,7 @@
 
 /* $Id$ */
 
-#include <midos/const.h>
+#include <aos/const.h>
 #include "../../kernel.h"
 
 /*

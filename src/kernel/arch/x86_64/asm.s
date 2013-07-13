@@ -33,9 +33,13 @@
 	.globl	_lfence
 	.globl	_mfence
 	.globl	_rdmsr
+	.globl	_lidt
+	.globl	_lgdt
+	.globl	_ltr
 	.globl	_is_invariant_tsc
 	.globl	_get_cpu_family
 	.globl	_get_cpu_model
+	.globl	_this_cpu
 	.globl	_intr_null
 	.globl	_intr_gpf
 	.globl	_apic_test
@@ -120,6 +124,31 @@ _lfence:
 	ret
 _mfence:
 	mfence
+	ret
+
+_lidt:
+	lidt	(%rdi)
+	ret
+
+/* void lgdt(void *gdtr, u64 selector) */
+_lgdt:
+	lgdt	(%rdi)
+	/* Reload GDT */
+	pushq	%rsi
+	pushq	$1f
+	lretq
+1:
+	ret
+
+_lldt:
+	movw	%di,%ax
+	lldt	%ax
+	ret
+
+_ltr:
+	movw	$0x48,%ax
+	movw	%di,%ax
+	ltr	%ax
 	ret
 
 /* void asm_ioapic_map_intr(u64 src, u64 dst, u64 ioapic_base); */
@@ -212,6 +241,13 @@ _get_cpu_model:
 	addq	%rbx,%rax
 	ret
 
+/* int this_cpu(void); */
+_this_cpu:
+	/* Obtain APIC ID */
+	movl	$0xfee00000,%edx
+	movl	0x20(%edx),%eax
+	shrl	$24,%eax
+	ret
 
 checktsc:
 	movl	$0x1,%eax

@@ -14,27 +14,15 @@
 #include "acpi.h"
 #include "apic.h"
 #include "i8254.h"
+#include "vga.h"
 #include "bootinfo.h"
 
-#define VGA_VRAM_TEXTMODE       0x000b8000
-#define VGA_TEXTMODE_X          80
-#define VGA_TEXTMODE_Y          25
-#define VGA_TEXTMODE_XY         (VGA_TEXTMODE_X * VGA_TEXTMODE_Y)
-
-
-static int cursor;
-static unsigned char vga_text[VGA_TEXTMODE_XY];
-
-static u64 cpu_freq;
-static u64 fsb_freq;
+//static u64 cpu_freq;
+//static u64 fsb_freq;
 
 void apic_test(void);
 void search_clock_sources(void);
 
-
-#define BOOTINFO_BASE           0x8000
-#define TRAMPOLINE_ADDR         0x70000
-#define TRAMPOLINE_MAX_SIZE     0x2000
 
 void trampoline(void);
 void trampoline_end(void);
@@ -43,13 +31,25 @@ void
 arch_bsp_init(void)
 {
     /* Initialize VGA display */
-    cursor = 0;
+    vga_init();
 
     /* Find configuration using ACPI */
     acpi_load();
 
+    /* Count the number of processors (APIC) */
+    /* for TSS */
+
+    /* Initialize global descriptor table */
+    gdt_init();
+    gdt_load();
+
     /* Initialize interrupt descriptor table */
     idt_init();
+    idt_load();
+
+    /* Initialize TSS and load it */
+    tss_init();
+    tr_load(this_cpu());
 
     /* Set general protection fault handler */
     idt_setup_intr_gate(13, &intr_gpf);
@@ -220,92 +220,23 @@ arch_bsp_init(void)
     kprintf("Test\r\n");
 #endif
 
-#if 0
-
-    u64 tsc1;
-    u64 tsc2;
-    vga_putc('x');
-    vga_putc('/');
-    tsc1 = rdtsc();
-    for ( ;; ) {
-        tsc2 = rdtsc();
-        if ( tsc2 - tsc1 > 266660000000 ) {
-            break;
-        }
-        pause();
-    }
-    vga_putc('y');
-#endif
-
 
 }
 
 void
 arch_ap_init(void)
 {
+    /* Load global descriptor table */
+    gdt_load();
+
+    /* Load interrupt descriptor table */
+    idt_load();
+
+    /* Load task register */
+    tr_load(this_cpu());
+
 }
 
-/*
- * Update cursor
- */
-void
-vga_update_cursor(void)
-{
-    u16 val;
-    u16 addr = 0x3d4;
-
-    /* Low */
-    val = ((cursor & 0xff) << 8) | 0x0f;
-    outw(addr, val);
-    //__asm__ __volatile__ ( "outw %%ax,%%dx" : : "a"(val), "d"(addr) );
-    /* High */
-    val = (((cursor >> 8) & 0xff) << 8) | 0x0e;
-    outw(addr, val);
-    //__asm__ __volatile__ ( "outw %%ax,%%dx" : : "a"(val), "d"(addr) );
-}
-
-/*
- * Put a character to VGA display
- */
-void
-vga_putc(int c)
-{
-    int i;
-    u64 addr;
-    u16 *ptr;
-
-    addr = VGA_VRAM_TEXTMODE;
-
-    if ( '\r' == c ) {
-        /* Carriage return */
-        cursor = cursor / VGA_TEXTMODE_X * VGA_TEXTMODE_X;
-    } else if ( '\n' == c ) {
-        /* New line */
-        cursor = cursor + VGA_TEXTMODE_X;
-    } else {
-        /* Other characters */
-        ptr = (u16 *)(addr + (cursor) * 2);
-        *ptr = (0x07 << 8) | (u8)c;
-        vga_text[cursor] = c;
-        cursor++;
-    }
-
-    /* Draw it again */
-    if ( cursor >= VGA_TEXTMODE_XY ) {
-        for ( i = 0; i < VGA_TEXTMODE_XY - VGA_TEXTMODE_X; i++ ) {
-            ptr = (u16 *)(addr + i * 2);
-            vga_text[i] = vga_text[i + VGA_TEXTMODE_X];
-            *ptr = (0x07 << 8) | vga_text[i];
-        }
-        for ( ; i < VGA_TEXTMODE_XY; i++ ) {
-            ptr = (u16 *)(addr + i * 2);
-            vga_text[i] = ' ';
-            *ptr = (0x07 << 8) | vga_text[i];
-        }
-        cursor -= VGA_TEXTMODE_X;
-    }
-    vga_update_cursor();
-}
 
 /*
  * Compute TSC frequency
@@ -371,7 +302,9 @@ search_clock_sources(void)
     /* Get ACPI info */
 }
 
-
+/*
+ * Put a character to console
+ */
 void
 arch_putc(int c)
 {
@@ -383,7 +316,9 @@ arch_get_tmr(u64 counter, u64 *resolution)
 {
 }
 
-/* Wait X microsecond */
+/*
+ * Wait usec microsecond
+ */
 void
 arch_busy_usleep(u64 usec)
 {

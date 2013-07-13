@@ -38,11 +38,13 @@ Hirochika Asai
     00010000 00017fff  kernel
     00018000 0001ffff  free (reserved for kernel)
     00020000 00078fff  free
-    00070000 00077fff  trampoline (32KiB)
-    00078000 0007ffff  page table (at least 24KiB = 6 * 4KiB)
+    00070000 00073fff  trampoline (16KiB)
+    00074000 00077fff  GDT, IDT (20KiB)
+    00078000 00079fff  free
+    00079000 0007ffff  page table (at least 24KiB = 6 * 4KiB)
     00080000 000fffff  free or reserved (We don't use here)
     ----------------------------------------------------------
-    00100000 00ffffff  free
+    00100000 00ffffff  free (fore memory management?)
     ----------------------------------------------------------
     01000000 0100ffff  BSP (tss, stack)
     01010000 0101ffff  AP #1
@@ -70,6 +72,19 @@ Hirochika Asai
 
 ## Memo
 
+### Steps
+1. Jump to 0000:7c00 (16 bit mode) from BIOS
+2. Load boot monitor from MBR (IPL)
+3. Load kernel from boot monitor
+4. Enter protected mode then long mode (kstart64)
+5. Call C function (kmain)
+   Load GDT, IDT, and TSS
+   Initialize some devices
+6. Load trampoline and boot APs
+7. Enter protected mode and long mode (apstart64)
+8. Call C function (apstart64)
+   Load GDT, IDT and TSS
+
 ### Multiprocessor / Multicore system
 
 #### Trampoline
@@ -92,3 +107,6 @@ Hirochika Asai
 - I/O APIC
 - i8254 (Programmable Interval Timer)
 - i8259 (Programmable Interrupt Controller)
+
+### Tips
+- `movl data,%regl' clears most significant 32 bits of %regl

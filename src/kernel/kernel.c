@@ -266,6 +266,21 @@ kprintf(const char *fmt, ...)
                     kprintf_decimal(d, zero, pad, prec);
                 }
                 fmt++;
+            } else if ( 'u' == *fmt ) {
+                switch ( mod ) {
+                case PRINTF_MOD_LONG:
+                    lu = va_arg(ap, unsigned long int);
+                    kprintf_decimal(lu, zero, pad, prec);
+                    break;
+                case PRINTF_MOD_LONGLONG:
+                    llu = va_arg(ap, unsigned long long int);
+                    kprintf_decimal(llu, zero, pad, prec);
+                    break;
+                default:
+                    u = va_arg(ap, unsigned int);
+                    kprintf_decimal(u, zero, pad, prec);
+                }
+                fmt++;
             } else if ( 'x' == *fmt ) {
                 switch ( mod ) {
                 case PRINTF_MOD_LONG:
@@ -338,8 +353,9 @@ apmain(void)
     u32 x;
 
     __asm__ __volatile__ ("movl $0xfee00000,%%edx; movl 0x20(%%edx),%%eax; shrl $24,%%eax" : "=a"(x) : );
-    kprintf("AP #%d started\r\n", x);
     hoge = x;
+    arch_busy_usleep(3000000);
+    kprintf("AP #%d started\r\n", x);
 }
 
 
