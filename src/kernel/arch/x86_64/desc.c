@@ -20,16 +20,17 @@ void intr_gp(void);
 static void
 idt_setup_gate_desc(int nr, u64 base, u16 selector, u8 flags)
 {
-    struct idtr *idtr = IDT_ADDR + sizeof(struct idt_gate_desc) * IDT_NR;
+    struct idtr *idtr;
     struct idt_gate_desc *idt;
 
-    idt = (struct idt_gate_desc *)
-        (idtr->base + nr * sizeof(struct idt_gate_desc));
+    idtr = (struct idtr *)(IDT_ADDR + sizeof(struct idt_gate_desc) * IDT_NR);
+    idt = (struct idt_gate_desc *)(idtr->base
+                                   + nr * sizeof(struct idt_gate_desc));
 
     idt->target_lo = (u16)(base & 0xffff);
     idt->selector = (u16)selector;
     idt->reserved1 = 0;
-    idt->flags = flags;// + 0x60;
+    idt->flags = flags;
     idt->target_mid = (u16)((base & 0xffff0000UL) >> 16);
     idt->target_hi = (u16)((base & 0xffffffff00000000UL) >> 32);
     idt->reserved2 = 0;
@@ -44,13 +45,12 @@ idt_setup_intr_gate(int nr, void *target)
 void
 idt_init(void)
 {
-    struct idtr *idtr = IDT_ADDR + sizeof(struct idt_gate_desc) * IDT_NR;
+    struct idtr *idtr;
     int i;
-    u64 sz = IDT_NR * sizeof(struct idt_gate_desc);
 
-    //(u64)kmem_alloc_pages((sz - 1) / PAGESIZE + 1)
+    idtr = (struct idtr *)(IDT_ADDR + sizeof(struct idt_gate_desc) * IDT_NR);
     idtr->base = (u64)idt;
-    idtr->size = sz - 1;
+    idtr->size = IDT_NR * sizeof(struct idt_gate_desc) - 1;
 
     for ( i = 0; i < 256; i++ ) {
         idt_setup_intr_gate(i, &intr_null);
@@ -60,10 +60,9 @@ idt_init(void)
 void
 idt_load(void)
 {
-    struct idtr *idtr = IDT_ADDR + sizeof(struct idt_gate_desc) * IDT_NR;
-    //void *x = &idtr;
-    //__asm__ __volatile__ ( "lidt _idtr" );
-    //__asm__ __volatile__ ( "lidt (%0)" : : "p"(x) );
+    struct idtr *idtr;
+
+    idtr = (struct idtr *)(IDT_ADDR + sizeof(struct idt_gate_desc) * IDT_NR);
     lidt(idtr);
 }
 
@@ -99,12 +98,17 @@ gdt_setup_desc_tss(struct gdt_desc_tss *e, u64 base, u32 limit, u8 type, u8 dpl,
 void
 gdt_init(void)
 {
-    int i;
-    u64 sz = MAX_PROCESSORS * sizeof(struct gdt_desc_tss)
-        + (1 + 2 * 4) * sizeof(struct gdt_desc);
-    struct gdt_desc *gdt = GDT_ADDR;
+    u64 i;
+    u64 sz;
+    struct gdt_desc *gdt;
+    struct gdt_desc_tss *gdt_tss;
+    struct gdtr *gdtr;
 
-    struct gdtr *gdtr = GDT_ADDR + sz;
+    sz = MAX_PROCESSORS * sizeof(struct gdt_desc_tss)
+        + (1 + 2 * 4) * sizeof(struct gdt_desc);
+    gdtr = (struct gdtr *)(GDT_ADDR + sz);
+    gdt = (struct gdt_desc *)GDT_ADDR;
+
     gdtr->base = (u64)gdt;
     gdtr->size = sz - 1;
 
@@ -121,7 +125,9 @@ gdt_init(void)
     gdt_setup_desc(&gdt[8], 0, 0xfffff, 0x2, 3, 1, 0, 1);
 
     for ( i = 0; i < MAX_PROCESSORS; i++ ) {
-        gdt_setup_desc_tss(&gdt[GDT_TSS_SEL_BASE/8+i*2],
+        gdt_tss = (struct gdt_desc_tss *)(GDT_ADDR + GDT_TSS_SEL_BASE
+                                          + (i * 2 * 8));
+        gdt_setup_desc_tss(gdt_tss,
                            P_DATA_BASE + i * P_DATA_SIZE,
                            sizeof(struct tss) - 1, 0x9, 0, 1);
     }
@@ -130,21 +136,21 @@ gdt_init(void)
 void
 gdt_load(void)
 {
-    struct gdtr *gdtr = GDT_ADDR + MAX_PROCESSORS * 16 + (1 + 2 * 4) * 8;
+    struct gdtr *gdtr;
 
+    gdtr = (struct gdtr *)(GDT_ADDR + MAX_PROCESSORS * 16 + (1 + 2 * 4) * 8);
     lgdt(gdtr, GDT_RING0_CODE_SEL);
-    //__asm__ __volatile__ ( "lgdt (%0)" : : "p"(gdtr) );
 }
 
 void
 tss_init(void)
 {
     struct tss *tss;
-    int i;
+    u64 i;
 
     for ( i = 0; i < MAX_PROCESSORS; i++ ) {
         /* Initialize the TSS for each processor (Local APIC) */
-        tss = P_DATA_BASE + i * P_DATA_SIZE;
+        tss = (struct tss *)(P_DATA_BASE + i * P_DATA_SIZE);
         tss->reserved1 = 0;
         tss->rsp0l = 0;
         tss->rsp0h = 0;
