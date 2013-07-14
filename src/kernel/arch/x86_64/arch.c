@@ -27,9 +27,16 @@ void search_clock_sources(void);
 void trampoline(void);
 void trampoline_end(void);
 
+/*
+ * Initialize BSP
+ */
 void
 arch_bsp_init(void)
 {
+    struct p_data *pdata;
+    u64 tsz;
+    u64 i;
+
     /* Initialize VGA display */
     vga_init();
 
@@ -37,6 +44,13 @@ arch_bsp_init(void)
     acpi_load();
 
     /* Count the number of processors (APIC) */
+    /* ToDo */
+
+    /* Stop i8254 timer */
+    i8254_stop_timer();
+
+    /* Initialize I/O APIC */
+    ioapic_init();
 
 
     /* Initialize global descriptor table */
@@ -51,224 +65,69 @@ arch_bsp_init(void)
     tss_init();
     tr_load(this_cpu());
 
-    struct p_data *pdata;
-    pdata = P_DATA_BASE + this_cpu() * P_DATA_SIZE;
+    /* Enable this processor */
+    pdata = (struct p_data *)((u64)P_DATA_BASE + this_cpu() * P_DATA_SIZE);
     pdata->flags |= 1;
-
 
     /* Set general protection fault handler */
     idt_setup_intr_gate(13, &intr_gpf);
 
     /* Initialize local APIC */
-    //lapic_init();
-
-    /* Initialize I/O APIC */
+    lapic_init();
 
 
-    /* Set IRQ0 */
-    //idt_setup_intr_gate(32, &intr_lapic_int32);
-
-
-    /* Stop i8254 timer */
-    i8254_stop_timer();
-
-    u32 apicinfo;
-    __asm__ __volatile__ ( "movq $0x1b,%%rcx; rdmsr" : "=a"(apicinfo) : );
-    kprintf("APIC_BASE=%.16x\r\n", apicinfo);
-    //__asm__ __volatile__ ( "sti" );
-
-    /* Spurious interrupt vector register: default vector 0xff */
-    __asm__ __volatile__ ( "movq $0xfee00000,%rdx; movl 0x0f0(%rdx),%eax;orl $0x100,%eax; movl %eax,0x0f0(%rdx)" );
-    /* Error handler */
-    __asm__ __volatile__ ( "movq $0xfee00000,%rdx; movl 0x370(%rdx),%eax;andl $0xffffff00,%eax; orl $38,%eax; movl %eax,0x370(%rdx)" );
-
-    u8 bootap = 1;
-    int i;
-    kprintf("Current CPU's local APIC ID=%d\r\n", this_cpu());
-    kprintf("Booting AP (lapic=#%d)\r\n", bootap);
-    /* IPI: 4KiB boundry */
-    u64 tsz = trampoline_end - trampoline;
+    /* Check and copy trampoline */
+    tsz = trampoline_end - trampoline;
     if ( tsz > TRAMPOLINE_MAX_SIZE ) {
         /* Error */
-        // panic
-        kprintf("ERROR\r\n");
-        return;
+        panic("Error! Trampoline size exceeds the maximum allowed size.\r\n");
     }
-    /* Copy trampoline */
     for ( i = 0; i < tsz; i++ ) {
         *(u8 *)((u64)TRAMPOLINE_ADDR + i) = *(u8 *)((u64)trampoline + i);
     }
-    /* Get and clear P.2014 */
-    u32 icrl;
-    u32 icrh;
-    /* INIT */
-    __asm__ __volatile__ ("movq $0xfee00300,%%rdx; movl (%%rdx),%%eax; andl $~0xcdfff,%%eax" : "=a"(icrl) : );
-    __asm__ __volatile__ ("movq $0xfee00310,%%rdx; movl (%%rdx),%%eax; andl $0x00ffffff,%%eax" : "=a"(icrh) : );
-    icrl |= 0x0500; /* 101: INIT */
-    icrl |= 0x4000; /* level = assert */
-    /* triger = edge */
-    /* destination = physical */
-    /* destination shorthand = no shorthand */
-    /*icrl |= (TRAMPOLINE_ADDR >> 12) & 0xff;*/ /* Not required */
-    //icrh |= ((u32)bootap << 24); /* Destination APIC ID */
-    icrl |= 0xc0000; /* broadcast excluding self */
-    __asm__ __volatile__ ("movq $0xfee00300,%%rdx; movl %%eax,(%%rdx)" : : "a"(icrl) );
-    __asm__ __volatile__ ("movq $0xfee00310,%%rdx; movl %%eax,(%%rdx)" : : "a"(icrh) );
 
-    kprintf("ICR %.8x %.8x\r\n", icrh, icrl);
+    /* Send INIT IPI */
+    lapic_send_init_ipi();
+
+    /* Wait 10 ms */
     arch_busy_usleep(10000);
 
-    __asm__ __volatile__ ("movq $0xfee00300,%%rdx; movl (%%rdx),%%eax" : "=a"(apicinfo) : );
-    kprintf("ACPI Info: %.8x\r\n", apicinfo);
+    /* Send a Start Up IPI */
+    lapic_send_startup_ipi((TRAMPOLINE_ADDR >> 12) & 0xff);
 
-    u32 err;
-    __asm__ __volatile__ ("movq $0xfee00280,%%rdx; movl (%%rdx),%%eax" : "=a"(err) : );
-    kprintf("Error(1): %.8x\r\n", err);
-
-    /* STARTUP */
-    __asm__ __volatile__ ("movq $0xfee00300,%%rdx; movl (%%rdx),%%eax; andl $~0xcdfff,%%eax" : "=a"(icrl) : );
-    __asm__ __volatile__ ("movq $0xfee00310,%%rdx; movl (%%rdx),%%eax; andl $0x00ffffff,%%eax" : "=a"(icrh) : );
-    icrl |= 0x0600; /* 110: Startup */
-    icrl |= 0x4000; /* level = assert */
-    /* triger = edge */
-    /* destination = physical */
-    /* destination shorthand = no shorthand */
-    icrl |= (TRAMPOLINE_ADDR >> 12) & 0xff; /* Vector: FIXME assertion */
-    icrl |= 0xc0000; /* broadcast excluding self */
-    //icrh |= ((u32)bootap << 24); /* Destination APIC ID */
-    __asm__ __volatile__ ("movq $0xfee00300,%%rdx; movl %%eax,(%%rdx)" : : "a"(icrl) );
-    __asm__ __volatile__ ("movq $0xfee00310,%%rdx; movl %%eax,(%%rdx)" : : "a"(icrh) );
-
-    kprintf("ICR %.8x %.8x\r\n", icrh, icrl);
+    /* Wait 200 us */
     arch_busy_usleep(200);
 
-    __asm__ __volatile__ ("movq $0xfee00280,%%rdx; movl (%%rdx),%%eax" : "=a"(err) : );
-    kprintf("Error(2): %.8x\r\n", err);
+    /* Send another Start Up IPI */
+    lapic_send_startup_ipi((TRAMPOLINE_ADDR >> 12) & 0xff);
 
-    /* Startup again */
-    __asm__ __volatile__ ("movq $0xfee00300,%%rdx; movl %%eax,(%%rdx)" : : "a"(icrl) );
-    __asm__ __volatile__ ("movq $0xfee00310,%%rdx; movl %%eax,(%%rdx)" : : "a"(icrh) );
+    /* Wait 200 us */
     arch_busy_usleep(200);
 
 
-#if 0
-    u16 foo;
-    __asm__ __volatile__ ("movw (0x7e00),%%ax" : "=a"(foo) : );
-    kprintf("FOO=%x\r\n", foo);
-#endif
-
-    // $0xfee00300 &=~0xcdfff
-    // $0xfee00310
-    //__asm__ __volatile__ ("movq %%rax,%%dr0" :: "a"(taddr) );
-
-    //kprintf("size %x\r\n", taddr);
-    //__asm__ __volatile__ ("movq %%rax,%%dr0" :: "a"(taddr) );
-
-
-#if 0
-    struct bootinfo *bi;
-    bi = (struct bootinfo *)BOOTINFO_BASE;
-    kprintf("SYSTEM ADDRESS MAP\r\n");
-    for ( i = 0; i < bi->sysaddrmap.n; i++ ) {
-        kprintf("%.16x %.16x %d\r\n", bi->sysaddrmap.entries[i].base,
-                bi->sysaddrmap.entries[i].len, bi->sysaddrmap.entries[i].type);
-    }
-#endif
     kprintf("-----------------------------------\r\n");
-
-
-    apic_test();
 
     char *str = "Welcome to AOS!  Now this message is printed by C function.";
     kprintf("%s\r\n", str);
 
-    arch_busy_usleep(1000000);
+    /* Print out the running processors */
     for ( i = 0; i < MAX_PROCESSORS; i++ ) {
-        pdata = P_DATA_BASE + i * P_DATA_SIZE;
+        pdata = (struct p_data *)((u64)P_DATA_BASE + i * P_DATA_SIZE);
         if ( pdata->flags & 1 ) {
             kprintf("Processor #%d is running.\r\n", i);
         }
     }
 
-
-#if 0
-
-    u64 x;
-    /* MSR_PERF_STAT */
-    x = rdmsr(0x198);
-    kprintf("%.16x\r\n", x);
-    /* MSR_PLATFORM_ID */
-    x = rdmsr(0x17);
-    kprintf("%.16x\r\n", x);
-    /* MSR_PLATFORM_INFO */
-    x = rdmsr(0xce);
-    kprintf("%.16x\r\n", x);
-
-    __asm__ __volatile__ ("movl $0x80000007,%%eax;cpuid;movq %%rdx,%%rax" : "=a"(x) : );
-    kprintf("%.16x\r\n", x);
-
-    __asm__ __volatile__ ("movl $0x1,%%eax;cpuid" : "=a"(x) : );
-    kprintf("%.16x\r\n", x);
-
-    /* MSR_FSB_FREQ */
-    x = rdmsr(0xcd);
-    kprintf("%.16x\r\n", x);
-
-    search_clock_sources();
-
-    kprintf("%.16x\r\n", acpi_pm_tmr_port);
-    kprintf("%.16x\r\n", acpi_ioapic_base);
-#endif
-
-#if 0
-    u64 tc0, tc1;
-    u64 pc0, pc1;
-    u32 t0, t1, t2;
-
-    /* Get local APIC ID */
-    //__asm__ __volatile__ ("movq $0xfee00000,%rdx; movl 0x020(%rdx),%eax; shr $24,%eax; andl $0xff,%eax");
-    __asm__ __volatile__ ("movq $0xfee00000,%rdx; movl $0x10,0x340(%rdx)");
-    __asm__ __volatile__ ("movq $0xfee00000,%rdx; movl $0,0x320(%rdx)");
-    __asm__ __volatile__ ("movq $0xfee00000,%rdx; movl $3,0x3e0(%rdx)");
-    __asm__ __volatile__ ("movq $0xfee00000,%rdx; movl $0xffffffff,0x380(%rdx)");
-
-    t1 = inl(acpi_pm_tmr_port) & 0xffffff;
-    tc0 = rdtsc();
-    __asm__ __volatile__ ("movq $0xfee00000,%%rdx; movl 0x390(%%rdx),%%eax" : "=a"(pc0) : );
-
-    kprintf("TMR: %d\r\n", t1);
-    int cnt = 0;
-    t0 = t1;
-    while ( cnt < 2 ) {
-        t2 = inl(acpi_pm_tmr_port) & 0xffffff;
-        if ( t1 > t2 ) {
-            kprintf("TMR: %d\r\n", t1);
-            cnt++;
-        }
-        t1 = t2;
-        pause();
-    }
-    u64 hz = 3579545;
-    int duration = (0x2000000 - t0);
-    tc1 = rdtsc();
-
-    __asm__ __volatile__ ("movq $0xfee00000,%%rdx; movl 0x390(%%rdx),%%eax" : "=a"(pc1) : );
-    __asm__ __volatile__ ("movq $0xfee00000,%rdx; movl $0x10,0x320(%rdx)");
-
-
-    kprintf("CPU FREQ: %lld Hz\r\n", (tc1 - tc0) * hz / duration);
-    kprintf("BUS FREQ: %lld Hz %.16x %.16x\r\n", 16 * (pc0 - pc1) * hz / duration, pc1, pc0);
-
-    arch_busy_usleep(1000000);
-    kprintf("Test\r\n");
-#endif
-
-
 }
 
+/*
+ * Initialize AP
+ */
 void
 arch_ap_init(void)
 {
+    struct p_data *pdata;
+
     /* Load global descriptor table */
     gdt_load();
 
@@ -278,10 +137,12 @@ arch_ap_init(void)
     /* Load task register */
     tr_load(this_cpu());
 
-    struct p_data *pdata;
-    pdata = P_DATA_BASE + this_cpu() * P_DATA_SIZE;
+    /* Set a flag to this CPU data area */
+    pdata = (struct p_data *)((u64)P_DATA_BASE + this_cpu() * P_DATA_SIZE);
     pdata->flags |= 1;
 
+    /* Initialize local APIC */
+    lapic_init();
 }
 
 
@@ -388,6 +249,15 @@ void
 arch_spin_unlock(int *lock)
 {
     spin_unlock(lock);
+}
+
+/*
+ * Halt processor
+ */
+void
+arch_halt(void)
+{
+    halt();
 }
 
 /*

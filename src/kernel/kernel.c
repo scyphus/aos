@@ -333,6 +333,17 @@ kprintf(const char *fmt, ...)
     return 0;
 }
 
+/*
+ * Print a panic message and hlt processor
+ */
+void
+panic(const char *s)
+{
+    kprintf("%s\r\n", s);
+    /* FIXME: Stop all processors */
+    arch_halt();
+}
+
 static int lock;
 
 /*
@@ -354,16 +365,8 @@ kmain(void)
 void
 apmain(void)
 {
-    u32 x;
-
     /* Initialize this AP */
     arch_ap_init();
-
-    arch_busy_usleep(100000);
-    arch_spin_lock(&lock);
-    __asm__ __volatile__ ("movl $0xfee00000,%%edx; movl 0x20(%%edx),%%eax; shrl $24,%%eax" : "=a"(x) : );
-    kprintf("AP #%d started\r\n", x);
-    arch_spin_unlock(&lock);
 }
 
 

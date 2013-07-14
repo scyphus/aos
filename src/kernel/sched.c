@@ -7,18 +7,15 @@
 
 /* $Id$ */
 
-#ifndef _KERNEL_APIC_H
-#define _KERNEL_APIC_H
-
 #include <aos/const.h>
 
-void lapic_init(void);
-void lapic_send_init_ipi(void);
-void lapic_send_startup_ipi(u8);
-
-void ioapic_init(void);
-
-#endif /* _KERNEL_APIC_H */
+/*
+ * Initialize the scheduler
+ */
+void
+sched_init(void)
+{
+}
 
 /*
  * Local variables:

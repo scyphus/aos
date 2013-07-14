@@ -15,12 +15,12 @@
 #define MAX_PROCESSORS  256
 #define IDT_NR          256
 
-#define BOOTINFO_BASE           0x8000
-#define TRAMPOLINE_ADDR         0x70000
+#define BOOTINFO_BASE           (u64)0x8000
+#define TRAMPOLINE_ADDR         (u64)0x70000
 #define TRAMPOLINE_MAX_SIZE     0x4000
-#define GDT_ADDR                0x74000
+#define GDT_ADDR                (u64)0x74000
 #define GDT_MAX_SIZE            0x2000
-#define IDT_ADDR                0x76000
+#define IDT_ADDR                (u64)0x76000
 #define IDT_MAX_SIZE            0x2000
 
 #define GDT_NULL_SEL            (0<<3)
@@ -35,10 +35,15 @@
 #define GDT_TSS_SEL_BASE        (9<<3)
 
 /* Also defined in asmconst.h */
-#define	P_DATA_SIZE     0x10000
-#define P_DATA_BASE     0x1000000
-#define P_TSS_OFFSET    0x20
-#define P_STACK_GUARD   0x10
+#define	P_DATA_SIZE             0x10000
+#define P_DATA_BASE             (u64)0x1000000
+#define P_TSS_OFFSET            0x20
+#define P_STACK_GUARD           0x10
+
+#define APIC_BASE               (u64)0xfee00000
+#define APIC_SIVR               0x0f0
+#define APIC_ICR_LOW            0x300
+#define APIC_ICR_HIGH           0x310
 
 /*
  * TSS
@@ -126,6 +131,10 @@ int this_cpu(void);
 int acpi_load_rsdp(void);
 
 void asm_ioapic_map_intr(u64, u64, u64);
+u32 asm_lapic_read(u64);
+void asm_lapic_write(u64, u32);
+
+void halt(void);
 
 /* spinlock.s */
 void spin_lock(int *);

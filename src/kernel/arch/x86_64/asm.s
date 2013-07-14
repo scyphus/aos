@@ -44,6 +44,9 @@
 	.globl	_intr_gpf
 	.globl	_apic_test
 	.globl	_asm_ioapic_map_intr
+	.globl	_asm_lapic_read
+	.globl	_asm_lapic_write
+	.globl	_halt
 
 	.code64
 
@@ -58,9 +61,9 @@ apstart64:
 	call	_apmain
 	jmp	idle
 
-halt:
+_halt:
 	hlt
-	jmp	halt
+	jmp	_halt
 
 /* Idle process */
 idle:
@@ -480,35 +483,14 @@ _apic_test:
 	ret
 
 
-/*
- * Write to local APIC
- *   * Input
- *     - %eax: Value
- *     - %rbx: APIC offset
- *   * Output
- *     - void
- */
-lapic_write:
-	pushq	%rdx
-	movq	apic_base,%rdx
-	addq	%rbx,%rdx
-	movl	%eax,(%rdx)
-	popq	%rdx
+/* void asm_lapic_read(void *addr, u32 val); */
+_asm_lapic_write:
+	movl	%esi,(%rdi)
 	ret
 
-/*
- * Read from local APIC
- *   * Input
- *     - %rbx: APIC offset
- *   * Output
- *     - %eax: Value
- */
-lapic_read:
-	pushq	%rdx
-	movq	apic_base,%rdx
-	addq	%rbx,%rdx
-	movl	(%rdx),%eax
-	popq	%rdx
+/* u32 asm_lapic_read(void *addr); */
+_asm_lapic_read:
+	movl	(%rdi),%eax
 	ret
 
 lapic_uwait:
