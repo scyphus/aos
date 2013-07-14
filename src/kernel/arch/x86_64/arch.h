@@ -136,6 +136,9 @@ void asm_lapic_write(u64, u32);
 
 void halt(void);
 
+void intr_apic_int32(void);
+void intr_apic_int33(void);
+
 /* spinlock.s */
 void spin_lock(int *);
 void spin_unlock(int *);

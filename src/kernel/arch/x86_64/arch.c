@@ -49,9 +49,6 @@ arch_bsp_init(void)
     /* Stop i8254 timer */
     i8254_stop_timer();
 
-    /* Initialize I/O APIC */
-    ioapic_init();
-
 
     /* Initialize global descriptor table */
     gdt_init();
@@ -60,6 +57,15 @@ arch_bsp_init(void)
     /* Initialize interrupt descriptor table */
     idt_init();
     idt_load();
+
+    /* Setup interrupt handler */
+    idt_setup_intr_gate(32, &intr_apic_int32); /* IRQ0 */
+    idt_setup_intr_gate(33, &intr_apic_int33); /* IRQ1 */
+
+    /* Initialize I/O APIC */
+    ioapic_init();
+    ioapic_map_intr(0x21, 1, acpi_ioapic_base);
+
 
     /* Initialize TSS and load it */
     tss_init();
@@ -118,6 +124,17 @@ arch_bsp_init(void)
         }
     }
 
+
+    /* Initialize local APIC counter */
+    //APIC_INITTMR,0x380
+    //APIC_CURTMR,0x390
+    //APIC_TMRDIV,0x3e0
+    //APIC_LVT_TMR,0x320
+
+    __asm__ __volatile__ ( "movq $0xfee00000,%rdx; movl $0x20020,%eax; movl %eax,0x320(%rdx)" );
+    __asm__ __volatile__ ( "movq $0xfee00000,%rdx; movl $03,%eax; movl %eax,0x3e0(%rdx)" );
+    //__asm__ __volatile__ ( "movq $0xfee00000,%rdx; movl $0xffffffff,%ebx; movl %ebx,0x380(%rdx)" );
+    __asm__ __volatile__ ( "movq $0xfee00000,%rdx; movl $0xffffff,%ebx; movl %ebx,0x380(%rdx)" );
 }
 
 /*

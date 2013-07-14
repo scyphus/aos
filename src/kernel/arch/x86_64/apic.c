@@ -11,8 +11,6 @@
 #include "arch.h"
 #include "apic.h"
 
-extern u64 acpi_ioapic_base;
-
 #define ICR_INIT                0x00000500
 #define ICR_STARTUP             0x00000600
 #define ICR_LEVEL_ASSERT        0x00004000
@@ -98,10 +96,27 @@ ioapic_init(void)
 }
 
 void
-ioapic_map_intr(u64 src, u64 dst)
+ioapic_map_intr(u64 intvec, u64 tbldst, u64 ioapic_base)
 {
+    u64 val;
+
+    /*
+     * 63:56    destination field
+     * 16       interrupt mask (1: masked for edge sensitive)
+     * 15       trigger mode (1=level sensitive, 0=edge sensitive)
+     * 14       remote IRR (R/O) (1 if local APICs accept the level interrupts)
+     * 13       interrupt input pin polarity (0=high active, 1=low active)
+     * 12       delivery status (R/O)
+     * 11       destination mode (0=physical, 1=logical)
+     * 10:8     delivery mode
+     *          000 fixed, 001 lowest priority, 010 SMI, 011 reserved
+     *          100 NMI, 101 INIT, 110 reserved, 111 ExtINT
+     * 7:0      interrupt vector
+     */
+    val = intvec;
+
     /* To avoid compiler optimization, call assembler function */
-    asm_ioapic_map_intr(src, dst, acpi_ioapic_base);
+    asm_ioapic_map_intr(val, tbldst, ioapic_base);
 }
 
 /*

@@ -340,7 +340,7 @@ void
 panic(const char *s)
 {
     kprintf("%s\r\n", s);
-    /* FIXME: Stop all processors */
+    /* FIXME: To stop all processors */
     arch_halt();
 }
 
@@ -369,6 +369,54 @@ apmain(void)
     arch_ap_init();
 }
 
+
+
+
+
+
+
+
+
+
+
+static unsigned char keymap[] =
+    "  1234567890-= \tqwertyuiop    asdfghjkl;'` \\zxcvbnm                          "
+    "                                                                             ";
+void
+kintr_int32(void)
+{
+    arch_putc('x');
+
+    /* To disable, mask */
+    //__asm__ __volatile__ ( "movq $0xfee00000,%rdx; movl $0x10000,%eax; movl %eax,0x320(%rdx)" ); // to disable
+}
+
+unsigned char
+kbd_enc_read_buf(void)
+{
+    //PORT_KBD_ENC_BUF
+    return inb(0x0060);
+}
+
+void
+kintr_int33(void)
+{
+    unsigned char scan_code;
+
+    arch_spin_lock(&lock);
+
+    scan_code = kbd_enc_read_buf();
+
+    if ( !(0x80 & scan_code) ) {
+        if ( scan_code == 1 ) {
+            /* Escape key */
+            //poweroff();
+        }
+        arch_putc(keymap[scan_code]);
+    }
+
+    arch_spin_unlock(&lock);
+}
 
 /*
  * Local variables:

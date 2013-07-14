@@ -42,6 +42,8 @@
 	.globl	_this_cpu
 	.globl	_intr_null
 	.globl	_intr_gpf
+	.globl	_intr_apic_int32
+	.globl	_intr_apic_int33
 	.globl	_apic_test
 	.globl	_asm_ioapic_map_intr
 	.globl	_asm_lapic_read
@@ -154,24 +156,24 @@ _ltr:
 	ltr	%ax
 	ret
 
-/* void asm_ioapic_map_intr(u64 src, u64 dst, u64 ioapic_base); */
+/* void asm_ioapic_map_intr(u64 val, u64 tbldst, u64 ioapic_base); */
 _asm_ioapic_map_intr:
 	/* Copy arguments */
 	movq	%rdi,%rax	/* src */
-	movq	%rsi,%rcx	/* dst */
-	/* rdx = ioapic_base*/
+	movq	%rsi,%rcx	/* tbldst */
+	/* rdx = ioapic_base */
 
-	/* *(u32 *)(ioapic_base + 0x00) = dst * 2 + 0x10 */
-	shlq	$2,%rcx		/* dst * 2 */
-	addq	$0x10,%rcx	/* dst * 2 + 0x10 */
+	/* *(u32 *)(ioapic_base + 0x00) = tbldst * 2 + 0x10 */
+	shlq	$1,%rcx		/* tbldst * 2 */
+	addq	$0x10,%rcx	/* tbldst * 2 + 0x10 */
 	sfence
-	movl	%ecx,0x00(%rdx)
+	movl	%ecx,0x00(%rdx)	/* IOREGSEL (0x00) */
 	/* *(u32 *)(ioapic_base + 0x10) = (u32)src */
 	sfence
-	movl	%eax,0x10(%rdx)
+	movl	%eax,0x10(%rdx)	/* IOWIN (0x10) */
 	shrq	$32,%rax
-	/* *(u32 *)(ioapic_base + 0x00) = dst * 2 + 0x10 + 1 */
-	addq	$1,%rcx		/* dst * 2 + 0x10 + 1 */
+	/* *(u32 *)(ioapic_base + 0x00) = tbldst * 2 + 0x10 + 1 */
+	addq	$1,%rcx		/* tbldst * 2 + 0x10 + 1 */
 	sfence
 	movl	%ecx,0x00(%rdx)
 	/* *(u32 *)(ioapic_base + 0x10) = (u32)(src >> 32) */
@@ -314,6 +316,13 @@ _intr_gpf:
 	pushw	%fs
 	pushw	%gs
 
+
+	.if	\irq == 0
+	call	_kintr_int32
+	.elseif	\irq == 1
+	call	_kintr_int33
+	.endif
+
 	/* EOI for APIC */
 	movw	$0x1b,%rcx
 	rdmsr
@@ -321,12 +330,11 @@ _intr_gpf:
 	addq	%rax,%rdx
 	/* APIC_BASE */
 	andq	$0xfffffffffffff000,%rdx
-	movl	0x20(%rdx),%eax	/*APIC_ID*/
-	//movq	%rax,%dr0
+	movl	0x20(%rdx),%eax		/*APIC_ID*/
 
 	movl	0xb0(%rdx),%eax
 	xorl	%eax,%eax
-	movl	%eax,(%rdx)
+	movl	%eax,0xb0(%rdx)
 	.endm
 
 	.macro	intr_lapic_irq_done
@@ -349,13 +357,16 @@ _intr_gpf:
 	popq	%rax
 	.endm
 
-_intr_lapic_int32:
+_intr_apic_int32:
 	intr_lapic_irq 0
 	intr_lapic_irq_done
 	iretq
 
-_intr_lapic_int33:
-	ret
+_intr_apic_int33:
+	intr_lapic_irq 1
+	//jmp	_task_restart
+	intr_lapic_irq_done
+	iretq
 
 
 

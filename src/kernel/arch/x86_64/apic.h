@@ -17,6 +17,7 @@ void lapic_send_init_ipi(void);
 void lapic_send_startup_ipi(u8);
 
 void ioapic_init(void);
+void ioapic_map_intr(u64, u64, u64);
 
 #endif /* _KERNEL_APIC_H */
 

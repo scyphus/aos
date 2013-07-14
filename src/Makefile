@@ -42,7 +42,9 @@ kpack: 	kernel/arch/$(ARCH)/entry16.o \
 	$(LD) -N -e kstart -Ttext=0x10000 --oformat binary -o $@ $^
 
 ## Dependencies
-kernel/arch/$(ARCH)/arch.o: kernel/arch/$(ARCH)/arch.h
+kernel/arch/$(ARCH)/arch.o: kernel/arch/$(ARCH)/arch.h \
+	kernel/arch/$(ARCH)/apic.h
+kernel/arch/$(ARCH)/apic.o: kernel/arch/$(ARCH)/apic.h
 
 
 .s.o:
