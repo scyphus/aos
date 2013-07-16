@@ -13,6 +13,12 @@
 
 u64 acpi_ioapic_base;
 u64 acpi_pm_tmr_port;
+u32 acpi_pm1a_ctrl_block;
+u32 acpi_pm1b_ctrl_block;
+u16 acpi_slp_typa;
+u16 acpi_slp_typb;
+u32 acpi_smi_cmd_port;
+u8 acpi_enable;
 
 /*
  * Compute checksum
@@ -103,11 +109,95 @@ acpi_parse_apic(struct acpi_sdt_hdr *sdt)
 }
 
 int
+acpi_parse_dsdt(struct acpi_sdt_hdr *sdt)
+{
+    u32 len;
+    u8 *addr;
+    u8 sz;
+
+    len = sdt->length;
+    addr = (u8 *)((u64)sdt + sizeof(struct acpi_sdt_hdr));
+
+    /* Search \_S5 package in the DSDT */
+    while ( len >= 5 ) {
+        if ( 0 == cmp(addr, (u8 *)"_S5_ ", 4) ) {
+            break;
+        }
+        addr++;
+        len--;
+    }
+    if ( len >= 5 ) {
+        /* S5 was found */
+        if ( 0x08 != *(addr-1) && !(0x08 == *(addr-2) && '\\' == *(addr-1)) ) {
+            /* Invalid AML (0x08 = NameOp) */
+            return -1;
+        }
+        if ( 0x12 != *(addr+4) ) {
+            /* Invalid AML (0x12 = PackageOp) */
+            return -1;
+        }
+
+        /* Skip _S5_\x12 */
+        addr += 5;
+        len -= 5;
+
+        /* Calculate the size of the packet length */
+        sz = (*addr & 0xc0) >> 6;
+        /* Check the length and skip packet length and the number of elements */
+        if ( len < sz + 2 ) {
+            return -1;
+        }
+        addr += sz + 2;
+        len -= sz + 2;
+
+        /* SLP_TYPa */
+        if ( 0x0a == *addr ) {
+            /* byte prefix */
+            if ( len < 1 ) {
+                return -1;
+            }
+            addr++;
+            len--;
+        }
+        if ( len < 1 ) {
+            return -1;
+        }
+        acpi_slp_typa = (*addr) << 10;
+        addr++;
+        len--;
+
+        /* SLP_TYPb */
+        if ( 0x0a == *addr ) {
+            /* byte prefix */
+            if ( len < 1 ) {
+                return -1;
+            }
+            addr++;
+            len--;
+        }
+        if ( len < 1 ) {
+            return -1;
+        }
+        acpi_slp_typb = (*addr) << 10;
+        addr++;
+        len--;
+
+        return 0;
+    } else {
+        /* Not found */
+        return -1;
+    }
+
+    return -1;
+}
+
+int
 acpi_parse_fadt(struct acpi_sdt_hdr *sdt)
 {
     u64 addr;
     struct acpi_sdt_fadt *fadt;
     u32 len;
+    u64 dsdt;
 
     len = 0;
     addr = (u64)sdt;
@@ -116,18 +206,59 @@ acpi_parse_fadt(struct acpi_sdt_hdr *sdt)
 
     if ( sdt->revision >= 3 ) {
         /* FADT revision 2.0 or higher */
-        if ( fadt->x_pm_timer_block.addr_space != 1 ) {
+        if ( fadt->x_pm_timer_block.addr_space == 1 ) {
             /* Must be 1 (System I/O) */
-            return -1;
+            acpi_pm_tmr_port = fadt->x_pm_timer_block.addr;
+            if ( !acpi_pm_tmr_port ) {
+                acpi_pm_tmr_port = fadt->pm_timer_block;
+            }
         }
-        acpi_pm_tmr_port = fadt->x_pm_timer_block.addr;
-        if ( !acpi_pm_tmr_port ) {
-            acpi_pm_tmr_port = fadt->pm_timer_block;
+
+        /* PM1a control block */
+        if ( fadt->x_pm1a_ctrl_block.addr_space == 1 ) {
+            /* Must be 1 (System I/O) */
+            acpi_pm1a_ctrl_block = fadt->x_pm1a_ctrl_block.addr;
+            if ( !acpi_pm1a_ctrl_block ) {
+                acpi_pm1a_ctrl_block = fadt->pm1a_ctrl_block;
+            }
+        }
+
+        /* PM1b control block */
+        if ( fadt->x_pm1b_ctrl_block.addr_space == 1 ) {
+            /* Must be 1 (System I/O) */
+            acpi_pm1b_ctrl_block = fadt->x_pm1b_ctrl_block.addr;
+            if ( !acpi_pm1b_ctrl_block ) {
+                acpi_pm1b_ctrl_block = fadt->pm1b_ctrl_block;
+            }
+        }
+
+        /* DSDT */
+        dsdt = fadt->x_dsdt;
+        if ( !dsdt ) {
+            dsdt = fadt->dsdt;
         }
     } else {
         /* Revision  */
         acpi_pm_tmr_port = fadt->pm_timer_block;
+
+        /* PM1a control block  */
+        acpi_pm1a_ctrl_block = fadt->pm1a_ctrl_block;
+
+        /* PM1b control block  */
+        acpi_pm1b_ctrl_block = fadt->pm1b_ctrl_block;
+
+        /* DSDT */
+        dsdt = fadt->dsdt;
     }
+
+    /* SMI command */
+    acpi_smi_cmd_port = fadt->smi_cmd_port;
+
+    /* ACPI enable */
+    acpi_enable = fadt->acpi_enable;
+
+    /* Parse DSDT */
+    acpi_parse_dsdt((struct acpi_sdt_hdr *)dsdt);
 
     return 0;
 }
@@ -207,6 +338,13 @@ acpi_load(void)
 
     acpi_pm_tmr_port = 0;
     acpi_ioapic_base = 0;
+    acpi_pm1a_ctrl_block = 0;
+    acpi_pm1b_ctrl_block = 0;
+    acpi_slp_typa = 0;
+    acpi_slp_typb = 0;
+    acpi_smi_cmd_port = 0;
+    acpi_enable = 0;
+
 
     /* Check 1KB of EBDA, first */
     ebda = *(u16 *)0x040e;

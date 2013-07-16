@@ -135,6 +135,19 @@ arch_bsp_init(void)
     __asm__ __volatile__ ( "movq $0xfee00000,%rdx; movl $03,%eax; movl %eax,0x3e0(%rdx)" );
     //__asm__ __volatile__ ( "movq $0xfee00000,%rdx; movl $0xffffffff,%ebx; movl %ebx,0x380(%rdx)" );
     __asm__ __volatile__ ( "movq $0xfee00000,%rdx; movl $0xffffff,%ebx; movl %ebx,0x380(%rdx)" );
+
+
+    /* SLP_EN = 1<<13 */
+
+    //kprintf("PM1b: %x, %x\r\n", acpi_pm1b_ctrl_block, acpi_slp_typb | (1<<13));
+    kprintf("SMI: %x, %x\r\n", acpi_smi_cmd_port, acpi_enable);
+    kprintf("    %x\r\n", inw(acpi_pm1a_ctrl_block));
+    outb(acpi_smi_cmd_port, acpi_enable);
+    arch_busy_usleep(3000000);
+    kprintf("    %x\r\n", inw(acpi_pm1a_ctrl_block));
+    kprintf("PM1a: %x, %x\r\n", acpi_pm1a_ctrl_block, acpi_slp_typa | (1<<13));
+    outw(acpi_pm1a_ctrl_block, acpi_slp_typa | (1<<13));
+    //outw(acpi_pm1b_ctrl_block, acpi_slp_typb | (1<<13));
 }
 
 /*

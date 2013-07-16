@@ -145,6 +145,12 @@ void spin_unlock(int *);
 
 extern u64 acpi_ioapic_base;
 extern u64 acpi_pm_tmr_port;
+extern u32 acpi_pm1a_ctrl_block;
+extern u32 acpi_pm1b_ctrl_block;
+extern u16 acpi_slp_typa;
+extern u16 acpi_slp_typb;
+extern u32 acpi_smi_cmd_port;
+extern u8 acpi_enable;
 
 
 #endif /* _KERNEL_ARCH_H */
