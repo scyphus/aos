@@ -18,7 +18,7 @@ u32 acpi_pm1b_ctrl_block;
 u16 acpi_slp_typa;
 u16 acpi_slp_typb;
 u32 acpi_smi_cmd_port;
-u8 acpi_enable;
+u8 acpi_enable_val;
 
 /*
  * Compute checksum
@@ -255,7 +255,7 @@ acpi_parse_fadt(struct acpi_sdt_hdr *sdt)
     acpi_smi_cmd_port = fadt->smi_cmd_port;
 
     /* ACPI enable */
-    acpi_enable = fadt->acpi_enable;
+    acpi_enable_val = fadt->acpi_enable;
 
     /* Parse DSDT */
     acpi_parse_dsdt((struct acpi_sdt_hdr *)dsdt);
@@ -343,7 +343,7 @@ acpi_load(void)
     acpi_slp_typa = 0;
     acpi_slp_typb = 0;
     acpi_smi_cmd_port = 0;
-    acpi_enable = 0;
+    acpi_enable_val = 0;
 
 
     /* Check 1KB of EBDA, first */
@@ -392,6 +392,58 @@ acpi_busy_usleep(u64 usec)
         prev = cur;
         pause();
     }
+}
+
+int
+acpi_enable(void)
+{
+    if ( (inw(acpi_pm1a_ctrl_block) & ACPI_SCI_EN) == 0 ) {
+        /* Enable ACPI */
+        outb(acpi_smi_cmd_port, acpi_enable_val);
+
+        if ( 0 == acpi_smi_cmd_port && 0 == acpi_enable_val ) {
+            /* ACPI cannot enable */
+            return -1;
+        }
+        /* Enable ACPI */
+        outb(acpi_smi_cmd_port, acpi_enable_val);
+
+        if ( (inw(acpi_pm1a_ctrl_block) & ACPI_SCI_EN) == 0 ) {
+            /* Failed to enable ACPI */
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+int
+acpi_poweroff(void)
+{
+    int i;
+
+    if ( 0 != acpi_enable() ) {
+        return -1;
+    }
+
+    /* TYPa */
+    if ( acpi_pm1a_ctrl_block && acpi_slp_typa ) {
+        /* Try 30 times in 3 seconds */
+        for ( i = 0; i < 30; i++ ) {
+            outw(acpi_pm1a_ctrl_block, acpi_slp_typa | ACPI_SLP_EN);
+            acpi_busy_usleep(100000);
+        }
+    }
+    /* TYPb */
+    if ( acpi_pm1b_ctrl_block && acpi_slp_typb ) {
+        /* Try 30 times in 3 seconds */
+        for ( i = 0; i < 30; i++ ) {
+            outw(acpi_pm1b_ctrl_block, acpi_slp_typb | ACPI_SLP_EN);
+            acpi_busy_usleep(100000);
+        }
+    }
+
+    return -1;
 }
 
 

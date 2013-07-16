@@ -410,7 +410,7 @@ kintr_int33(void)
     if ( !(0x80 & scan_code) ) {
         if ( scan_code == 1 ) {
             /* Escape key */
-            //poweroff();
+            acpi_poweroff();
         }
         arch_putc(keymap[scan_code]);
     }

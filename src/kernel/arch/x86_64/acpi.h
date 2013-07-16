@@ -13,6 +13,8 @@
 #include <aos/const.h>
 
 #define ACPI_TMR_HZ 3579545
+#define ACPI_SCI_EN 0x1
+#define ACPI_SLP_EN (1<<13)
 
 struct acpi_rsdp {
     char signature[8];
@@ -145,6 +147,7 @@ struct acpi_sdt_fadt {
 
 int acpi_load(void);
 void acpi_busy_usleep(u64);
+int acpi_poweroff(void);
 
 #endif /* _KERNEL_ACPI_H */
 

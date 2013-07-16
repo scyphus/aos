@@ -150,7 +150,7 @@ extern u32 acpi_pm1b_ctrl_block;
 extern u16 acpi_slp_typa;
 extern u16 acpi_slp_typb;
 extern u32 acpi_smi_cmd_port;
-extern u8 acpi_enable;
+extern u8 acpi_enable_val;
 
 
 #endif /* _KERNEL_ARCH_H */
