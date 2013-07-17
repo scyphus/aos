@@ -44,7 +44,8 @@
 	.globl	_intr_gpf
 	.globl	_intr_apic_int32
 	.globl	_intr_apic_int33
-	.globl	_apic_test
+	.globl	_intr_crash
+	.globl	_intr_apic_spurious
 	.globl	_asm_ioapic_map_intr
 	.globl	_asm_lapic_read
 	.globl	_asm_lapic_write
@@ -64,8 +65,14 @@ apstart64:
 	jmp	idle
 
 _halt:
+	cli
 	hlt
 	jmp	_halt
+
+_crash:
+	cli
+	hlt
+	jmp	_crash
 
 /* Idle process */
 idle:
@@ -368,147 +375,24 @@ _intr_apic_int33:
 	intr_lapic_irq_done
 	iretq
 
+_intr_crash:
+	jmp	_halt
 
-
-
-_apic_test:
-	mov	$0x61,%dx
-	inb	%dx,%al
-	andb	$0xfc,%al
-	outb	%al,%dx
-	orb	$3,%al
-	outb	%al,%dx
-	andb	$0xfc,%al
-	outb	%al,%dx
-
-	movw	$0x1b,%rcx
-	rdmsr
-	
-	//movq	%rax,%dr0
-	//movq	%rdx,%dr1
-	
-	shlq	$32,%rdx
-	addq	%rax,%rdx
-	andq	$0xfffffffffffff000,%rdx
-	movq	%rdx,apic_base
-
-	btl	$11,%eax	/* xAPIC */
-	btl	$10,%eax	/* x2APIC */
-	btl	$8,%eax		/* BSP */
-
-	/* Initialize */
-	//movq	apic_base,%rbx
-	//addq	$APIC_DFR,%rbx
-	//movl	$0xffffffff,(%rbx)	/* Flat */
-
-	//movq	apic_base,%rbx
-	//addq	$APIC_LDR,%rbx
-	//movl	(%rbx),%eax
-	//andl	$0x00ffffff,%eax	/* Logical APIC ID = 0 */
-
-
-	movl	apic_base,%edx
-	//addl	$APIC_LVT_TMR,%edx
-	movl	$0x10,APIC_LVT_TMR(%edx)	/* Disable */
-
-	movl	apic_base,%edx
-	//addl	$APIC_LVT_PERF,%edx
-	movl	$0x100,APIC_LVT_PERF(%edx)	/* NMI */
-
-	/* GLOBAL APIC ENABLE FLAG MUST BE 1 */
-
-	/* Spurious interrupt vector register: default vector 0xff */
-	movl	apic_base,%edx
-	//addl	$APIC_SIVR,%edx
-	movl	APIC_SIVR(%edx),%eax
-	orl	$0x100,%eax	/* Enable */
-	movl	%eax,APIC_SIVR(%edx)
-
-	/* APIC Timer */
-	movl	apic_base,%edx
-	//addl	$APIC_LVT_TMR,%edx
-	movl	$0,%eax
-	movl	%eax,APIC_LVT_TMR(%edx)
-
-	/* Divide configuration register */
-	movl	apic_base,%edx
-	//addl	$APIC_TMRDIV,%edx
-	movl	$0x03,%eax
-	movl	%eax,APIC_TMRDIV(%edx)
-
-	xorl	%ebx,%ebx
-	decl	%ebx
-
-	/* Enable PIT Counter2 */
-	movw	$0x61,%dx
-	inb	%dx,%al
-	andb	$0xfd,%al		/* Clear bit 1 (disable speaker) */
-	orb	$1,%al			/* Set bit 0 */
-	outb	%al,%dx
-	/* 1/100 sec */
-	movb	$0xb2,%al		/* CNTR2, RL_DATA, Oneshot mode */
-	outb	%al,$0x43		/* Write to command reg */
-	movb	$0x9b,%al		/* Set clock (LSB) */
-	outb	%al,$0x42
-	movb	$0x2e,%al		/* Set clock (MSB) */
-	outb	%al,$0x42
-	/* Reset PIT one-shot counter */
-	inb	%dx,%al			/* %dx=0x61 */
-	andb	$0xfe,%al		/* Clean bit 0 */
-	outb	%al,%dx
-	orb	$1,%al
-	outb	%al,%dx
-	/* Reset APIC timer*/
-	movq	apic_base,%rdx
-	//addq	$APIC_INITTMR,%rdx
-	movl	%ebx,APIC_INITTMR(%rdx)
-	/* Wait until PIT counter reaches zero */
-	movw	$0x61,%dx
-1:
-	pause
-	inb	%dx,%al
-	andb	$0x20,%al		/* Bit 5: Out-pin of counter 2 */
-	jz	1b
-	/* Stop APIC Timer */
-	movq	apic_base,%rdx
-	//addq	$APIC_LVT_TMR,%rdx
-	movw	$0x10,APIC_LVT_TMR(%rdx)		/* APIC disable */
-	/* Get current counter value (from 0xffffffff) */
-	movq	apic_base,%rdx
-	//addq	$APIC_CURTMR,%rdx
-	movl	APIC_CURTMR(%rdx),%ebx
-
-	/* To positive value */
-	xorl	%eax,%eax
-	subl	%ebx,%eax
-	incl	%eax
-	/* Multiply by 16 */
-	shll	$4,%eax
-	/* Multiply by 100 (100Hz) */
-	movl	$100,%ebx
-	mull	%ebx		/* %edx:%eax <- %eax * %ebx */
-	//movq	%rax,%dr0
-
-	movl	%eax,(apic_hz)
-
-	ret
+/* Spurious interrupt does not require EOI */
+_intr_apic_spurious:
+	iretq
 
 
 /* void asm_lapic_read(void *addr, u32 val); */
 _asm_lapic_write:
+	mfence		/* Prevent out-of-order execution */
 	movl	%esi,(%rdi)
 	ret
 
 /* u32 asm_lapic_read(void *addr); */
 _asm_lapic_read:
+	mfence		/* Prevent out-of-order execution */
 	movl	(%rdi),%eax
-	ret
-
-lapic_uwait:
-	pushq	%rbp
-	movq	%rsp,%rbp
-
-	leaveq
 	ret
 
 lapic_set_timer_one_shot:

@@ -340,8 +340,7 @@ void
 panic(const char *s)
 {
     kprintf("%s\r\n", s);
-    /* FIXME: To stop all processors */
-    arch_halt();
+    arch_crash();
 }
 
 static int lock;
@@ -370,22 +369,13 @@ apmain(void)
 }
 
 
-
-
-
-
-
-
-
-
-
 static unsigned char keymap[] =
     "  1234567890-= \tqwertyuiop    asdfghjkl;'` \\zxcvbnm                          "
     "                                                                             ";
 void
 kintr_int32(void)
 {
-    arch_putc('x');
+    arch_putc('0' + this_cpu());
 
     /* To disable, mask */
     //__asm__ __volatile__ ( "movq $0xfee00000,%rdx; movl $0x10000,%eax; movl %eax,0x320(%rdx)" ); // to disable

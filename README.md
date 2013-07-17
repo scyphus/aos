@@ -72,6 +72,15 @@ Hirochika Asai
         u32 attr;
     }
 
+## Interrupt Service Routine
+  20 IRQ0  I/O APIC timer
+  21 IRQ1  keyboard
+  50 Local APIC timer
+  fe IPI Panic
+  ff Spurious interrupt vector
+
+
+
 ## Memo
 
 ### Steps

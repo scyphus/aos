@@ -22,7 +22,7 @@ void arch_ap_init(void);
 
 void arch_putc(int);
 void arch_busy_usleep(u64);
-void arch_halt(void);
+void arch_crash(void);
 
 void arch_spin_lock(int *);
 void arch_spin_unlock(int *);

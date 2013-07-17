@@ -62,6 +62,8 @@ arch_bsp_init(void)
     /* Setup interrupt handler */
     idt_setup_intr_gate(32, &intr_apic_int32); /* IRQ0 */
     idt_setup_intr_gate(33, &intr_apic_int33); /* IRQ1 */
+    idt_setup_intr_gate(0xfe, &intr_crash); /* crash */
+    idt_setup_intr_gate(0xff, &intr_apic_spurious); /* Spurious interrupt */
 
     /* Initialize I/O APIC */
     ioapic_init();
@@ -111,7 +113,11 @@ arch_bsp_init(void)
     /* Wait 200 us */
     arch_busy_usleep(200);
 
+    /* ToDo: Synchronize all processors */
 
+
+
+    /* Print a message */
     kprintf("-----------------------------------\r\n");
 
     char *str = "Welcome to AOS!  Now this message is printed by C function.";
@@ -125,17 +131,12 @@ arch_bsp_init(void)
         }
     }
 
-
     /* Initialize local APIC counter */
-    //APIC_INITTMR,0x380
-    //APIC_CURTMR,0x390
-    //APIC_TMRDIV,0x3e0
-    //APIC_LVT_TMR,0x320
+    lapic_start_timer(LAPIC_HZ, 0x20);
 
-    __asm__ __volatile__ ( "movq $0xfee00000,%rdx; movl $0x20020,%eax; movl %eax,0x320(%rdx)" );
-    __asm__ __volatile__ ( "movq $0xfee00000,%rdx; movl $03,%eax; movl %eax,0x3e0(%rdx)" );
-    //__asm__ __volatile__ ( "movq $0xfee00000,%rdx; movl $0xffffffff,%ebx; movl %ebx,0x380(%rdx)" );
-    __asm__ __volatile__ ( "movq $0xfee00000,%rdx; movl $0xffffff,%ebx; movl %ebx,0x380(%rdx)" );
+
+    //arch_busy_usleep(10000000);
+    //panic("PANIC!!!");
 }
 
 /*
@@ -161,6 +162,11 @@ arch_ap_init(void)
 
     /* Initialize local APIC */
     lapic_init();
+
+    /* Initialize local APIC counter */
+    lapic_start_timer(LAPIC_HZ, 0x20);
+
+    arch_busy_usleep(1);
 }
 
 
@@ -270,11 +276,13 @@ arch_spin_unlock(int *lock)
 }
 
 /*
- * Halt processor
+ * Halt all processors
  */
 void
-arch_halt(void)
+arch_crash(void)
 {
+    /* Send IPI and halt self */
+    lapic_send_fixed_ipi(0xfe);
     halt();
 }
 

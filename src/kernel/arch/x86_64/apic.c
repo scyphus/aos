@@ -11,6 +11,7 @@
 #include "arch.h"
 #include "apic.h"
 
+#define ICR_FIXED               0x00000000
 #define ICR_INIT                0x00000500
 #define ICR_STARTUP             0x00000600
 #define ICR_LEVEL_ASSERT        0x00004000
@@ -26,11 +27,16 @@ void
 lapic_init(void)
 {
     u32 reg;
+    struct p_data *pdata;
 
     /* Enable APIC at spurious interrupt vector register: default vector 0xff */
     reg = asm_lapic_read(APIC_BASE + APIC_SIVR);
     reg |= 0x100;
     asm_lapic_write(APIC_BASE + APIC_SIVR, reg);
+
+    /* Set CPU frequency to this CPU data area */
+    pdata = (struct p_data *)((u64)P_DATA_BASE + this_cpu() * P_DATA_SIZE);
+    pdata->freq = lapic_estimate_freq();
 }
 
 /*
@@ -71,21 +77,102 @@ lapic_send_startup_ipi(u8 vector)
     asm_lapic_write(APIC_BASE + APIC_ICR_HIGH, icrh);
 }
 
+/*
+ * Broadcast fixed IPI
+ */
+void
+lapic_send_fixed_ipi(u8 vector)
+{
+    u32 icrl;
+    u32 icrh;
+
+    icrl = asm_lapic_read(APIC_BASE + APIC_ICR_LOW);
+    icrh = asm_lapic_read(APIC_BASE + APIC_ICR_HIGH);
+
+    icrl = (icrl & ~0x000cdfff) | ICR_FIXED | ICR_DEST_ALL_EX_SELF | vector;
+    icrh = icrh & 0x000fffff;
+
+    asm_lapic_write(APIC_BASE + APIC_ICR_LOW, icrl);
+    asm_lapic_write(APIC_BASE + APIC_ICR_HIGH, icrh);
+}
 
 /*
- * Estimate bus frequency using ACPI PM timer
+ * Start local APIC timer
+ */
+void
+lapic_start_timer(u64 freq, u8 vec)
+{
+    /* Estimate frequency first */
+    u64 busfreq;
+    struct p_data *pdata;
+
+    /* Get CPU frequency to this CPU data area */
+    pdata = (struct p_data *)((u64)P_DATA_BASE + this_cpu() * P_DATA_SIZE);
+    busfreq = pdata->freq;
+
+    /* Set counter */
+    asm_lapic_write(APIC_BASE + APIC_LVT_TMR, APIC_LVT_PERIODIC | (u32)vec);
+    asm_lapic_write(APIC_BASE + APIC_TMRDIV, APIC_TMRDIV_X16);
+    asm_lapic_write(APIC_BASE + APIC_INITTMR, (busfreq >> 4) / freq);
+}
+
+/*
+ * Stop APIC timer
+ */
+void
+lapic_stop_timer(void)
+{
+    /* Disable timer */
+    asm_lapic_write(APIC_BASE + APIC_LVT_TMR, APIC_LVT_DISABLE);
+}
+
+
+/*
+ * Estimate bus frequency using busy usleep
  */
 u64
 lapic_estimate_freq(void)
 {
-#if 0
+    u32 t0;
     u32 t1;
-    u32 t2;
-    //t1 = inl(acpi_pm_tmr_port);
-    //t1 = inl(acpi_pm_tmr_port);
-#endif
+    u32 probe;
+    u64 ret;
+
+    /* Set probe timer */
+    probe = APIC_FREQ_PROBE;
+
+    /* Disable timer */
+    asm_lapic_write(APIC_BASE + APIC_LVT_TMR, APIC_LVT_DISABLE);
+
+    /* Set divide configuration */
+    asm_lapic_write(APIC_BASE + APIC_TMRDIV, APIC_TMRDIV_X16);
+
+    /* Vector: lvt[18:17] = 00 : oneshot */
+    asm_lapic_write(APIC_BASE + APIC_LVT_TMR, 0x0);
+
+    /* Set initial counter */
+    t0 = 0xffffffff;
+    asm_lapic_write(APIC_BASE + APIC_INITTMR, t0);
+
+    /* Sleep probing time */
+    arch_busy_usleep(probe);
+
+    /* Disable current timer */
+    asm_lapic_write(APIC_BASE + APIC_LVT_TMR, APIC_LVT_DISABLE);
+
+    /* Read current timer */
+    t1 = asm_lapic_read(APIC_BASE + APIC_CURTMR);
+
+    /* Calculate the APIC bus frequency */
+    ret = (u64)(t0 - t1) << 4;
+    ret = ret * 1000000 / probe;
+
+    return ret;
 }
 
+/*
+ * Initialize I/O APIC
+ */
 void
 ioapic_init(void)
 {
@@ -95,6 +182,9 @@ ioapic_init(void)
 
 }
 
+/*
+ * Set a map entry of interrupt vector
+ */
 void
 ioapic_map_intr(u64 intvec, u64 tbldst, u64 ioapic_base)
 {

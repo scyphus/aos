@@ -44,6 +44,27 @@
 #define APIC_SIVR               0x0f0
 #define APIC_ICR_LOW            0x300
 #define APIC_ICR_HIGH           0x310
+#define APIC_LVT_TMR            0x320
+#define APIC_TMRDIV             0x3e0
+#define APIC_INITTMR            0x380
+#define APIC_CURTMR             0x390
+
+#define APIC_LVT_DISABLE        0x10000
+#define APIC_LVT_ONESHOT        0x00000000
+#define APIC_LVT_PERIODIC       0x00020000
+#define APIC_LVT_TSC_DEADLINE   0x00040000
+
+#define APIC_TMRDIV_X1          0xb
+#define APIC_TMRDIV_X2          0x0
+#define APIC_TMRDIV_X4          0x1
+#define APIC_TMRDIV_X8          0x2
+#define APIC_TMRDIV_X16         0x3
+#define APIC_TMRDIV_X32         0x8
+#define APIC_TMRDIV_X64         0x9
+#define APIC_TMRDIV_X128        0xa
+#define APIC_FREQ_PROBE         100000
+
+#define LAPIC_HZ                100
 
 /*
  * TSS
@@ -84,7 +105,8 @@ struct tss {
 struct p_data {
     u32 flags;          /* bit 0: enabled (working); bit 1 reserved */
     u32 cpu_id;
-    u32 reserved[6];
+    u64 freq;           /* Frequency */
+    u32 reserved[4];
     struct tss tss;
     /* Stack and stack guard follow */
 } __attribute__ ((packed));
@@ -126,18 +148,23 @@ int is_invariant_tsc(void);
 int get_cpu_family(void);
 int get_cpu_model(void);
 
-int this_cpu(void);
-
 int acpi_load_rsdp(void);
 
+/* Busy sleep */
+void arch_busy_usleep(u64);
+
+/* asm.s */
 void asm_ioapic_map_intr(u64, u64, u64);
 u32 asm_lapic_read(u64);
 void asm_lapic_write(u64, u32);
+int this_cpu(void);
 
 void halt(void);
 
 void intr_apic_int32(void);
 void intr_apic_int33(void);
+void intr_crash(void);
+void intr_apic_spurious(void);
 
 /* spinlock.s */
 void spin_lock(int *);

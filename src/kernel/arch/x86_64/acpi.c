@@ -359,6 +359,9 @@ acpi_load(void)
     return acpi_rsdp_search_range(0xe0000, 0x100000);
 }
 
+/*
+ * Get the current ACPI timer
+ */
 u32
 acpi_get_timer(void)
 {
@@ -394,6 +397,9 @@ acpi_busy_usleep(u64 usec)
     }
 }
 
+/*
+ * Enable ACPI
+ */
 int
 acpi_enable(void)
 {
@@ -417,6 +423,9 @@ acpi_enable(void)
     return 0;
 }
 
+/*
+ * Power off the machine
+ */
 int
 acpi_poweroff(void)
 {
