@@ -52,7 +52,7 @@ arch_bsp_init(void)
     /* Stop i8254 timer */
     i8254_stop_timer();
 
-    arch_busy_usleep(100000);
+    //arch_busy_usleep(100000);
 
     /* Initialize global descriptor table */
     gdt_init();
@@ -63,15 +63,15 @@ arch_bsp_init(void)
     idt_load();
 
     /* Setup interrupt handler */
-    idt_setup_intr_gate(32, &intr_apic_int32); /* IRQ0 */
-    idt_setup_intr_gate(33, &intr_apic_int33); /* IRQ1 */
+    idt_setup_intr_gate(IV_TMR, &intr_apic_int32); /* IRQ0 */
+    idt_setup_intr_gate(IV_KBD, &intr_apic_int33); /* IRQ1 */
     idt_setup_intr_gate(IV_LOC_TMR, &intr_apic_loc_tmr); /* Local APIC timer */
     idt_setup_intr_gate(0xfe, &intr_crash); /* crash */
     idt_setup_intr_gate(0xff, &intr_apic_spurious); /* Spurious interrupt */
 
-    /* Initialize I/O APIC */
+    /* Setup interrupt service routine then initialize I/O APIC */
+    ioapic_map_intr(IV_KBD, 1, acpi_ioapic_base); /* IRQ1 */
     ioapic_init();
-    ioapic_map_intr(0x21, 1, acpi_ioapic_base);
 
 
     /* Initialize TSS and load it */

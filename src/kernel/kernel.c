@@ -417,7 +417,7 @@ kintr_loc_tmr(void)
 }
 
 /*
- *
+ * Interrupt service routine for all vectors
  */
 void
 kintr_isr(u64 vec)

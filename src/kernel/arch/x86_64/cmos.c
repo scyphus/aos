@@ -195,14 +195,9 @@ cmos_rtc_read_datetime(u8 century_reg)
         century = MIN_YEAR / 100 + 1;
     }
 
-    kprintf("Time: %02d%02d-%02d-%02d %02d:%02d:%02d\r\n",
-            century, year, month, day, hour, min, sec);
-
     return _datetime_to_unixtime((u32)century * 100 + (u32)year,
                                  month, day, hour, min, sec);
 }
-
-
 
 /*
  * Local variables:
