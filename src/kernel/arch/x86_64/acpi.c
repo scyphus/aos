@@ -19,6 +19,7 @@ u16 acpi_slp_typa;
 u16 acpi_slp_typb;
 u32 acpi_smi_cmd_port;
 u8 acpi_enable_val;
+u8 acpi_cmos_century;
 
 /*
  * Compute checksum
@@ -256,6 +257,9 @@ acpi_parse_fadt(struct acpi_sdt_hdr *sdt)
 
     /* ACPI enable */
     acpi_enable_val = fadt->acpi_enable;
+
+    /* Century */
+    acpi_cmos_century = fadt->century;
 
     /* Parse DSDT */
     acpi_parse_dsdt((struct acpi_sdt_hdr *)dsdt);

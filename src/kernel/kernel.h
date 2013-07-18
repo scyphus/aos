@@ -13,6 +13,11 @@
 #include <aos/const.h>
 
 
+#define IV_TMR          0x20
+#define IV_KBD          0x21
+#define IV_LOC_TMR      0x50
+
+
 int kprintf(const char *, ...);
 void panic(const char *);
 

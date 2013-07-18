@@ -76,7 +76,7 @@ kprintf_decimal(long long int val, int zero, int pad, int prec)
 
     /* Padding */
     if ( pad > prec && pad > ptr ) {
-        for ( i = 0; i < pad - prec; i++ ) {
+        for ( i = 0; i < pad - prec && i < pad - ptr ; i++ ) {
             if ( zero ) {
                 kputc('0');
             } else {
@@ -162,6 +162,9 @@ kprintf_hexdecimal(unsigned long long int val, int zero, int pad, int prec,
     return 0;
 }
 
+/*
+ * Print out string
+ */
 int
 kprintf_string(const char *s)
 {
@@ -375,10 +378,6 @@ static unsigned char keymap[] =
 void
 kintr_int32(void)
 {
-    arch_putc('0' + this_cpu());
-
-    /* To disable, mask */
-    //__asm__ __volatile__ ( "movq $0xfee00000,%rdx; movl $0x10000,%eax; movl %eax,0x320(%rdx)" ); // to disable
 }
 
 unsigned char
@@ -407,6 +406,37 @@ kintr_int33(void)
 
     arch_spin_unlock(&lock);
 }
+
+/*
+ * Local timer interrupt
+ */
+void
+kintr_loc_tmr(void)
+{
+    //arch_putc('0' + this_cpu());
+}
+
+/*
+ *
+ */
+void
+kintr_isr(u64 vec)
+{
+    switch ( vec ) {
+    case IV_TMR:
+        kintr_int32();
+        break;
+    case IV_KBD:
+        kintr_int33();
+        break;
+    case IV_LOC_TMR:
+        kintr_loc_tmr();
+        break;
+    default:
+        ;
+    }
+}
+
 
 /*
  * Local variables:

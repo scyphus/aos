@@ -37,7 +37,7 @@
 /* Also defined in asmconst.h */
 #define	P_DATA_SIZE             0x10000
 #define P_DATA_BASE             (u64)0x1000000
-#define P_TSS_OFFSET            0x20
+#define P_TSS_OFFSET            (0x20 + IDT_NR * 8)
 #define P_STACK_GUARD           0x10
 
 #define APIC_BASE               (u64)0xfee00000
@@ -107,6 +107,8 @@ struct p_data {
     u32 cpu_id;
     u64 freq;           /* Frequency */
     u32 reserved[4];
+    u64 stats[IDT_NR];  /* Interrupt counter */
+    /* P_TSS_OFFSET */
     struct tss tss;
     /* Stack and stack guard follow */
 } __attribute__ ((packed));
@@ -122,7 +124,6 @@ struct p_data {
 #if (IDT_NR * 16 + 18) >= IDT_MAX_SIZE
 #error "The size of the interrupt descriptor table is invalid."
 #endif
-
 
 
 void intr_gpf(void);
@@ -163,6 +164,7 @@ void halt(void);
 
 void intr_apic_int32(void);
 void intr_apic_int33(void);
+void intr_apic_loc_tmr(void);
 void intr_crash(void);
 void intr_apic_spurious(void);
 
@@ -178,6 +180,7 @@ extern u16 acpi_slp_typa;
 extern u16 acpi_slp_typb;
 extern u32 acpi_smi_cmd_port;
 extern u8 acpi_enable_val;
+extern u8 acpi_cmos_century;
 
 
 #endif /* _KERNEL_ARCH_H */

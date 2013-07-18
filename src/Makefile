@@ -38,6 +38,7 @@ kpack: 	kernel/arch/$(ARCH)/entry16.o \
 	kernel/arch/$(ARCH)/acpi.o \
 	kernel/arch/$(ARCH)/apic.o \
 	kernel/arch/$(ARCH)/vga.o \
+	kernel/arch/$(ARCH)/cmos.o \
 	kernel/arch/$(ARCH)/i8254.o
 	$(LD) -N -e kstart -Ttext=0x10000 --oformat binary -o $@ $^
 

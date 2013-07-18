@@ -44,6 +44,7 @@
 	.globl	_intr_gpf
 	.globl	_intr_apic_int32
 	.globl	_intr_apic_int33
+	.globl	_intr_apic_loc_tmr
 	.globl	_intr_crash
 	.globl	_intr_apic_spurious
 	.globl	_asm_ioapic_map_intr
@@ -303,8 +304,8 @@ _intr_gpf:
 	addq	$0x8,%rsp
 	iretq
 
-/* Beggining of interrupt handler */
-	.macro	intr_lapic_irq irq
+/* Beginning of interrupt handler */
+	.macro	intr_lapic_isr vec
 	pushq	%rax
 	pushq	%rbx
 	pushq	%rcx
@@ -323,12 +324,8 @@ _intr_gpf:
 	pushw	%fs
 	pushw	%gs
 
-
-	.if	\irq == 0
-	call	_kintr_int32
-	.elseif	\irq == 1
-	call	_kintr_int33
-	.endif
+	movq	$\vec,%rdi
+	call	_kintr_isr
 
 	/* EOI for APIC */
 	movw	$0x1b,%rcx
@@ -344,7 +341,7 @@ _intr_gpf:
 	movl	%eax,0xb0(%rdx)
 	.endm
 
-	.macro	intr_lapic_irq_done
+	.macro	intr_lapic_isr_done
 	popw	%gs
 	popw	%fs
 	popq	%rbp
@@ -365,14 +362,19 @@ _intr_gpf:
 	.endm
 
 _intr_apic_int32:
-	intr_lapic_irq 0
-	intr_lapic_irq_done
+	intr_lapic_isr 32
+	intr_lapic_isr_done
 	iretq
 
 _intr_apic_int33:
-	intr_lapic_irq 1
+	intr_lapic_isr 33
 	//jmp	_task_restart
-	intr_lapic_irq_done
+	intr_lapic_isr_done
+	iretq
+
+_intr_apic_loc_tmr:
+	intr_lapic_isr 0x50
+	intr_lapic_isr_done
 	iretq
 
 _intr_crash:

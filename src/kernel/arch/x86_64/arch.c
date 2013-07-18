@@ -15,6 +15,7 @@
 #include "apic.h"
 #include "i8254.h"
 #include "vga.h"
+#include "cmos.h"
 #include "bootinfo.h"
 
 //static u64 cpu_freq;
@@ -42,6 +43,7 @@ arch_bsp_init(void)
 
     /* Find configuration using ACPI */
     acpi_load();
+    cmos_rtc_read_datetime(acpi_cmos_century);
 
     /* Count the number of processors (APIC) */
     /* ToDo */
@@ -62,6 +64,7 @@ arch_bsp_init(void)
     /* Setup interrupt handler */
     idt_setup_intr_gate(32, &intr_apic_int32); /* IRQ0 */
     idt_setup_intr_gate(33, &intr_apic_int33); /* IRQ1 */
+    idt_setup_intr_gate(IV_LOC_TMR, &intr_apic_loc_tmr); /* Local APIC timer */
     idt_setup_intr_gate(0xfe, &intr_crash); /* crash */
     idt_setup_intr_gate(0xff, &intr_apic_spurious); /* Spurious interrupt */
 
@@ -132,8 +135,7 @@ arch_bsp_init(void)
     }
 
     /* Initialize local APIC counter */
-    lapic_start_timer(LAPIC_HZ, 0x20);
-
+    lapic_start_timer(LAPIC_HZ, 0x50);
 
     //arch_busy_usleep(10000000);
     //panic("PANIC!!!");
@@ -164,7 +166,7 @@ arch_ap_init(void)
     lapic_init();
 
     /* Initialize local APIC counter */
-    lapic_start_timer(LAPIC_HZ, 0x20);
+    lapic_start_timer(LAPIC_HZ, 0x50);
 
     arch_busy_usleep(1);
 }

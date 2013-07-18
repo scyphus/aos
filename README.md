@@ -73,6 +73,7 @@ Hirochika Asai
     }
 
 ## Interrupt Service Routine
+  0--15 reserved by processor
   20 IRQ0  I/O APIC timer
   21 IRQ1  keyboard
   50 Local APIC timer
