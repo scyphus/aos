@@ -43,8 +43,6 @@ arch_bsp_init(void)
 
     /* Find configuration using ACPI */
     acpi_load();
-    kprintf("Unix timestamp: %d\r\n",
-            cmos_rtc_read_datetime(acpi_cmos_century));
 
     /* Count the number of processors (APIC) */
     /* ToDo */
@@ -122,8 +120,6 @@ arch_bsp_init(void)
 
 
     /* Print a message */
-    kprintf("-----------------------------------\r\n");
-
     char *str = "Welcome to AOS!  Now this message is printed by C function.";
     kprintf("%s\r\n", str);
 

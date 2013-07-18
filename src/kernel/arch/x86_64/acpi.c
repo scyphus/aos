@@ -88,8 +88,7 @@ acpi_parse_apic(struct acpi_sdt_hdr *sdt)
         case 0:
             /* Local APIC */
             lapic = (struct acpi_sdt_apic_lapic *)hdr;
-            kprintf("CPU #%d, Local APIC = %d (%x)\r\n", lapic->cpu_id,
-                    lapic->apic_id, lapic->flags);
+            (void)lapic;
             break;
         case 1:
             /* I/O APIC */
@@ -259,7 +258,6 @@ acpi_parse_fadt(struct acpi_sdt_hdr *sdt)
     acpi_enable_val = fadt->acpi_enable;
 
     /* Century */
-    kprintf("[DEBUG] CENTURY:%x\r\n", fadt->century);
     acpi_cmos_century = fadt->century;
 
     /* Parse DSDT */
