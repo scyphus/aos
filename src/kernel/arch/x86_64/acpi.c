@@ -259,6 +259,7 @@ acpi_parse_fadt(struct acpi_sdt_hdr *sdt)
     acpi_enable_val = fadt->acpi_enable;
 
     /* Century */
+    kprintf("[DEBUG] CENTURY:%x\r\n", fadt->century);
     acpi_cmos_century = fadt->century;
 
     /* Parse DSDT */

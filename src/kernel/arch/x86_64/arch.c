@@ -43,7 +43,8 @@ arch_bsp_init(void)
 
     /* Find configuration using ACPI */
     acpi_load();
-    cmos_rtc_read_datetime(acpi_cmos_century);
+    kprintf("Unix timestamp: %d\r\n",
+            cmos_rtc_read_datetime(acpi_cmos_century));
 
     /* Count the number of processors (APIC) */
     /* ToDo */
