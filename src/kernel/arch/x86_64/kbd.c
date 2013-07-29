@@ -8,6 +8,7 @@
 /* $Id$ */
 
 #include <aos/const.h>
+#include "arch.h"
 #include "../../kernel.h"
 
 #define KBD_ENC_BUF_PORT        0x0060
@@ -18,18 +19,25 @@ struct kbd_status {
     int capslock;
 };
 
+/* Hold keyboard stats and buffer */
 static struct kbd_status stat;
-static unsigned char buf[128];
-static u32 pos;
+static unsigned char buf[256];
+static u8 rpos;
+static u8 wpos;
 
+static int lock;
+
+/*
+ * Initialize the keyboard driver
+ */
 void
 kbd_init(void)
 {
     stat.lshift = 0;
     stat.rshift = 0;
     stat.capslock = 0;
-    pos = 0;
-    //0x3a
+    rpos = 0;
+    wpos = 0;
 }
 
 /*
@@ -42,11 +50,11 @@ kbd_enc_read_buf(void)
 }
 
 static unsigned char keymap_base[] =
-    "  1234567890-=\x08\tqwertyuiop  \r asdfghjkl;'` \\zxcvbnm                          "
+    "  1234567890-=\x08\tqwertyuiop[]\r asdfghjkl;'` \\zxcvbnm,./                       "
     "                                                                             ";
 
 static unsigned char keymap_shift[] =
-    "  1234567890-=\x08\tQWERTYUIOP  \r ASDFGHJKL;'` \\ZXCVBNM                          "
+    "  !@#$%^&*()_+\x08\tQWERTYUIOP{}\r ASDFGHJKL:\"~ |ZXCVBNM<>?                       "
     "                                                                             ";
 
 /*
@@ -56,6 +64,8 @@ void
 kbd_event(void)
 {
     u8 scan_code;
+
+    arch_spin_lock(&lock);
 
     scan_code = kbd_enc_read_buf();
     if ( !(0x80 & scan_code) ) {
@@ -78,9 +88,9 @@ kbd_event(void)
             break;
         default:
             if ( (stat.lshift | stat.rshift) ^ stat.capslock ) {
-                arch_putc(keymap_shift[scan_code]);
+                buf[wpos++] = keymap_shift[scan_code];
             } else {
-                arch_putc(keymap_base[scan_code]);
+                buf[wpos++] = keymap_base[scan_code];
             }
         }
     } else {
@@ -103,8 +113,28 @@ kbd_event(void)
         }
     }
 
+    arch_spin_unlock(&lock);
 }
 
+/*
+ * Read one character from the buffer
+ */
+int
+kbd_read(void)
+{
+    int c;
+
+    arch_spin_lock(&lock);
+
+    if ( rpos != wpos ) {
+        c = buf[rpos++];
+    } else {
+        c = -1;
+    }
+    arch_spin_unlock(&lock);
+
+    return c;
+}
 
 /*
  * Local variables:

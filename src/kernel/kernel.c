@@ -47,7 +47,7 @@ kmain(void)
     arch_busy_usleep(10000);
 
     kprintf("\r\nStarting a shell.  Press Esc to power off the machine:\r\n");
-    kprintf("> ");
+    proc_shell();
 }
 
 /*
@@ -60,18 +60,22 @@ apmain(void)
     arch_ap_init();
 }
 
+/*
+ * PIT interrupt
+ */
 void
 kintr_int32(void)
 {
+    arch_clock_update();
 }
+
+/*
+ * Keyboard interrupt
+ */
 void
 kintr_int33(void)
 {
-    arch_spin_lock(&lock);
-
     kbd_event();
-
-    arch_spin_unlock(&lock);
 }
 
 /*
@@ -104,13 +108,77 @@ kintr_isr(u64 vec)
     }
 }
 
+int
+kstrcmp(const unsigned char *a, const unsigned char *b)
+{
+    while ( *a || *b ) {
+        if ( *a > *b ) {
+            return 1;
+        } else if ( *a < *b ) {
+            return -1;
+        }
+        a++;
+        b++;
+    }
+
+    return 0;
+}
+
 
 /*
  * Shell process
  */
-int
-ktask_shell_main(int argc, const char *const argv[])
+void
+proc_shell(void)
 {
+    unsigned char cmdbuf[256];
+    int pos;
+    int c;
+
+    pos = 0;
+    cmdbuf[0] = 0;
+    kprintf("> ");
+
+    for ( ;; ) {
+        c = kbd_read();
+        if ( c > 0 ) {
+            if ( c == 0x08 ) {
+                /* Backspace */
+                if ( pos > 0 ) {
+                    arch_putc(c);
+                    pos--;
+                }
+            } else if ( c == '\r' ) {
+                /* Exec */
+                kprintf("\r\n");
+                if ( 0 == kstrcmp("upa", cmdbuf) ) {
+                    panic("Executing user PANIC!!");
+                } else if ( 0 == kstrcmp("off", cmdbuf) ) {
+                    arch_poweroff();
+                } else if ( 0 == kstrcmp("", cmdbuf) ) {
+                    /* Nothing to do */
+                } else {
+                    kprintf("Command %s not found.\r\n", cmdbuf);
+                }
+                kprintf("> ");
+                pos = 0;
+                cmdbuf[0] = 0;
+            } else {
+                if ( pos > 254 ) {
+                    kprintf("\r\nError: Command must not exceeds 255 bytes.");
+                    kprintf("\r\n> ");
+                    pos = 0;
+                    cmdbuf[0] = 0;
+                }
+                cmdbuf[pos++] = c;
+                cmdbuf[pos] = '\0';
+                arch_putc(c);
+            }
+        } else {
+            __asm__ __volatile__ ("sti;hlt;cli");
+        }
+    }
+
     return 0;
 }
 
@@ -119,7 +187,7 @@ ktask_shell_main(int argc, const char *const argv[])
  * Idle process
  */
 int
-ktask_idle_main(int argc, const char *const argv[])
+kproc_idle_main(int argc, const char *const argv[])
 {
     return 0;
 }
