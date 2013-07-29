@@ -124,6 +124,23 @@ kstrcmp(const unsigned char *a, const unsigned char *b)
     return 0;
 }
 
+int
+kstrncmp(const unsigned char *a, const unsigned char *b, int n)
+{
+    while ( (*a || *b) && n > 0 ) {
+        if ( *a > *b ) {
+            return 1;
+        } else if ( *a < *b ) {
+            return -1;
+        }
+        a++;
+        b++;
+        n--;
+    }
+
+    return 0;
+}
+
 
 /*
  * Shell process
@@ -147,6 +164,7 @@ proc_shell(void)
                 if ( pos > 0 ) {
                     arch_putc(c);
                     pos--;
+                    cmdbuf[pos] = '\0';
                 }
             } else if ( c == '\r' ) {
                 /* Exec */
@@ -157,8 +175,12 @@ proc_shell(void)
                     arch_poweroff();
                 } else if ( 0 == kstrcmp("", cmdbuf) ) {
                     /* Nothing to do */
+                } else if ( 0 == kstrcmp("echo ", cmdbuf) ) {
+                    kprintf("\r\n");
+                } else if ( 0 == kstrncmp("echo ", cmdbuf, 5) ) {
+                    kprintf("%s\r\n", cmdbuf+5);
                 } else {
-                    kprintf("Command %s not found.\r\n", cmdbuf);
+                    kprintf("%s: Command not found.\r\n", cmdbuf);
                 }
                 kprintf("> ");
                 pos = 0;
