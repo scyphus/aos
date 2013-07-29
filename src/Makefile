@@ -28,6 +28,7 @@ kpack: 	kernel/arch/$(ARCH)/entry16.o \
 	kernel/arch/$(ARCH)/entry64.o \
 	kernel/arch/$(ARCH)/asm.o \
 	kernel/kernel.o \
+	kernel/util.o \
 	kernel/sched.o \
 	kernel/arch/$(ARCH)/trampoline.o \
 	kernel/arch/$(ARCH)/ap_entry32.o \
