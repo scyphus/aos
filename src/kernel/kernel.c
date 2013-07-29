@@ -173,6 +173,10 @@ proc_shell(void)
                     panic("Executing user PANIC!!");
                 } else if ( 0 == kstrcmp("off", cmdbuf) ) {
                     arch_poweroff();
+                } else if ( 0 == kstrcmp("uptime", cmdbuf) ) {
+                    u64 x = arch_clock_get();
+                    kprintf("Time: %llu.%.9llu ns\r\n",
+                            x / 1000000000, x % 1000000000);
                 } else if ( 0 == kstrcmp("", cmdbuf) ) {
                     /* Nothing to do */
                 } else if ( 0 == kstrcmp("echo ", cmdbuf) ) {

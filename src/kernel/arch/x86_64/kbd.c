@@ -16,6 +16,8 @@
 struct kbd_status {
     int lshift;
     int rshift;
+    int lctrl;
+    int rctrl;
     int capslock;
 };
 
@@ -35,6 +37,8 @@ kbd_init(void)
 {
     stat.lshift = 0;
     stat.rshift = 0;
+    stat.lctrl = 0;
+    stat.rctrl = 0;
     stat.capslock = 0;
     rpos = 0;
     wpos = 0;
@@ -75,6 +79,10 @@ kbd_event(void)
         }
         /* Pressed */
         switch ( scan_code ) {
+        case 0x1d:
+            /* Left ctrl */
+            stat.lctrl = 1;
+            break;
         case 0x2a:
             /* Left shift */
             stat.lshift = 1;
@@ -86,6 +94,10 @@ kbd_event(void)
         case 0x3a:
             /* Caps lock */
             break;
+        case 0x5a:
+            /* Right ctrl */
+            stat.rctrl = 1;
+            break;
         default:
             if ( (stat.lshift | stat.rshift) ^ stat.capslock ) {
                 buf[wpos++] = keymap_shift[scan_code];
@@ -96,6 +108,10 @@ kbd_event(void)
     } else {
         /* Released */
         switch ( scan_code ) {
+        case 0x9d:
+            /* Left ctrl */
+            stat.rctrl = 0;
+            break;
         case 0xaa:
             /* Left shift */
             stat.lshift = 0;
@@ -107,6 +123,10 @@ kbd_event(void)
         case 0xba:
             /* Caps lock */
             stat.capslock = ~1;
+            break;
+        case 0xda:
+            /* Right ctrl */
+            stat.rctrl = 0;
             break;
         default:
             ;
