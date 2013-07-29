@@ -7,11 +7,16 @@ Our main objective is to provide knowledges on hardware-related
 programming.  This is one of the most difficult and complex parts
 when we start the development of operating system from scratch.
 
+## System requirements
+- Memory: >= 32MiB
+
+
 ## Developer
 Hirochika Asai
 
 ## ToDo
 - Somehow convert local APIC ID to CPU ID (using ACPI table)
+- Implement callout queue
 ### Future work
 - Design and implement glue between the boot monitor and the kernel.
 - Implement a simple disk driver in the boot monitor to load the
@@ -46,13 +51,15 @@ Hirochika Asai
     00079000 0007ffff  page table (at least 24KiB = 6 * 4KiB)
     00080000 000fffff  free or reserved (We don't use here)
     ----------------------------------------------------------
-    00100000 00ffffff  free (fore memory management?)
+    * managed by the memory allocator below *
+    ----------------------------------------------------------
+    00100000 00ffffff  free
     ----------------------------------------------------------
     01000000 0100ffff  BSP (flags, tss, stack)
     01010000 0101ffff  AP #1
     ....     01ffffff  for processors
     ----------------------------------------------------------
-    02000000 --------  memory
+    02000000 --------  free
 
 ### Boot information structure
     /* The size of boot information must be aligned on 4 byte boundaries */
@@ -131,3 +138,4 @@ Hirochika Asai
 
 ### Tips
 - `movl data,%regl' clears most significant 32 bits of %regl
+

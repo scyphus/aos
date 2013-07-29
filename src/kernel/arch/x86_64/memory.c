@@ -9,83 +9,182 @@
 
 #include <aos/const.h>
 #include "../../kernel.h"
+#include "memory.h"
+#include "arch.h"
+#include "bootinfo.h"
+
+/* Flags */
+#define PHYS_MEM_USED           (u64)1
+#define PHYS_MEM_WIRED          (u64)(1<<1)
+#define PHYS_MEM_HEAD           (u64)(1<<2)
+#define PHYS_MEM_UNAVAIL        (u64)(1<<16)
+
+#define PHYS_MEM_IS_FREE(x)     (0 == (x)->flags ? 1 : 0)
+#define FLOOR(val, base)        ((val) / (base)) * (base)
+#define CEIL(val, base)         (((val) - 1) / (base) + 1) * (base)
+
+
+#define PHYS_MEM_BUDDY_ORDER 64
+
+static int memory_lock;
+static struct phys_mem *phys_mem;
 
 /*
- * Page allocator
- * --> memory allocator
+ * Buddy system
+ *   To be implemented
  */
+struct phys_mem_buddy {
+    struct phys_mem_page *page;
+} __attribute__ ((packed));
 
-/* 16 byte alignment */
-#define align(x) ((((u64)(x)-1) & ~0xfULL) + 0x10)
+struct phys_mem_root {
+    struct phys_mem_buddy *o[PHYS_MEM_BUDDY_ORDER];
+} __attribute__ ((packed));
 
-static int kmem_lock = 0;
 
-void
-kmem_init(void)
+/*
+ * Initialize physical memory
+ *    This is not thread safe.  Call this from BSP.
+ */
+int
+phys_mem_init(struct bootinfo *bi)
 {
-    u64 i;
-    u64 j;
-    struct bi_sysaddrmap_entry *entries;
-    struct bi_sysaddrmap_entry *bse;
+    struct bootinfo_sysaddrmap_entry *bse;
+    u64 nr;
+    u64 addr;
+    u64 sz;
     u64 a;
     u64 b;
+    u64 i;
+    u64 j;
 
-    /* Initialize lock variable */
-    kmem_lock = 0;
+    /* Clear lock variable */
+    memory_lock = 0;
+
+    /* Clear physical memory space */
+    phys_mem = NULL;
 
     /* Check the number of address map entries */
-    if ( bootinfo->sysaddrmap->num <= 0 ) {
-        /* Call panic? */
-        return;
+    if ( bi->sysaddrmap.n <= 0 ) {
+        return -1;
     }
-
-    /* Obtain entries */
-    entries = (struct bi_sysaddrmap_entry *)
-        ((u8 *)bootinfo->sysaddrmap + sizeof(struct bi_sysaddrmap_hdr));
 
     /* Obtain memory range */
-    bse = &entries[bootinfo->sysaddrmap->num-1];
-    kmem_info->npgs = (bse->base + bse->len) >> PAGESIZE_BIT;
-    kmem_info->pages = (struct kmem_page *)
-        align((u8 *)kmem_info + sizeof(struct kmem_info));
+    bse = &bi->sysaddrmap.entries[bi->sysaddrmap.n - 1];
 
-    /* Reset flags */
-    for ( i = 0; i < kmem_info->npgs; i++ ) {
-        kmem_info->pages[i].flags = KMEM_RESERVED;
-    }
+    /* Calculate required memory size for pages */
+    nr = CEIL(bse->base + bse->len, PAGESIZE) / PAGESIZE;
+    sz = nr * sizeof(struct phys_mem_page) + sizeof(struct phys_mem);
 
-    /* Check system address map obitaned from BIOS */
-    for ( i = 0; i < bootinfo->sysaddrmap->num; i++ ) {
-        bse = &entries[i];
+    /* Search free space system address map obitaned from BIOS */
+    addr = 0;
+    for ( i = 0; i < bi->sysaddrmap.n; i++ ) {
+        bse = &bi->sysaddrmap.entries[i];
         if ( 1 == bse->type ) {
             /* Available */
-            a = bse->base >> PAGESIZE_BIT;
-            b = (bse->base + bse->len) >> PAGESIZE_BIT;
+            a = CEIL(bse->base, PAGESIZE);
+            b = FLOOR(bse->base + bse->len, PAGESIZE);
 
-            /* Check */
-            if ( a >= kmem_info->npgs ) {
-                /* Call panic? */
+            if ( b < PHYS_MEM_FREE_ADDR ) {
+                /* Skip */
                 continue;
-            }
-            /* Incomplete page? */
-            if ( (a << PAGESIZE_BIT) != bse->base ) {
-                /* Skip incomplete page */
-                a++;
-            }
-
-            /* Mark as unallocated */
-            for ( j = a; j < b; j++ ) {
-                kmem_info->pages[j].flags &= ~(u64)KMEM_RESERVED;
+            } else if ( a < PHYS_MEM_FREE_ADDR ) {
+                if ( b - PHYS_MEM_FREE_ADDR >= sz ) {
+                    addr = PHYS_MEM_FREE_ADDR;
+                    break;
+                } else {
+                    continue;
+                }
+            } else {
+                if ( b - a >= sz ) {
+                    addr = a;
+                    break;
+                } else {
+                    continue;
+                }
             }
         }
     }
 
-    /* Mark pages used in kernel */
-    a = (u64)kmem_info->pages + sizeof(struct kmem_page) * kmem_info->npgs;
-    a = (align(a) - 1) >> PAGESIZE_BIT;
-    for ( i = 0; i <= a; i++ ) {
-        kmem_info->pages[i].flags |= KMEM_KERNEL;
+    /* Could not find */
+    if ( 0 == addr ) {
+        return -1;
     }
+
+    /* Setup */
+    phys_mem = (struct phys_mem *)(addr + nr * sizeof(struct phys_mem_page));
+    phys_mem->nr = nr;
+    phys_mem->pages = (struct phys_mem_page *)addr;
+
+
+    /* Reset flags */
+    for ( i = 0; i < phys_mem->nr; i++ ) {
+        /* Mark as unavailable */
+        phys_mem->pages[i].flags = PHYS_MEM_UNAVAIL;
+    }
+
+    /* Check system address map obitaned from BIOS */
+    for ( i = 0; i < bi->sysaddrmap.n; i++ ) {
+        bse = &bi->sysaddrmap.entries[i];
+        if ( 1 == bse->type ) {
+            /* Available */
+            a = CEIL(bse->base, PAGESIZE) / PAGESIZE;
+            b = FLOOR(bse->base + bse->len, PAGESIZE) / PAGESIZE;
+
+            /* Mark as unallocated */
+            for ( j = a; j < b; j++ ) {
+                if ( j >= phys_mem->nr ) {
+                    /* Error */
+                    return -1;
+                }
+                /* Unmark unavailable */
+                phys_mem->pages[j].flags &= ~PHYS_MEM_UNAVAIL;
+                if ( j * PAGESIZE <= PHYS_MEM_FREE_ADDR ) {
+                    /* Wired by kernel */
+                    phys_mem->pages[j].flags |= PHYS_MEM_WIRED;
+                }
+            }
+        }
+    }
+
+    /* Mark self */
+    for ( i = addr / PAGESIZE; i < CEIL(addr + sz, PAGESIZE) / PAGESIZE; i++ ) {
+        phys_mem->pages[i].flags |= PHYS_MEM_WIRED;
+    }
+
+    return 0;
+}
+
+/*
+ * Wire
+ */
+int
+phys_mem_wire(void *page, u64 size)
+{
+    u64 i;
+    u64 a;
+    u64 b;
+
+    spin_lock(&memory_lock);
+
+    a = FLOOR((u64)page, PAGESIZE) / PAGESIZE;
+    b = CEIL((u64)page + size, PAGESIZE) / PAGESIZE;
+
+    /* Check first */
+    for ( i = a; i < b; i++ ) {
+        if ( !PHYS_MEM_IS_FREE(&phys_mem->pages[i]) ) {
+            return -1;
+        }
+    }
+
+    /* Wired */
+    for ( i = a; i < b; i++ ) {
+        phys_mem->pages[i].flags |= PHYS_MEM_WIRED;
+    }
+
+    spin_unlock(&memory_lock);
+
+    return 0;
 }
 
 
@@ -95,21 +194,22 @@ kmem_init(void)
  * will be implemented?
  */
 void *
-kmem_alloc_pages(u64 n)
+phys_mem_alloc_pages(u64 n)
 {
     u64 i;
     u64 f;
     u64 cnt;
 
     /* Check address first */
-    if ( n > kmem_info->npgs ) {
+    if ( n > phys_mem->nr ) {
         return NULL;
     }
 
-    spin_lock(&kmem_lock);
+    spin_lock(&memory_lock);
+
     cnt = 0;
-    for ( i = 0; i < kmem_info->npgs; i++ ) {
-        if ( KMEM_IS_FREE_PAGE(&kmem_info->pages[i]) ) {
+    for ( i = 0; i < phys_mem->nr; i++ ) {
+        if ( PHYS_MEM_IS_FREE(&phys_mem->pages[i]) ) {
             if ( !cnt ) {
                 f = i;
             }
@@ -124,54 +224,59 @@ kmem_alloc_pages(u64 n)
     }
 
     if ( cnt == n ) {
-        kmem_info->pages[i].flags = KMEM_HEAD;
+        phys_mem->pages[i].flags = PHYS_MEM_HEAD;
         for ( i = f; i < f + n; i++ ) {
-            kmem_info->pages[i].flags |= KMEM_ALLOC;
+            phys_mem->pages[i].flags |= PHYS_MEM_USED;
         }
-        spin_unlock(&kmem_lock);
-        return (void *)(f << PAGESIZE_BIT);
+        spin_unlock(&memory_lock);
+        return (void *)(f * PAGESIZE);
     } else {
-        spin_unlock(&kmem_lock);
+        spin_unlock(&memory_lock);
         return NULL;
     }
 }
 
+/*
+ * Free allocated pages
+ */
 void
-kmem_free_pages(void *page)
+phys_mem_free_pages(void *page)
 {
     u64 i;
     u64 p;
 
-    p = (u64)page >> PAGESIZE_BIT;
-    if ( p >= kmem_info->npgs ) {
+    p = (u64)page / PAGESIZE;
+    if ( p >= phys_mem->nr ) {
         /* Invalid page number */
         return;
     }
 
-    spin_lock(&kmem_lock);
+    spin_lock(&memory_lock);
 
-    if ( !(kmem_info->pages[p].flags & KMEM_HEAD) ) {
+    if ( !(phys_mem->pages[p].flags & PHYS_MEM_HEAD) ) {
         /* Invalid page type */
-        spin_unlock(&kmem_lock);
+        spin_unlock(&memory_lock);
         return;
     }
-    kmem_info->pages[p].flags &= ~KMEM_HEAD;
+    phys_mem->pages[p].flags &= ~PHYS_MEM_HEAD;
 
     /* Free */
-    for ( i = p; i < kmem_info->npgs; i++ ) {
-        if ( kmem_info->pages[i].flags & KMEM_HEAD ) {
+    for ( i = p; i < phys_mem->nr; i++ ) {
+        if ( phys_mem->pages[i].flags & PHYS_MEM_HEAD ) {
             /* Another allocation begins */
             break;
-        } else if ( kmem_info->pages[i].flags & KMEM_ALLOC ) {
+        } else if ( phys_mem->pages[i].flags & PHYS_MEM_USED ) {
             /* Free */
-            kmem_info->pages[i].flags &= ~KMEM_ALLOC;
+            phys_mem->pages[i].flags &= ~PHYS_MEM_USED;
         } else {
             /* This allocation ends */
             break;
         }
     }
-    spin_unlock(&kmem_lock);
+
+    spin_unlock(&memory_lock);
 }
+
 
 /*
  * Local variables:

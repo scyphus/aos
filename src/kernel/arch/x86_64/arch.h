@@ -23,6 +23,8 @@
 #define IDT_ADDR                (u64)0x76000
 #define IDT_MAX_SIZE            0x2000
 
+#define PHYS_MEM_FREE_ADDR      0x00100000
+
 #define GDT_NULL_SEL            (0<<3)
 #define GDT_RING0_CODE_SEL      (1<<3)
 #define GDT_RING0_DATA_SEL      (2<<3)
@@ -36,7 +38,7 @@
 
 /* Also defined in asmconst.h */
 #define	P_DATA_SIZE             0x10000
-#define P_DATA_BASE             (u64)0x1000000
+#define P_DATA_BASE             (u64)0x01000000
 #define P_TSS_OFFSET            (0x20 + IDT_NR * 8)
 #define P_STACK_GUARD           0x10
 
@@ -65,6 +67,45 @@
 #define APIC_FREQ_PROBE         100000
 
 #define LAPIC_HZ                100
+#define AP_WAIT_USEC            (1000000/LAPIC_HZ/MAX_PROCESSORS)
+
+
+/*
+ * Stack frame for interrupts
+ */
+struct stackframe64 {
+    /* Segment registers */
+    u16 gs;
+    u16 fs;
+
+    /* Base pointer */
+    u64 bp;
+
+    /* Index registers */
+    u64 di;
+    u64 si;
+
+    /* Generic registers */
+    u64 r15;
+    u64 r14;
+    u64 r13;
+    u64 r12;
+    u64 r11;
+    u64 r10;
+    u64 r9;
+    u64 r8;
+    u64 dx;
+    u64 cx;
+    u64 bx;
+    u64 ax;
+
+    /* Restored by `iretq' instruction */
+    u64 ip;             /* Instruction pointer */
+    u64 cs;             /* Code segment */
+    u64 flags;          /* Flags */
+    u64 sp;             /* Stack pointer */
+    u64 ss;             /* Stack segment */
+} __attribute__ ((packed));
 
 /*
  * TSS

@@ -15,8 +15,10 @@
 #include "apic.h"
 #include "i8254.h"
 #include "vga.h"
+#include "clock.h"
 #include "cmos.h"
 #include "bootinfo.h"
+#include "memory.h"
 
 //static u64 cpu_freq;
 //static u64 fsb_freq;
@@ -28,15 +30,42 @@ void search_clock_sources(void);
 void trampoline(void);
 void trampoline_end(void);
 
+static int dbg_lock;
+
+int
+dbg_printf(const char *fmt, ...)
+{
+    va_list ap;
+    u64 clk;
+
+    arch_spin_lock(&dbg_lock);
+
+    va_start(ap, fmt);
+
+    clock_update();
+    clk = clock_get();
+    kprintf("[%4llu.%.6llu]  ", clk/1000000000, (clk / 1000) % 1000000);
+    kvprintf(fmt, ap);
+
+    va_end(ap);
+
+    arch_spin_unlock(&dbg_lock);
+}
+
 /*
  * Initialize BSP
  */
 void
 arch_bsp_init(void)
 {
+    struct bootinfo *bi;
+    struct phys_mem *pm;
     struct p_data *pdata;
     u64 tsz;
     u64 i;
+
+    dbg_lock = 0;
+    bi = (struct bootinfo *)BOOTINFO_BASE;
 
     /* Initialize VGA display */
     vga_init();
@@ -44,23 +73,41 @@ arch_bsp_init(void)
     /* Find configuration using ACPI */
     acpi_load();
 
+    /* Initialize the clock */
+    clock_init();
+
+    /* Print a message */
+    kprintf("Welcome to Academic Operating System!\r\n");
+
     /* Count the number of processors (APIC) */
     /* ToDo */
 
     /* Stop i8254 timer */
     i8254_stop_timer();
 
-    //arch_busy_usleep(100000);
+    /* Initialize memory table */
+    dbg_printf("Initializing physical memory.\r\n");
+    if ( 0 != phys_mem_init(bi) ) {
+        panic("Error! Cannot initialize physical memory.\r\n");
+    }
+
+    /* For multiprocessors */
+    if ( 0 != phys_mem_wire((void *)P_DATA_BASE, P_DATA_SIZE*MAX_PROCESSORS) ) {
+        panic("Error! Cannot allocate stack for processors.\r\n");
+    }
 
     /* Initialize global descriptor table */
+    dbg_printf("Initializing global descriptor table.\r\n");
     gdt_init();
     gdt_load();
 
     /* Initialize interrupt descriptor table */
+    dbg_printf("Initializing interrupt descriptor table.\r\n");
     idt_init();
     idt_load();
 
-    /* Setup interrupt handler */
+    /* Setup interrupt handlers */
+    dbg_printf("Setting up interrupt handlers.\r\n");
     idt_setup_intr_gate(IV_TMR, &intr_apic_int32); /* IRQ0 */
     idt_setup_intr_gate(IV_KBD, &intr_apic_int33); /* IRQ1 */
     idt_setup_intr_gate(IV_LOC_TMR, &intr_apic_loc_tmr); /* Local APIC timer */
@@ -73,6 +120,7 @@ arch_bsp_init(void)
 
 
     /* Initialize TSS and load it */
+    dbg_printf("Initializing TSS.\r\n");
     tss_init();
     tr_load(this_cpu());
 
@@ -98,6 +146,7 @@ arch_bsp_init(void)
     }
 
     /* Send INIT IPI */
+    dbg_printf("Starting all available application processors.\r\n");
     lapic_send_init_ipi();
 
     /* Wait 10 ms */
@@ -118,24 +167,18 @@ arch_bsp_init(void)
     /* ToDo: Synchronize all processors */
 
 
-
-    /* Print a message */
-    char *str = "Welcome to AOS!  Now this message is printed by C function.";
-    kprintf("%s\r\n", str);
-
     /* Print out the running processors */
+#if 0
     for ( i = 0; i < MAX_PROCESSORS; i++ ) {
         pdata = (struct p_data *)((u64)P_DATA_BASE + i * P_DATA_SIZE);
         if ( pdata->flags & 1 ) {
-            kprintf("Processor #%d is running.\r\n", i);
+            dbg_printf("Processor #%d is running.\r\n", i);
         }
     }
+#endif
 
     /* Initialize local APIC counter */
-    lapic_start_timer(LAPIC_HZ, 0x50);
-
-    //arch_busy_usleep(10000000);
-    //panic("PANIC!!!");
+    lapic_start_timer(LAPIC_HZ, IV_LOC_TMR);
 }
 
 /*
@@ -145,6 +188,8 @@ void
 arch_ap_init(void)
 {
     struct p_data *pdata;
+
+    dbg_printf("Initializing application processor #%d.\r\n", this_cpu());
 
     /* Load global descriptor table */
     gdt_load();
@@ -162,8 +207,11 @@ arch_ap_init(void)
     /* Initialize local APIC */
     lapic_init();
 
+    /* Wait short to distribute APIC interrupts */
+    arch_busy_usleep(AP_WAIT_USEC * this_cpu());
+
     /* Initialize local APIC counter */
-    lapic_start_timer(LAPIC_HZ, 0x50);
+    lapic_start_timer(LAPIC_HZ, IV_LOC_TMR);
 
     arch_busy_usleep(1);
 }
@@ -283,6 +331,23 @@ arch_crash(void)
     /* Send IPI and halt self */
     lapic_send_fixed_ipi(0xfe);
     halt();
+}
+
+void
+arch_poweroff(void)
+{
+    acpi_poweroff();
+}
+
+void
+arch_clock_update(void)
+{
+    clock_update();
+}
+u64
+arch_clock_get(void)
+{
+    return clock_get();
 }
 
 /*

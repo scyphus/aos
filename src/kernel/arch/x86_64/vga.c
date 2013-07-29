@@ -66,6 +66,14 @@ vga_putc(int c)
     } else if ( '\n' == c ) {
         /* New line */
         vga_cursor = vga_cursor + VGA_TEXTMODE_X;
+    } else if ( 0x08 == c ) {
+        /* Backspace */
+        if ( vga_cursor > 0 ) {
+            vga_cursor = vga_cursor - 1;
+            vga_text[vga_cursor] = ' ';
+            ptr = (u16 *)(addr + (vga_cursor) * 2);
+            *ptr = (0x07 << 8) | (u8)' ';
+        }
     } else {
         /* Other characters */
         ptr = (u16 *)(addr + (vga_cursor) * 2);

@@ -13,6 +13,7 @@
 
 u64 acpi_ioapic_base;
 u64 acpi_pm_tmr_port;
+u8 acpi_pm_tmr_ext;
 u32 acpi_pm1a_ctrl_block;
 u32 acpi_pm1b_ctrl_block;
 u16 acpi_slp_typa;
@@ -251,6 +252,9 @@ acpi_parse_fadt(struct acpi_sdt_hdr *sdt)
         dsdt = fadt->dsdt;
     }
 
+    /* Check flags */
+    acpi_pm_tmr_ext = (fadt->flags >> 8) & 0x1;
+
     /* SMI command */
     acpi_smi_cmd_port = fadt->smi_cmd_port;
 
@@ -340,6 +344,7 @@ acpi_load(void)
     u64 ebda_addr;
 
     acpi_pm_tmr_port = 0;
+    acpi_pm_tmr_ext = 0;
     acpi_ioapic_base = 0;
     acpi_pm1a_ctrl_block = 0;
     acpi_pm1b_ctrl_block = 0;
@@ -368,7 +373,21 @@ acpi_load(void)
 u32
 acpi_get_timer(void)
 {
-    return inl(acpi_pm_tmr_port) & 0xffffff;
+    return inl(acpi_pm_tmr_port);
+}
+u64
+acpi_get_timer_period(void)
+{
+    if ( acpi_pm_tmr_ext ) {
+        return ((u64)1<<32);
+    } else {
+        return (1<<24);
+    }
+}
+u64
+acpi_get_timer_hz(void)
+{
+    return ACPI_TMR_HZ;
 }
 
 /*
@@ -391,7 +410,7 @@ acpi_busy_usleep(u64 usec)
         cur = acpi_get_timer();
         if ( cur < prev ) {
             /* Overflow */
-            acc += 0x1000000 + cur - prev;
+            acc += acpi_get_timer_period() + cur - prev;
         } else {
             acc += cur - prev;
         }

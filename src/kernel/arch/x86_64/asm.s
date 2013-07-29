@@ -342,6 +342,7 @@ _intr_gpf:
 	.endm
 
 	.macro	intr_lapic_isr_done
+	/* Pop all registers from stackframe */
 	popw	%gs
 	popw	%fs
 	popq	%rbp
@@ -372,6 +373,22 @@ _intr_apic_int33:
 	intr_lapic_isr_done
 	iretq
 
+_intr_apic_int34:
+	intr_lapic_isr 34
+	intr_lapic_isr_done
+	iretq
+
+_intr_apic_int35:
+	intr_lapic_isr 35
+	intr_lapic_isr_done
+	iretq
+
+_intr_apic_int36:
+	intr_lapic_isr 36
+	intr_lapic_isr_done
+	iretq
+
+
 _intr_apic_loc_tmr:
 	intr_lapic_isr 0x50
 	intr_lapic_isr_done
@@ -383,6 +400,18 @@ _intr_crash:
 /* Spurious interrupt does not require EOI */
 _intr_apic_spurious:
 	iretq
+
+
+lapic_isr_thread_restart:
+	//call	knext_thread
+	cmpq	$0,%rax
+	jz	1f
+	/* Save stack pointer */
+	
+1:
+	intr_lapic_isr_done
+	iretq
+
 
 
 /* void asm_lapic_read(void *addr, u32 val); */
@@ -407,8 +436,6 @@ lapic_set_timer_one_shot:
 	.data
 apic_base:
 	.quad	0x0
-apic_hz:
-	.long
 
 gpf_reentry:
 	.quad	0x0

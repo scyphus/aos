@@ -14,17 +14,13 @@ void arch_putc(int);
 void arch_init(void);
 
 
-typedef __builtin_va_list va_list;
-#define va_start(ap, last)      __builtin_va_start((ap), (last))
-#define va_arg                  __builtin_va_arg
-#define va_end(ap)              __builtin_va_end(ap)
-#define va_copy(dest, src)      __builtin_va_copy((dest), (src))
-#define alloca(size)            __builtin_alloca((size))
-
-
 #define PRINTF_MOD_NONE         0
 #define PRINTF_MOD_LONG         1
 #define PRINTF_MOD_LONGLONG     2
+
+static struct kmem_slab_page_hdr *kmem_slab_head;
+
+
 
 
 int
@@ -179,10 +175,8 @@ kprintf_string(const char *s)
  * Format and print a message
  */
 int
-kprintf(const char *fmt, ...)
+kvprintf(const char *fmt, va_list ap)
 {
-    va_list ap;
-
     const char *fmt_tmp;
     /* Leading suffix */
     int zero;
@@ -201,9 +195,6 @@ kprintf(const char *fmt, ...)
     unsigned int u;
     unsigned long int lu;
     unsigned long long int llu;
-
-
-    va_start(ap, fmt);
 
     while ( *fmt ) {
         if ( '%' == *fmt ) {
@@ -331,6 +322,17 @@ kprintf(const char *fmt, ...)
         }
     }
 
+    return 0;
+}
+int
+kprintf(const char *fmt, ...)
+{
+    va_list ap;
+
+    va_start(ap, fmt);
+
+    kvprintf(fmt, ap);
+
     va_end(ap);
 
     return 0;
@@ -357,8 +359,15 @@ kmain(void)
     /* Initialize the lock varialbe */
     lock = 0;
 
+    kmem_slab_head = NULL;
+
     /* Initialize architecture-related devices */
     arch_bsp_init();
+
+    arch_busy_usleep(10000);
+
+    kprintf("\r\nStarting a shell.  Press Esc to power off the machine:\r\n");
+    kprintf("> ");
 }
 
 /*
@@ -373,24 +382,18 @@ apmain(void)
 
 
 static unsigned char keymap[] =
-    "  1234567890-= \tqwertyuiop    asdfghjkl;'` \\zxcvbnm                          "
+    "  1234567890-=\x08\tqwertyuiop  \r asdfghjkl;'` \\zxcvbnm                          "
     "                                                                             ";
+u8 kbd_enc_read_buf(void);
+
 void
 kintr_int32(void)
 {
 }
-
-unsigned char
-kbd_enc_read_buf(void)
-{
-    //PORT_KBD_ENC_BUF
-    return inb(0x0060);
-}
-
 void
 kintr_int33(void)
 {
-    unsigned char scan_code;
+    u8 scan_code;
 
     arch_spin_lock(&lock);
 
@@ -399,7 +402,7 @@ kintr_int33(void)
     if ( !(0x80 & scan_code) ) {
         if ( scan_code == 1 ) {
             /* Escape key */
-            acpi_poweroff();
+            arch_poweroff();
         }
         arch_putc(keymap[scan_code]);
     }
@@ -413,7 +416,7 @@ kintr_int33(void)
 void
 kintr_loc_tmr(void)
 {
-    //arch_putc('0' + this_cpu());
+    arch_clock_update();
 }
 
 /*
@@ -437,6 +440,121 @@ kintr_isr(u64 vec)
     }
 }
 
+
+
+
+
+
+/*
+ * Idle process
+ */
+int
+ktask_idle_main(int argc, const char *const argv[])
+{
+    return 0;
+}
+
+
+
+
+
+
+/*
+ * Memory allocation
+ */
+void *
+kmalloc(u64 sz)
+{
+    struct kmem_slab_page_hdr **slab;
+    u8 *bitmap;
+    u64 n;
+    u64 i;
+    u64 j;
+    u64 cnt;
+
+    if ( sz > PAGESIZE / 2 ) {
+        return phys_mem_alloc_pages(((sz - 1) / PAGESIZE) + 1);
+    } else {
+        n = ((PAGESIZE - sizeof(struct kmem_slab_page_hdr)) / (16 + 1));
+        /* Search slab */
+        slab = &kmem_slab_head;
+        while ( NULL != *slab ) {
+            bitmap = (u8 *)(*slab) + sizeof(struct kmem_slab_page_hdr);
+            cnt = 0;
+            for ( i = 0; i < n; i++ ) {
+                if ( 0 == bitmap[i] ) {
+                    cnt++;
+                    if ( cnt * 16 >= sz ) {
+                        bitmap[i - cnt + 1] |= 2;
+                        for ( j = i - cnt + 1; j <= i; j++ ) {
+                            bitmap[j] |= 1;
+                        }
+                        return (u8 *)(*slab) + sizeof(struct kmem_slab_page_hdr)
+                            + n + (i - cnt + 1) * 16;
+                    }
+                } else {
+                    cnt = 0;
+                }
+            }
+            slab = &(*slab)->next;
+        }
+        /* Not found */
+        *slab = phys_mem_alloc_pages(1);
+        if ( NULL == (*slab) ) {
+            /* Error */
+            return NULL;
+        }
+        (*slab)->next = NULL;
+        bitmap = (u8 *)(*slab) + sizeof(struct kmem_slab_page_hdr);
+        for ( i = 0; i < n; i++ ) {
+            bitmap[i] = 0;
+        }
+        bitmap[0] |= 2;
+        for ( i = 0; i < (sz - 1) / 16 + 1; i++ ) {
+            bitmap[i] |= 1;
+        }
+
+        return (u8 *)(*slab) + sizeof(struct kmem_slab_page_hdr) + n;
+    }
+    return NULL;
+}
+
+/*
+ * Free allocated memory
+ */
+void
+kfree(void *ptr)
+{
+    struct kmem_slab_page_hdr *slab;
+    u8 *bitmap;
+    u64 n;
+    u64 i;
+    u64 off;
+
+    if ( 0 == (u64)ptr % PAGESIZE ) {
+        phys_mem_free_pages(ptr);
+    } else {
+        /* Slab */
+        /* ToDo: Free page */
+        n = ((PAGESIZE - sizeof(struct kmem_slab_page_hdr)) / (16 + 1));
+        slab = (struct kmem_slab_page_hdr *)(((u64)ptr / PAGESIZE) * PAGESIZE);
+        off = (u64)ptr % PAGESIZE;
+        off = (off - sizeof(struct kmem_slab_page_hdr) - n) / 16;
+        bitmap = (u8 *)slab + sizeof(struct kmem_slab_page_hdr);
+        if ( off >= n ) {
+            /* Error */
+            return;
+        }
+        if ( !(bitmap[off] & 2) ) {
+            /* Error */
+            return;
+        }
+        bitmap[off] &= ~(u64)2;
+        for ( i = off; i < n && (!(bitmap[i] & 2) || bitmap[i] != 0); i++ ) {
+            bitmap[off] &= ~(u64)1;
+        }
+    }
+}
 
 /*
  * Local variables:
