@@ -323,10 +323,10 @@ load_mm.2:
 	jz	load_mm.error		/*  error if it's overwritten */
 load_mm.3:
 /* 20-byte entry or 24-byte entry coming from above */
+	incw	%bp			/* Increment the number of entries */
 	testl	%ebx,%ebx		/* %ebx=0: No remaining info */
 	jz	load_mm.done		/* jz/je */
 load_mm.4:
-	incw	%bp			/* Increment the number of entries */
 	addw	$MME_SIZE,%di		/* Next entry */
 	jmp	load_mm.1		/* Load remaining entries */
 load_mm.error:
