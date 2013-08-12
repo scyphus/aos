@@ -69,11 +69,19 @@ phys_mem_init(struct bootinfo *bi)
         return -1;
     }
 
-    /* Obtain memory range */
-    bse = &bi->sysaddrmap.entries[bi->sysaddrmap.n - 1];
+    /* Obtain usable memory size */
+    addr = 0;
+    for ( i = 0; i < bi->sysaddrmap.n; i++ ) {
+        bse = &bi->sysaddrmap.entries[i];
+        if ( 1 == bse->type ) {
+            if ( bse->base + bse->len > addr ) {
+                addr = bse->base + bse->len;
+            }
+        }
+    }
 
     /* Calculate required memory size for pages */
-    nr = CEIL(bse->base + bse->len, PAGESIZE) / PAGESIZE;
+    nr = CEIL(addr, PAGESIZE) / PAGESIZE;
     sz = nr * sizeof(struct phys_mem_page) + sizeof(struct phys_mem);
 
     /* Search free space system address map obitaned from BIOS */
@@ -115,7 +123,6 @@ phys_mem_init(struct bootinfo *bi)
     phys_mem = (struct phys_mem *)(addr + nr * sizeof(struct phys_mem_page));
     phys_mem->nr = nr;
     phys_mem->pages = (struct phys_mem_page *)addr;
-
 
     /* Reset flags */
     for ( i = 0; i < phys_mem->nr; i++ ) {

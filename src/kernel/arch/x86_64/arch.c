@@ -27,8 +27,8 @@ void apic_test(void);
 void search_clock_sources(void);
 
 
-void trampoline(void);
-void trampoline_end(void);
+extern void trampoline(void);
+extern void trampoline_end(void);
 
 static int dbg_lock;
 
@@ -52,6 +52,392 @@ dbg_printf(const char *fmt, ...)
     arch_spin_unlock(&dbg_lock);
 }
 
+
+#define E1000_REG_CTRL  0x00
+#define E1000_REG_EERD  0x14
+#define E1000_REG_ICR   0x00c0
+#define E1000_REG_IMS   0x00d0
+#define E1000_REG_TCTL  0x0400  /* transmit control */
+#define E1000_REG_TDBAL 0x3800
+#define E1000_REG_TDBAH 0x3804
+#define E1000_REG_TDLEN 0x3808
+#define E1000_REG_TDH   0x3810  /* head */
+#define E1000_REG_TDT   0x3818  /* tail */
+#define E1000_REG_MTA   0x5200  /* x128 */
+
+#define E1000_FD        1       /* Full duplex */
+#define E1000_ASDE      (1<<5)  /* Auto speed detection enable */
+#define E1000_SLU       (1<<6)  /* Set linkup */
+
+#define E1000_TCTL_EN   (1<<1)
+#define E1000_TCTL_PSP  (1<<3)  /* pad short packets */
+
+struct e1000_tx_desc {
+    u64 address;
+    u16 length;
+    u8 cso;
+    u8 cmd;
+    u8 sta;
+    u8 css;
+    u16 special;
+} __attribute__ ((packed));
+
+
+u16
+e1000_eeprom_read_8254x(u64 mmio, u8 addr)
+{
+    u16 data;
+    u32 tmp;
+
+    /* Start */
+    *(u32 *)(mmio + E1000_REG_EERD) = ((u32)addr << 8) | 1;
+
+    /* Until it's done */
+    while ( !((tmp = *(u32 *)(mmio + E1000_REG_EERD)) & (1<<4)) ) {
+        pause();
+    }
+    data = (u16)((tmp >> 16) & 0xffff);
+
+    return data;
+}
+
+u16
+e1000_eeprom_read(u64 mmio, u8 addr)
+{
+    u16 data;
+    u32 tmp;
+
+    /* Start */
+    *(u32 *)(mmio + E1000_REG_EERD) = ((u32)addr << 2) | 1;
+
+    /* Until it's done */
+    while ( !((tmp = *(u32 *)(mmio + E1000_REG_EERD)) & (1<<1)) ) {
+        kprintf("[%.x]", *(u32 *)(mmio + E1000_REG_EERD));
+        pause();
+    }
+    data = (u16)((tmp >> 16) & 0xffff);
+
+    return data;
+}
+
+#define PCI_CONFIG_ADDR 0xcf8
+#define PCI_CONFIG_DATA 0xcfc
+
+u16
+pci_read_config(u16 bus, u16 slot, u16 func, u16 offset)
+{
+    u32 addr;
+
+    addr = ((u32)bus << 16) | ((u32)slot << 11) | ((u32)func << 8)
+        | ((u32)offset & 0xfc);
+    /* Set enable bit */
+    addr |= (u32)0x80000000;
+
+    outl(PCI_CONFIG_ADDR, addr);
+    return (inl(0xcfc) >> ((offset & 2) * 8)) & 0xffff;
+}
+
+u16
+pci_check_vendor(u16 bus, u16 slot)
+{
+    u16 vendor;
+    u16 device;
+
+    vendor = pci_read_config(bus, slot, 0, 0);
+#if 0
+    if ( 0xffff != vendor ) {
+        device = pci_read_config(bus, slot, 0, 2);
+    }
+#endif
+    return vendor;
+}
+
+u8
+pci_get_header_type(u16 bus, u16 slot, u16 func)
+{
+    return pci_read_config(bus, slot, 0, 0x0e) & 0xff;
+}
+
+u64
+pci_read_mmio(u8 bus, u8 slot, u8 func)
+{
+    u64 addr;
+    u32 bar0;
+    u32 bar1;
+    u8 type;
+    u8 prefetchable;
+
+    bar0 = pci_read_config(bus, slot, func, 0x10);
+    bar0 |= (u32)pci_read_config(bus, slot, func, 0x12) << 16;
+
+    type = (bar0 >> 1) & 0x3;
+    prefetchable = (bar0 >> 3) & 0x1;
+    addr = bar0 & 0xfffffff0;
+
+    if ( 0x00 == type ) {
+        /* 32bit */
+    } else if ( 0x02 == type ) {
+        /* 64bit */
+        bar1 = pci_read_config(bus, slot, func, 0x14);
+        bar1 |= (u32)pci_read_config(bus, slot, func, 0x16) << 16;
+        addr |= ((u64)bar1) << 32;
+    } else {
+        return 0;
+    }
+
+    return addr;
+}
+
+void
+pci_check_function(u8 bus, u8 slot, u8 func)
+{
+    u16 vendor;
+    u16 device;
+    vendor = pci_read_config(bus, slot, func, 0);
+    device = pci_read_config(bus, slot, func, 2);
+    dbg_printf("    %d.%d.%d vendor:device=%.4x:%.4x\r\n",
+               bus, slot, func, vendor, device);
+
+    if ( 0x8086 == vendor && (0x100e == device || 0x100f == device
+                              || 0x10ea == device) ) {
+        /* Intel PRO/1000 MT Server (82545EM) */
+
+        int i;
+
+        /* Read BAR0 (+BAR1 if 64 bit) */
+        u64 mmio = pci_read_mmio(bus, slot, func);
+        dbg_printf("      MMIO %.16x\r\n", mmio);
+
+        /* Setup interrupt line */
+#if 0
+        u16 r;
+        r = pci_read_config(bus, slot, func, 0x3e);
+        dbg_printf("      Interrupt PIN:Line %.2x:%.2x\r\n", r >> 8, r & 0xff);
+#endif
+
+        /* Read MAC address */
+        u16 m16;
+        u8 m[6];
+        if ( 0x100e == device || 0x100f == device ) {
+            m16 = e1000_eeprom_read_8254x(mmio, 0);
+            m[0] = m16 & 0xff;
+            m[1] = (m16 >> 8) & 0xff;
+            m16 = e1000_eeprom_read_8254x(mmio, 1);
+            m[2] = m16 & 0xff;
+            m[3] = (m16 >> 8) & 0xff;
+            m16 = e1000_eeprom_read_8254x(mmio, 2);
+            m[4] = m16 & 0xff;
+            m[5] = (m16 >> 8) & 0xff;
+        } else {
+            m16 = e1000_eeprom_read(mmio, 0);
+            m[0] = m16 & 0xff;
+            m[1] = (m16 >> 8) & 0xff;
+#if 0
+            m16 = e1000_eeprom_read(mmio, 1);
+            m[2] = m16 & 0xff;
+            m[3] = (m16 >> 8) & 0xff;
+            m16 = e1000_eeprom_read(mmio, 2);
+            m[4] = m16 & 0xff;
+            m[5] = (m16 >> 8) & 0xff;
+#endif
+        }
+        dbg_printf("      MAC %.2x:%.2x:%.2x:%.2x:%.2x:%.2x\r\n", m[0], m[1],
+                   m[2], m[3], m[4], m[5]);
+
+        /* Link up */
+        *(u32 *)(mmio + E1000_REG_CTRL) |= E1000_SLU;
+
+        /* Multicast array table */
+        for ( i = 0; i < 128; i++ ) {
+            *(u32 *)(mmio + E1000_REG_MTA + i * 4) = 0;
+        }
+
+        /* Enable interrupt (REG_IMS <- 0x1F6DC, then read REG_ICR ) */
+
+        /* Start TX/RX */
+
+        u64 base;
+        struct e1000_tx_desc *txdesc;
+        /* ToDo: 16 bytes for alignment? */
+        base = (u64)kmalloc(768 * sizeof(struct e1000_tx_desc) + 16);
+        for ( i = 0; i < 768; i++ ) {
+            txdesc = (struct e1000_tx_desc *)
+                (base + i * sizeof(struct e1000_tx_desc));
+            txdesc->address = 0;
+            txdesc->cmd = 0;
+        }
+        *(u32 *)(mmio + E1000_REG_TDBAH) = base >> 32;
+        *(u32 *)(mmio + E1000_REG_TDBAL) = base & 0xffffffff;
+        *(u32 *)(mmio + E1000_REG_TDLEN) = 768 * sizeof(struct e1000_tx_desc);
+        *(u32 *)(mmio + E1000_REG_TDH) = 0;
+        *(u32 *)(mmio + E1000_REG_TDT) = 768;
+
+        *(u32 *)(mmio + E1000_REG_TCTL) = E1000_TCTL_EN | E1000_TCTL_PSP;
+
+        /* Send one packet */
+        u8 pkt[128];
+        pkt[0] = 0x01;
+        pkt[1] = 0x00;
+        pkt[2] = 0x5e;
+        pkt[3] = 0x00;
+        pkt[4] = 0x00;
+        pkt[5] = 0x01;
+        pkt[6] = m[0];
+        pkt[7] = m[1];
+        pkt[8] = m[2];
+        pkt[9] = m[3];
+        pkt[10] = m[4];
+        pkt[11] = m[5];
+        /* IP */
+        pkt[12] = 0x08;
+        pkt[13] = 0x00;
+        /* IP */
+        pkt[14] = 0x45;
+        pkt[15] = 0x00;
+        pkt[16] = 0x00;
+        pkt[17] = 0x54;
+        /* dst */
+        pkt[18] = 0x26;
+        pkt[19] = 0x6d;
+        pkt[20] = 0x00;
+        pkt[21] = 0x00;
+        pkt[22] = 0x01;
+        pkt[23] = 0x01;
+        /* checksum */
+        pkt[24] = 0x00;
+        pkt[25] = 0x00;
+        /* src */
+        pkt[26] = 192;
+        pkt[27] = 168;
+        pkt[28] = 100;
+        pkt[29] = 2;
+        /* dst */
+        pkt[30] = 224;
+        pkt[31] = 0;
+        pkt[32] = 0;
+        pkt[33] = 1;
+        /* icmp */
+        pkt[34] = 0x08;
+        pkt[35] = 0x00;
+        /* icmp checksum */
+        pkt[36] = 0x00;
+        pkt[37] = 0x00;
+        for ( i = 38; i < 98; i++ ) {
+            pkt[i] = 0;
+        }
+
+        txdesc = (struct e1000_tx_desc *)
+            (base + 0 * sizeof(struct e1000_tx_desc));
+        txdesc->address = pkt;
+        txdesc->length = 64 + 34;
+        txdesc->cmd = (1<<3) | (1<<1) | 1; /* report status | insert FCS | end of packet */
+
+        *(u32 *)(mmio + E1000_REG_TDT) = 1;
+
+        while( !(txdesc->sta & 0xf) ) {
+            pause();
+        }
+        kprintf("A packet was transmitted.\r\n");
+
+#if 0
+        u32 x = 0;
+        int i;
+        for ( i = 0; i < 6; i++ ) {
+            x = pci_read_config(bus, slot, func, 0x10 + i * 4);
+            x |= (u32)pci_read_config(bus, slot, func, 0x12 + i * 4) << 16;
+            dbg_printf("      BAR%d %.8x\r\n", i, x);
+        }
+#endif
+    }
+}
+
+void
+pci_check_device(u8 bus, u8 device)
+{
+    u16 vendor;
+    u8 func;
+    u8 hdr_type;
+
+    func = 0;
+    vendor = pci_read_config(bus, device, func, 0);
+    if ( 0xffff == vendor ) {
+        return;
+    }
+
+    pci_check_function(bus, device, func);
+    hdr_type = pci_get_header_type(bus, device, func);
+
+    if ( hdr_type & 0x80 ) {
+        /* Multiple functions */
+        for ( func = 1; func < 8; func++ ) {
+            vendor = pci_read_config(bus, device, func, 0);
+            if ( 0xffff != vendor ) {
+                pci_check_function(bus, device, func);
+            }
+         }
+    }
+}
+
+void
+pci_check_bus(u8 bus)
+{
+    u8 device;
+
+    for ( device = 0; device < 32; device++ ) {
+        pci_check_device(bus, device);
+    }
+}
+
+void
+pci_check_all_buses(void)
+{
+    u8 bus;
+    u8 func;
+    u8 hdr_type;
+    u16 vendor;
+
+    hdr_type = pci_get_header_type(0, 0, 0);
+    if ( !(hdr_type & 0x80) ) {
+        /* Single PCI host controller */
+        pci_check_bus(0);
+    } else {
+        /* Multiple PCI host controllers */
+        for ( func = 0; func < 8; func++ ) {
+            vendor = pci_read_config(0, 0, func, 0);
+            if ( 0xffff != vendor ) {
+                break;
+            }
+            bus = func;
+            pci_check_bus(bus);
+        }
+    }
+}
+
+void
+pci_init(void)
+{
+    pci_check_all_buses();
+#if 0
+    /* Configure PCI */
+    u32 addr;
+    u16 bus = 0;
+    u16 slot = 0x11;
+    u16 func = 0;
+    u16 offset = 0;
+
+    /* Enable bit = 0x80000000 */
+    addr = ((u32)bus << 16) | ((u32)slot << 11) | ((u32)func << 8)
+        | ((u32)offset & 0xfc) | (u32)0x80000000;
+    outl(0xcf8, addr);
+    u16 tmp = (inl(0xcfc) >> ((offset & 2) * 8)) & 0xffff;
+    kprintf("XXX: %.4x\r\n", tmp);
+
+    //0xcf8; /* CONFIG_ADDRESS */
+    //0xcfc; /* CONFIG_DATA */
+#endif
+}
+
+
 /*
  * Initialize BSP
  */
@@ -72,6 +458,7 @@ arch_bsp_init(void)
 
     /* Find configuration using ACPI */
     acpi_load();
+    //__asm__ __volatile__ ( "1:hlt;jmp 1b;" );
 
     /* Initialize the clock */
     clock_init();
@@ -92,17 +479,19 @@ arch_bsp_init(void)
     }
 
     /* For multiprocessors */
+#if 0
     if ( 0 != phys_mem_wire((void *)P_DATA_BASE, P_DATA_SIZE*MAX_PROCESSORS) ) {
         panic("Error! Cannot allocate stack for processors.\r\n");
     }
+#endif
+
+    dbg_printf("Initializing GDT and IDT.\r\n");
 
     /* Initialize global descriptor table */
-    dbg_printf("Initializing global descriptor table.\r\n");
     gdt_init();
     gdt_load();
 
     /* Initialize interrupt descriptor table */
-    dbg_printf("Initializing interrupt descriptor table.\r\n");
     idt_init();
     idt_load();
 
@@ -133,6 +522,10 @@ arch_bsp_init(void)
 
     /* Initialize local APIC */
     lapic_init();
+
+    /* Initialize PCI driver */
+    dbg_printf("Searching PCI devices.\r\n");
+    pci_init();
 
 
     /* Check and copy trampoline */
@@ -215,6 +608,10 @@ arch_ap_init(void)
 
     arch_busy_usleep(1);
 }
+
+
+
+
 
 
 /*

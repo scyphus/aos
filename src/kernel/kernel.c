@@ -10,8 +10,14 @@
 #include <aos/const.h>
 #include "kernel.h"
 
-
+static int lock;
 static struct kmem_slab_page_hdr *kmem_slab_head;
+
+/*
+ * Temporary: Keyboard drivers
+ */
+void kbd_init(void);
+void kbd_event(void);
 
 /*
  * Print a panic message and hlt processor
@@ -22,11 +28,6 @@ panic(const char *s)
     kprintf("%s\r\n", s);
     arch_crash();
 }
-
-static int lock;
-
-void kbd_init(void);
-void kbd_event(void);
 
 /*
  * Entry point to C function for BSP called from asm.s
@@ -109,7 +110,7 @@ kintr_isr(u64 vec)
 }
 
 int
-kstrcmp(const unsigned char *a, const unsigned char *b)
+kstrcmp(const char *a, const char *b)
 {
     while ( *a || *b ) {
         if ( *a > *b ) {
@@ -125,7 +126,7 @@ kstrcmp(const unsigned char *a, const unsigned char *b)
 }
 
 int
-kstrncmp(const unsigned char *a, const unsigned char *b, int n)
+kstrncmp(const char *a, const char *b, int n)
 {
     while ( (*a || *b) && n > 0 ) {
         if ( *a > *b ) {
@@ -175,7 +176,7 @@ proc_shell(void)
                     arch_poweroff();
                 } else if ( 0 == kstrcmp("uptime", cmdbuf) ) {
                     u64 x = arch_clock_get();
-                    kprintf("Time: %llu.%.9llu ns\r\n",
+                    kprintf("uptime: %llu.%.9llu sec\r\n",
                             x / 1000000000, x % 1000000000);
                 } else if ( 0 == kstrcmp("", cmdbuf) ) {
                     /* Nothing to do */

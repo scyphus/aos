@@ -23,7 +23,8 @@
 #define IDT_ADDR                (u64)0x76000
 #define IDT_MAX_SIZE            0x2000
 
-#define PHYS_MEM_FREE_ADDR      0x00100000
+/* FIXME: ISA memory hole cannot be detect through ACPI */
+#define PHYS_MEM_FREE_ADDR      0x02000000
 
 #define GDT_NULL_SEL            (0<<3)
 #define GDT_RING0_CODE_SEL      (1<<3)

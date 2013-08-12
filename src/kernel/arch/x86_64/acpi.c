@@ -296,10 +296,15 @@ acpi_parse_rsdt(struct acpi_rsdp *rsdp)
             return -1;
         }
     }
-
+    /* FIXME: 4byte --> 32bit */
     nr = (rsdt->length - sizeof(struct acpi_sdt_hdr)) / sz;
     for ( i = 0; i < nr; i++ ) {
-        u64 xx = *(u64 *)((u64)(rsdt) + sizeof(struct acpi_sdt_hdr) + i * sz);
+        u64 xx;
+        if ( 4 == sz ) {
+            xx = *(u32 *)((u64)(rsdt) + sizeof(struct acpi_sdt_hdr) + i * sz);
+        } else {
+            xx = *(u64 *)((u64)(rsdt) + sizeof(struct acpi_sdt_hdr) + i * sz);
+        }
         struct acpi_sdt_hdr *tmp = (struct acpi_sdt_hdr *)xx;
         if ( 0 == cmp((u8 *)tmp->signature, (u8 *)"APIC", 4) ) {
             /* APIC */

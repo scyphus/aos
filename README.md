@@ -51,13 +51,13 @@ Hirochika Asai
     00079000 0007ffff  page table (at least 24KiB = 6 * 4KiB)
     00080000 000fffff  free or reserved (We don't use here)
     ----------------------------------------------------------
-    * managed by the memory allocator below *
-    ----------------------------------------------------------
     00100000 00ffffff  free
     ----------------------------------------------------------
     01000000 0100ffff  BSP (flags, tss, stack)
     01010000 0101ffff  AP #1
     ....     01ffffff  for processors
+    ----------------------------------------------------------
+    * managed by the memory allocator below *
     ----------------------------------------------------------
     02000000 --------  free
 
@@ -138,4 +138,4 @@ Hirochika Asai
 
 ### Tips
 - `movl data,%regl' clears most significant 32 bits of %regl
-
+- PCI database: http://www.pcidatabase.com

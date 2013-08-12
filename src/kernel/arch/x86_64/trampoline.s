@@ -33,7 +33,7 @@ _trampoline:
 
 /* Data section */
 	.align	16
-	.data
+	/*.data: Trampoline code must not have separate sections. */
 
 /* Pseudo interrupt descriptor table */
 idtr:
