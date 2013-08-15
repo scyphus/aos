@@ -278,6 +278,7 @@ pci_check_function(u8 bus, u8 slot, u8 func)
         *(u32 *)(mmio + 0x18) &= ~(u32)(3<<22);
         arch_busy_usleep(100);
         kprintf("STATUS: %x\r\n", *(u32 *)(mmio + E1000_REG_STATUS));
+        *(u32 *)(mmio + 0x03828) |= (1<<24) | (128 << 8) | (8);
         kprintf("TXDCTL: [%.8x]\r\n", *(u32 *)(mmio + 0x03828));
         kprintf("TXDCTL1: [%.8x]\r\n", *(u32 *)(mmio + 0x03928));
 #endif
@@ -411,6 +412,7 @@ pci_check_function(u8 bus, u8 slot, u8 func)
         u64 base;
         struct e1000_tx_desc *txdesc;
         struct e1000_rx_desc *rxdesc;
+        u32 bufsz = 768;
 
 #if 0
         base = (u64)kmalloc(768 * sizeof(struct e1000_rx_desc) + 16);
@@ -434,8 +436,8 @@ pci_check_function(u8 bus, u8 slot, u8 func)
 
 
         /* ToDo: 16 bytes for alignment? */
-        base = (u64)kmalloc(768 * sizeof(struct e1000_tx_desc) + 16);
-        for ( i = 0; i < 768; i++ ) {
+        base = (u64)kmalloc(bufsz * sizeof(struct e1000_tx_desc) + 16);
+        for ( i = 0; i < bufsz; i++ ) {
             txdesc = (struct e1000_tx_desc *)
                 (base + i * sizeof(struct e1000_tx_desc));
             txdesc->address = 0;
@@ -447,9 +449,9 @@ pci_check_function(u8 bus, u8 slot, u8 func)
         }
         *(u32 *)(mmio + E1000_REG_TDBAH) = base >> 32;
         *(u32 *)(mmio + E1000_REG_TDBAL) = base & 0xffffffff;
-        *(u32 *)(mmio + E1000_REG_TDLEN) = 768 * sizeof(struct e1000_tx_desc);
+        *(u32 *)(mmio + E1000_REG_TDLEN) = bufsz * sizeof(struct e1000_tx_desc);
         *(u32 *)(mmio + E1000_REG_TDH) = 0;
-        //*(u32 *)(mmio + E1000_REG_TDT) = 768;
+        //*(u32 *)(mmio + E1000_REG_TDT) = bufsz;
         *(u32 *)(mmio + E1000_REG_TDT) = 0;
 
 #if 0
@@ -460,14 +462,23 @@ pci_check_function(u8 bus, u8 slot, u8 func)
         *(u32 *)(mmio + E1000_REG_TCTL) = E1000_TCTL_EN | E1000_TCTL_PSP;
 
         /* Send one packet */
-        u8 *pkt = kmalloc(1516) ;
-        u32 cnt;
+        u8 *pkt = kmalloc(1534) ;
+        u64 cnt;
+#if 0
         pkt[0] = 0x01;
         pkt[1] = 0x00;
         pkt[2] = 0x5e;
         pkt[3] = 0x00;
         pkt[4] = 0x00;
         pkt[5] = 0x01;
+#else
+        pkt[0] = 0x00;
+        pkt[1] = 0x02;
+        pkt[2] = 0xb3;
+        pkt[3] = 0x04;
+        pkt[4] = 0x05;
+        pkt[5] = 0x06;
+#endif
         pkt[6] = m[0];
         pkt[7] = m[1];
         pkt[8] = m[2];
@@ -498,17 +509,24 @@ pci_check_function(u8 bus, u8 slot, u8 func)
         pkt[28] = 100;
         pkt[29] = 2;
         /* dst */
+#if 0
         pkt[30] = 224;
         pkt[31] = 0;
         pkt[32] = 0;
         pkt[33] = 1;
+#else
+        pkt[30] = 192;
+        pkt[31] = 168;
+        pkt[32] = 100;
+        pkt[33] = 1;
+#endif
         /* icmp */
         pkt[34] = 0x08;
         pkt[35] = 0x00;
         /* icmp checksum */
         pkt[36] = 0x00;
         pkt[37] = 0x00;
-        for ( i = 38; i < 98; i++ ) {
+        for ( i = 38; i < 64 + 34; i++ ) {
             pkt[i] = 0;
         }
 
@@ -526,11 +544,12 @@ pci_check_function(u8 bus, u8 slot, u8 func)
         kprintf("PBECCSTS: [%.8x]\r\n", *(u32 *)(mmio + 0x100c));
         kprintf("Packet buffer allocation: [%.8x]\r\n", *(u32 *)(mmio + 0x01000));
 
-        for ( cnt = 0; cnt < 20; cnt++ ) {
+        for ( cnt = 0; cnt < 100000000; cnt++ ) {
             txdesc = (struct e1000_tx_desc *)
-                (base + cnt * sizeof(struct e1000_tx_desc));
+                (base + (cnt % bufsz) * sizeof(struct e1000_tx_desc));
             txdesc->address = pkt;
-            txdesc->length = 64 + 34;
+            txdesc->length = 26 + 34; // 4B for FCS
+            //txdesc->length = 64 + 34;
             //txdesc->address = 0;
             //txdesc->length = 0;
             txdesc->sta = 0;
@@ -539,21 +558,36 @@ pci_check_function(u8 bus, u8 slot, u8 func)
             txdesc->cso = 0;
             txdesc->cmd = (1<<3) | (1<<1) | 1;
             //txdesc->cmd = (1<<3) | (1<<1) | 1; /* report status | insert FCS | end of packet */
-            txdesc->special = 2000;
+            //txdesc->special = 2000;
+#if 1
             if ( 0 == cnt % 2 ) {
                 txdesc->cmd = (1<<3);
             } else {
                 txdesc->address = 0;
                 txdesc->length = 0;
-                txdesc->cmd = (1<<3) | (1<<1) | 1 | (1<<6);
+                //txdesc->cmd = (1<<3) | (1<<1) | 1 | (1<<6);
+                txdesc->cmd = (1<<3) | (1<<1) | 1;
             }
+#else
+            txdesc->cmd = (1<<3) | (1<<1) | 1;
+#endif
 
-            kprintf("CUR: [%d:%d] %x/%x\r\n",
+#if 0
+            kprintf("CUR: %d [%d:%d:%d] %x/%x\r\n",
+                    cnt,
                     *(u32 *)(mmio + E1000_REG_TDH),
                     *(u32 *)(mmio + E1000_REG_TDT),
+                    *(u32 *)(mmio + E1000_REG_TDLEN),
                     txdesc->cmd, txdesc->sta);
+#endif
 
-            *(u32 *)(mmio + E1000_REG_TDT) = cnt + 1;
+            *(u32 *)(mmio + E1000_REG_TDT) = (cnt + 1) % bufsz;
+
+#if 1
+            if ( cnt % bufsz ) {
+               continue;
+            }
+#endif
 
 #if 0
             kprintf("STA: %x %x\r\n", txdesc->cmd, txdesc->sta);
@@ -564,17 +598,19 @@ pci_check_function(u8 bus, u8 slot, u8 func)
 #if 1
             while( !(txdesc->sta & 0xf) ) {
 #if 0
-                kprintf("CUR: [%d:%d] %x\r\n",
+                kprintf("XCUR: [%d:%d] %x\r\n",
                         *(u32 *)(mmio + E1000_REG_TDH),
                         *(u32 *)(mmio + E1000_REG_TDT), txdesc->sta);
 #endif
                 pause();
             }
 #endif
+#if 0
             kprintf("STA: %x %x\r\n", txdesc->cmd, txdesc->sta);
             kprintf("A packet was transmitted. [%d:%d]\r\n",
                     *(u32 *)(mmio + E1000_REG_TDH),
                     *(u32 *)(mmio + E1000_REG_TDT));
+#endif
             //arch_busy_usleep(1000000);
         }
     }
