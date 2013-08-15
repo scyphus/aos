@@ -8,6 +8,8 @@
 /* $Id$ */
 
 #include <aos/const.h>
+#include "arch.h"
+#include "clock.h"
 #include "acpi.h"
 
 static u64 clock_acpi_cnt;
@@ -42,17 +44,17 @@ clock_update(void)
 {
     u32 cur;
 
-    arch_spin_lock(&lock);
+    spin_lock(&lock);
 
     cur = acpi_get_timer();
     if ( cur < clock_acpi_prev ) {
-        clock_acpi_cnt += acpi_get_timer_period - clock_acpi_prev + cur;
+        clock_acpi_cnt += acpi_get_timer_period() - clock_acpi_prev + cur;
     } else {
         clock_acpi_cnt += (u64)cur - clock_acpi_prev;
     }
     clock_acpi_prev = cur;
 
-    arch_spin_unlock(&lock);
+    spin_unlock(&lock);
 }
 
 
