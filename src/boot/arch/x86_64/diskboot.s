@@ -14,6 +14,7 @@
 	.set	CYLINDER_SIZE,2         /* 2 heads per cylinder */
 	.set	NUM_RETRIES,3		/* Number of times to retry to read */
 	.set	ERRCODE_TIMEOUT,0x80	/* Error code: timeout */
+	.set	ERRCODE_CONTROLLER,0x20	/* Error code: controller failure */
 
 	.file	"diskboot.s"
 
@@ -38,6 +39,14 @@ start:
 	movw	%ax,%es
 /* Save BIOS boot drive */
 	movb	%dl,drive
+/* Set VGA mode to 16bit color text mode */
+	movb	$0x03,%al
+	movb	$0x00,%ah
+	int	$0x10
+/* For Intel Core i7-3770K processor */
+	.rept 10
+	nop
+	.endr
 /* Display the welcome message */
 	movw	$msg_welcome,%si	/* %ds:(%si) -> welcome message */
 	call	putstr

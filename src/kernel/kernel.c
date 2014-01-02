@@ -13,6 +13,8 @@
 static int lock;
 static struct kmem_slab_page_hdr *kmem_slab_head;
 
+extern struct netdev_list *netdev_head;
+
 /*
  * Temporary: Keyboard drivers
  */
@@ -48,6 +50,16 @@ kmain(void)
     arch_busy_usleep(10000);
 
     kprintf("\r\nStarting a shell.  Press Esc to power off the machine:\r\n");
+
+#if 0
+    rng_init();
+    rng_stir();
+    int i;
+    for ( i = 0; i < 16; i++ ) {
+        kprintf("RNG: %.8x\r\n", rng_random());
+    }
+#endif
+
     proc_shell();
 }
 
@@ -143,6 +155,97 @@ kstrncmp(const char *a, const char *b, int n)
 }
 
 
+void set_cr3(u64);
+u32 bswap32(u32);
+u64 bswap64(u64);
+u64 popcnt(u64);
+u64
+setup_routing_page_table(void)
+{
+    u64 base;
+    int nr0;
+    int nr1;
+    int nr2;
+    int nr3;
+    int i;
+
+    /* 4GB + 32GB = 36GB */
+    nr0 = 1;
+    nr1 = 1;
+    nr2 = 0x24;
+    nr3 = 0x4000;
+
+    /* Initialize page table */
+    base = kmalloc((nr0 + nr1 + nr2 + nr3) * 4096);
+    for ( i = 0; i < (nr0 + nr1 + nr2 + nr3) * 4096; i++ ) {
+        *(u8 *)(base+i) = 0;
+    }
+
+    /* PML4E */
+    *(u64 *)base = base + 0x1007;
+
+    /* PDPTE */
+    for ( i = 0; i < 0x24; i++ ) {
+        *(u64 *)(base+0x1000+i*8) = base + (u64)0x1000 * i + 0x2007;
+    }
+
+    /* PDE */
+    for ( i = 0; i < 0x4 * 0x200; i++ ) {
+        *(u64 *)(base+0x2000+i*8) = (u64)0x00200000 * i + 0x183;
+    }
+    for ( i = 0; i < 0x20 * 0x200; i++ ) {
+        *(u64 *)(base+0x6000+i*8) = base + (u64)0x1000 * i + 0x26007;
+    }
+
+    rng_init();
+    rng_stir();
+    u64 rt = kmalloc(4096 * 0x1000);
+    for ( i = 0; i < 4096 * 0x1000 / 8; i++ ) {
+        *(u64 *)(rt+i*8) = ((u64)rng_random()<<32) | (u64)rng_random();
+    }
+
+    /* PTE */
+#if 0
+    for ( i = 0; i < 0x4000 * 0x200; i++ ) {
+        *(u64 *)(base+0x26000+i*8) = (u64)0x3 + (rt + (i * 8) % (4096 * 0x1000));
+    }
+#else
+    for ( i = 0; i < 0x20 * 0x200; i++ ) {
+        *(u64 *)(base+0x6000+i*8) = (u64)0x83 + (rt & 0xffffffc00000ULL);
+    }
+#endif
+    kprintf("ROUTING TABLE: %llx %llx\r\n", base, rt);
+    set_cr3(base);
+
+    dbg_printf("Looking up routing table\r\n");
+    u64 x;
+    u64 tmp = 0;
+    for ( x = 0; x < 0x100000000ULL; x++ ) {
+        //tmp ^= *(u64 *)(u64)(0x100000000ULL + (u64)bswap32(x));
+        //tmp ^= *(u64 *)(u64)(0x100000000ULL + (u64)rng_random());
+        //bswap32(x);
+        //tmp ^= *(u64 *)(u64)(0x100000000ULL + (u64)(x^tmp)&0xffffffff);
+        //tmp = *(u64 *)(u64)(0x100000000ULL + ((u64)(tmp&0xffffffffULL) << 3));
+        //tmp ^= *(u64 *)(u64)(0x100000000ULL + ((u64)x << 3));
+        //tmp ^= *(u64 *)(u64)(0x100000000);
+        //kprintf("ROUTING TABLE: %llx\r\n", *(u64 *)(u64)(0x100000000 + x));
+
+        popcnt(x);
+#if 0
+        u64 m;
+        __asm__ __volatile__ ("popcntq %1,%0" : "=r"(m) : "r"(x) );
+        if ( m != popcnt(x) ) {
+            kprintf("%.16llx %.16llx %.16llx\r\n", x, popcnt(x), m);
+        }
+#endif
+    }
+    dbg_printf("done : %llx\r\n", tmp);
+
+
+    return 0;
+}
+
+
 /*
  * Shell process
  */
@@ -152,6 +255,8 @@ proc_shell(void)
     unsigned char cmdbuf[256];
     int pos;
     int c;
+
+    //setup_routing_page_table();
 
     pos = 0;
     cmdbuf[0] = 0;
@@ -174,6 +279,166 @@ proc_shell(void)
                     panic("Executing user PANIC!!");
                 } else if ( 0 == kstrcmp("off", cmdbuf) ) {
                     arch_poweroff();
+                } else if ( 0 == kstrcmp("show interfaces", cmdbuf) ) {
+                    struct netdev_list *list;
+                    list = netdev_head;
+                    while ( list ) {
+                        kprintf(" %s\r\n", list->netdev->name);
+                        kprintf("   HWADDR: %.2x:%.2x:%.2x:%.2x:%.2x:%.2x\r\n",
+                                list->netdev->macaddr[0],
+                                list->netdev->macaddr[1],
+                                list->netdev->macaddr[2],
+                                list->netdev->macaddr[3],
+                                list->netdev->macaddr[4],
+                                list->netdev->macaddr[5]);
+                        list = list->next;
+                    }
+                } else if ( 0 == kstrcmp("start spt", cmdbuf) ) {
+                    struct netdev_list *list;
+                    u8 *rpkt;
+                    u32 pktlen;
+                    int ret;
+
+                    u8 *pkt;
+                    int pktsz = 64 - 18;
+                    pkt = kmalloc(1534);
+#define MCT 0
+#if MCT
+                    /* dst (multicast) */
+                    pkt[0] = 0x01;
+                    pkt[1] = 0x00;
+                    pkt[2] = 0x5e;
+                    pkt[3] = 0x00;
+                    pkt[4] = 0x00;
+                    pkt[5] = 0x01;
+#else
+                    /* dst (thinkpad T410) */
+                    pkt[0] = 0xf0;
+                    pkt[1] = 0xde;
+                    pkt[2] = 0xf1;
+                    pkt[3] = 0x37;
+                    pkt[4] = 0xea;
+                    pkt[5] = 0xf6;
+#endif
+#if 0
+                    /* src (thinkpad T410) */
+                    pkt[6] = 0xf0;
+                    pkt[7] = 0xde;
+                    pkt[8] = 0xf1;
+                    pkt[9] = 0x37;
+                    pkt[10] = 0xea;
+                    pkt[11] = 0xf6;
+#else
+                    /* src (thinkpad X201i) */
+                    pkt[6] = 0xf0;
+                    pkt[7] = 0xde;
+                    pkt[8] = 0xf1;
+                    pkt[9] = 0x42;
+                    pkt[10] = 0x8f;
+                    pkt[11] = 0x9c;
+#endif
+                    /* type = IP (0800) */
+                    pkt[12] = 0x08;
+                    pkt[13] = 0x00;
+                    /* IP header */
+                    pkt[14] = 0x45;
+                    pkt[15] = 0x00;
+                    pkt[16] = (pktsz >> 8) & 0xff;
+                    pkt[17] = pktsz & 0xff;
+                    /* ID / fragment */
+                    pkt[18] = 0x26;
+                    pkt[19] = 0x6d;
+                    pkt[20] = 0x00;
+                    pkt[21] = 0x00;
+                    /* TTL/protocol */
+#if MCT
+                    pkt[22] = 0x01;
+                    //pkt[23] = 0x01;
+                    pkt[23] = 17;
+#else
+                    pkt[22] = 0x64;
+                    pkt[23] = 17;
+#endif
+                    /* checksum */
+                    pkt[24] = 0x00;
+                    pkt[25] = 0x00;
+                    /* src */
+                    pkt[26] = 192;
+                    pkt[27] = 168;
+                    pkt[28] = 100;
+                    pkt[29] = 2;
+                    /* dst */
+#if MCT
+                    pkt[30] = 224;
+                    pkt[31] = 0;
+                    pkt[32] = 0;
+                    pkt[33] = 1;
+#else
+                    pkt[30] = 192;
+                    pkt[31] = 168;
+                    pkt[32] = 200;
+                    pkt[33] = 2;
+#endif
+                    int i;
+#if 0
+                    /* icmp */
+                    pkt[34] = 0x08;
+                    pkt[35] = 0x00;
+                    /* icmp checksum */
+                    pkt[36] = 0x00;
+                    pkt[37] = 0x00;
+                    for ( i = 38; i < 64 + 34; i++ ) {
+                        pkt[i] = 0;
+                    }
+#else
+                    /* UDP */
+                    pkt[34] = 0xff;
+                    pkt[35] = 0xff;
+                    pkt[36] = 0xff;
+                    pkt[37] = 0xfe;
+                    pkt[38] = (pktsz - 20) >> 8;
+                    pkt[39] = (pktsz - 20) & 0xff;
+                    pkt[40] = 0x00;
+                    pkt[41] = 0x00;
+                    for ( i = 42; i < pktsz + 14; i++ ) {
+                        pkt[i] = 0;
+                    }
+#endif
+                    /* Compute checksum */
+                    u16 *tmp;
+                    u32 cs;
+                    pkt[24] = 0x0;
+                    pkt[25] = 0x0;
+                    tmp = (u16 *)pkt;
+                    cs = 0;
+                    for ( i = 7; i < 17; i++ ) {
+                        cs += (u32)tmp[i];
+                        cs = (cs & 0xffff) + (cs >> 16);
+                    }
+                    cs = 0xffff - cs;
+                    pkt[24] = cs & 0xff;
+                    pkt[25] = cs >> 8;
+
+                    for ( ;; ) {
+                        list = netdev_head;
+                        while ( list ) {
+                            //list->netdev->sendpkt(pkt, 1518-4, list->netdev);
+                            list->netdev->sendpkt(pkt, pktsz + 18 - 4, list->netdev);
+#if 0
+                            ret = list->netdev->recvpkt(&rpkt, &pktlen, list->netdev);
+                            if ( ret ) {
+                                list->netdev->sendpkt(pkt, 64-4, list->netdev);
+                            }
+#endif
+                            list = list->next;
+                        }
+                        //__asm__ __volatile__ ("hlt;");
+                    }
+                } else if ( 0 == kstrcmp("start routing", cmdbuf) ) {
+                    //__asm__ __volatile__ ("sti;");
+                    struct netdev_list *list;
+                    list = netdev_head;
+                    list->netdev->routing_test(list->netdev);
                 } else if ( 0 == kstrcmp("uptime", cmdbuf) ) {
                     u64 x = arch_clock_get();
                     kprintf("uptime: %llu.%.9llu sec\r\n",

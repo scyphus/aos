@@ -22,6 +22,10 @@
 	.globl	kstart64		/* Entry point */
 	.globl	apstart64		/* Application processor */
 	.globl	_pause
+	.globl	_bswap16
+	.globl	_bswap32
+	.globl	_bswap64
+	.globl	_set_cr3
 	.globl	_rdtsc
 	.globl	_inb
 	.globl	_inw
@@ -47,6 +51,7 @@
 	.globl	_intr_apic_loc_tmr
 	.globl	_intr_crash
 	.globl	_intr_apic_spurious
+	.globl	_asm_popcnt
 	.globl	_asm_ioapic_map_intr
 	.globl	_asm_lapic_read
 	.globl	_asm_lapic_write
@@ -191,6 +196,28 @@ _asm_ioapic_map_intr:
 	ret
 
 
+/* u16 bswap16(u16) */
+_bswap16:
+	movw	%di,%ax
+	xchg	%al,%ah
+	ret
+
+/* u32 bswap32(u32) */
+_bswap32:
+	movl	%edi,%eax
+	bswapl	%eax
+	ret
+
+/* u64 bswap64(u64) */
+_bswap64:
+	movq	%rdi,%rax
+	bswapq	%rax
+	ret
+
+/* void set_cr3(u64); */
+_set_cr3:
+	movq	%rdi,%cr3
+	ret
 
 /* u64 rdtsc(void); */
 _rdtsc:
@@ -413,6 +440,48 @@ lapic_isr_thread_restart:
 	iretq
 
 
+
+
+
+_asm_popcnt:
+	popcntq	%rdi,%rax
+	ret
+	/* The following routine is the software implementation of popcnt */
+	movq	%rdi,%rax
+	/* x = x - ((x>>1) & 0x5555555555555555) */
+	movq	%rax,%rbx
+	shrq	$1,%rbx
+	movq	$0x5555555555555555,%rcx
+	andq	%rcx,%rbx
+	subq	%rbx,%rax
+	/* x = (x & 0x3333333333333333) + ((x>>2) & 0x3333333333333333) */
+	movq	%rax,%rbx
+	movq	$0x3333333333333333,%rcx
+	andq	%rcx,%rax
+	shrq	$2,%rbx
+	andq	%rcx,%rbx
+	addq	%rbx,%rax
+	/* x = (x + (x>>4)) & 0x0f0f0f0f0f0f0f0f */
+	movq	%rax,%rbx
+	movq	$0x0f0f0f0f0f0f0f0f,%rcx
+	shrq	$4,%rbx
+	addq	%rbx,%rax
+	andq	%rcx,%rax
+	/* x = x + (x>>8) */
+	movq	%rax,%rbx
+	shrq	$8,%rbx
+	addq	%rbx,%rax
+	/* x = x + (x>>16) */
+	movq	%rax,%rbx
+	shrq	$16,%rbx
+	addq	%rbx,%rax
+	/* x = x + (x>>32) */
+	movq	%rax,%rbx
+	shrq	$32,%rbx
+	addq	%rbx,%rax
+	/* x = x & 0x7f */
+	andq	$0x7f,%rax
+	ret
 
 /* void asm_lapic_read(void *addr, u32 val); */
 _asm_lapic_write:

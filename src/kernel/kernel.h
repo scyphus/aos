@@ -19,6 +19,33 @@
 #define PAGESIZE        4096
 
 
+
+
+
+/* DRIVER */
+
+#define NETDEV_MAX_NAME 32
+struct netdev {
+    char name[NETDEV_MAX_NAME];
+    u8 macaddr[6];
+
+    void *vendor;
+
+    int (*sendpkt)(u8 *pkt, u32 len, struct netdev *netdev);
+    int (*recvpkt)(u8 *pkt, u32 len, struct netdev *netdev);
+    int (*routing_test)(struct netdev *netdev);
+};
+struct netdev_list {
+    struct netdev *netdev;
+    struct netdev_list *next;
+};
+
+void rng_init(void);
+void rng_stir(void);
+u32 rng_random(void);
+
+
+
 struct proc {
     /* Stack frame */
     void *rp;

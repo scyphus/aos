@@ -44,7 +44,11 @@ kpack: 	kernel/arch/$(ARCH)/entry16.o \
 	kernel/arch/$(ARCH)/console.o \
 	kernel/arch/$(ARCH)/clock.o \
 	kernel/arch/$(ARCH)/cmos.o \
-	kernel/arch/$(ARCH)/i8254.o
+	kernel/arch/$(ARCH)/i8254.o \
+	drivers/rng/rng.o \
+	drivers/net/net.o \
+	drivers/e1000/e1000.o \
+	drivers/pci/pci.o
 	$(LD) -N -e kstart -Ttext=0x10000 --oformat binary -o $@ $^
 
 ## Dependencies

@@ -56,7 +56,7 @@ pg_setup:
 	movl	%ebx,%edi
 	xorl	%eax,%eax
 	movl	$(512*8*6/4),%ecx
-	rep	stosl			/* Initialize %ecx bytes from %edi */
+	rep	stosl			/* Initialize %ecx*4 bytes from %edi */
 					/*  with %eax */
 /* Level 4 page map */
 	leal	0x1007(%ebx),%eax
