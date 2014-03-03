@@ -229,6 +229,8 @@ extern u8 acpi_enable_val;
 extern u8 acpi_cmos_century;
 
 
+int arch_dbg_printf(const char *fmt, ...);
+
 #endif /* _KERNEL_ARCH_H */
 
 /*

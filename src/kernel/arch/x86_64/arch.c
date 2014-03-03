@@ -35,7 +35,7 @@ extern void trampoline_end(void);
 static int dbg_lock;
 
 int
-dbg_printf(const char *fmt, ...)
+arch_dbg_printf(const char *fmt, ...)
 {
     va_list ap;
     u64 clk;
@@ -52,6 +52,8 @@ dbg_printf(const char *fmt, ...)
     va_end(ap);
 
     arch_spin_unlock(&dbg_lock);
+
+    return 0;
 }
 
 /*
@@ -61,7 +63,6 @@ void
 arch_bsp_init(void)
 {
     struct bootinfo *bi;
-    struct phys_mem *pm;
     struct p_data *pdata;
     u64 tsz;
     u64 i;
@@ -94,7 +95,7 @@ arch_bsp_init(void)
     i8254_stop_timer();
 
     /* Initialize memory table */
-    dbg_printf("Initializing physical memory.\r\n");
+    arch_dbg_printf("Initializing physical memory.\r\n");
     if ( 0 != phys_mem_init(bi) ) {
         panic("Error! Cannot initialize physical memory.\r\n");
     }
@@ -106,7 +107,7 @@ arch_bsp_init(void)
     }
 #endif
 
-    dbg_printf("Initializing GDT and IDT.\r\n");
+    arch_dbg_printf("Initializing GDT and IDT.\r\n");
 
     /* Initialize global descriptor table */
     gdt_init();
@@ -117,7 +118,7 @@ arch_bsp_init(void)
     idt_load();
 
     /* Setup interrupt handlers */
-    dbg_printf("Setting up interrupt handlers.\r\n");
+    arch_dbg_printf("Setting up interrupt handlers.\r\n");
     idt_setup_intr_gate(IV_TMR, &intr_apic_int32); /* IRQ0 */
     idt_setup_intr_gate(IV_KBD, &intr_apic_int33); /* IRQ1 */
     idt_setup_intr_gate(IV_LOC_TMR, &intr_apic_loc_tmr); /* Local APIC timer */
@@ -136,7 +137,7 @@ arch_bsp_init(void)
 
 
     /* Initialize TSS and load it */
-    dbg_printf("Initializing TSS.\r\n");
+    arch_dbg_printf("Initializing TSS.\r\n");
     tss_init();
     tr_load(this_cpu());
 
@@ -151,7 +152,7 @@ arch_bsp_init(void)
     lapic_init();
 
     /* Initialize PCI driver */
-    dbg_printf("Searching PCI devices.\r\n");
+    arch_dbg_printf("Searching PCI devices.\r\n");
     pci_init();
     e1000_init();
 
@@ -167,7 +168,7 @@ arch_bsp_init(void)
     }
 
     /* Send INIT IPI */
-    dbg_printf("Starting all available application processors.\r\n");
+    arch_dbg_printf("Starting all available application processors.\r\n");
     lapic_send_init_ipi();
 
     /* Wait 10 ms */
@@ -193,7 +194,7 @@ arch_bsp_init(void)
     for ( i = 0; i < MAX_PROCESSORS; i++ ) {
         pdata = (struct p_data *)((u64)P_DATA_BASE + i * P_DATA_SIZE);
         if ( pdata->flags & 1 ) {
-            dbg_printf("Processor #%d is running.\r\n", i);
+            arch_dbg_printf("Processor #%d is running.\r\n", i);
         }
     }
 #endif
@@ -210,7 +211,7 @@ arch_ap_init(void)
 {
     struct p_data *pdata;
 
-    dbg_printf("Initializing application processor #%d.\r\n", this_cpu());
+    arch_dbg_printf("Initializing application processor #%d.\r\n", this_cpu());
 
     /* Load global descriptor table */
     gdt_load();

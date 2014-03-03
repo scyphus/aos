@@ -10,6 +10,7 @@
 #include <aos/const.h>
 #include "pci.h"
 #include "../../kernel/kernel.h"
+#include "../../kernel/arch/x86_64/arch.h"
 
 #define PCI_CONFIG_ADDR 0xcf8
 #define PCI_CONFIG_DATA 0xcfc
@@ -42,7 +43,9 @@ u16
 pci_check_vendor(u16 bus, u16 slot)
 {
     u16 vendor;
+#if 0
     u16 device;
+#endif
 
     vendor = pci_read_config(bus, slot, 0, 0);
 #if 0
@@ -60,13 +63,17 @@ pci_read_mmio(u8 bus, u8 slot, u8 func)
     u32 bar0;
     u32 bar1;
     u8 type;
+#if 0
     u8 prefetchable;
+#endif
 
     bar0 = pci_read_config(bus, slot, func, 0x10);
     bar0 |= (u32)pci_read_config(bus, slot, func, 0x12) << 16;
 
     type = (bar0 >> 1) & 0x3;
+#if 0
     prefetchable = (bar0 >> 3) & 0x1;
+#endif
     addr = bar0 & 0xfffffff0;
 
     if ( 0x00 == type ) {
@@ -245,8 +252,10 @@ pci_init(void)
             for ( j = 0; j < 1; j++ ) {
                 x = pci_read_config(pci->device->bus, pci->device->slot, pci->device->func, 0x10 + j * 4);
                 x |= (u32)pci_read_config(pci->device->bus, pci->device->slot, pci->device->func, 0x12 + j * 4) << 16;
-                dbg_printf("%d.%d.%d %.4x:%.4x BAR%d %.8x\r\n", pci->device->bus, pci->device->slot, pci->device->func,
-                           pci->device->vendor_id, pci->device->device_id, j, x);
+                arch_dbg_printf("%d.%d.%d %.4x:%.4x BAR%d %.8x\r\n",
+                                pci->device->bus, pci->device->slot,
+                                pci->device->func, pci->device->vendor_id,
+                                pci->device->device_id, j, x);
             }
         }
         pci = pci->next;

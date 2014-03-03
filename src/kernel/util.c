@@ -14,6 +14,11 @@
 #define PRINTF_MOD_LONG         1
 #define PRINTF_MOD_LONGLONG     2
 
+struct kmem_slab_page_hdr *kmem_slab_head;
+
+/*
+ * Put a character to the standard output of the kernel
+ */
 int
 kputc(int c)
 {
@@ -22,6 +27,9 @@ kputc(int c)
     return 0;
 }
 
+/*
+ * Put a % character with paddings to the standard output of the kernel
+ */
 int
 kprintf_percent(int pad)
 {
@@ -35,6 +43,9 @@ kprintf_percent(int pad)
     return 0;
 }
 
+/*
+ * Print a decimal value to the standard output of the kernel
+ */
 int
 kprintf_decimal(long long int val, int zero, int pad, int prec)
 {
@@ -89,6 +100,9 @@ kprintf_decimal(long long int val, int zero, int pad, int prec)
     return 0;
 }
 
+/*
+ * Print a hexdecimal value to the standard output of the kernel
+ */
 int
 kprintf_hexdecimal(unsigned long long int val, int zero, int pad, int prec,
                    int cap)
@@ -316,11 +330,14 @@ kvprintf(const char *fmt, va_list ap)
 
     return 0;
 }
+
+/*
+ * Print out formatted string
+ */
 int
 kprintf(const char *fmt, ...)
 {
     va_list ap;
-    __asm__ ("mov %%rax,%%dr3" :: "a"(fmt));
 
     va_start(ap, fmt);
     kvprintf(fmt, ap);
@@ -328,6 +345,154 @@ kprintf(const char *fmt, ...)
 
     return 0;
 }
+
+/*
+ * Initialize the kernel memory
+ */
+void
+kmem_init(void)
+{
+    kmem_slab_head = NULL;
+}
+
+/*
+ * Memory allocation
+ */
+void *
+kmalloc(u64 sz)
+{
+    struct kmem_slab_page_hdr **slab;
+    u8 *bitmap;
+    u64 n;
+    u64 i;
+    u64 j;
+    u64 cnt;
+
+    if ( sz > PAGESIZE / 2 ) {
+        return phys_mem_alloc_pages(((sz - 1) / PAGESIZE) + 1);
+    } else {
+        n = ((PAGESIZE - sizeof(struct kmem_slab_page_hdr)) / (16 + 1));
+        /* Search slab */
+        slab = &kmem_slab_head;
+        while ( NULL != *slab ) {
+            bitmap = (u8 *)(*slab) + sizeof(struct kmem_slab_page_hdr);
+            cnt = 0;
+            for ( i = 0; i < n; i++ ) {
+                if ( 0 == bitmap[i] ) {
+                    cnt++;
+                    if ( cnt * 16 >= sz ) {
+                        bitmap[i - cnt + 1] |= 2;
+                        for ( j = i - cnt + 1; j <= i; j++ ) {
+                            bitmap[j] |= 1;
+                        }
+                        return (u8 *)(*slab) + sizeof(struct kmem_slab_page_hdr)
+                            + n + (i - cnt + 1) * 16;
+                    }
+                } else {
+                    cnt = 0;
+                }
+            }
+            slab = &(*slab)->next;
+        }
+        /* Not found */
+        *slab = phys_mem_alloc_pages(1);
+        if ( NULL == (*slab) ) {
+            /* Error */
+            return NULL;
+        }
+        (*slab)->next = NULL;
+        bitmap = (u8 *)(*slab) + sizeof(struct kmem_slab_page_hdr);
+        for ( i = 0; i < n; i++ ) {
+            bitmap[i] = 0;
+        }
+        bitmap[0] |= 2;
+        for ( i = 0; i < (sz - 1) / 16 + 1; i++ ) {
+            bitmap[i] |= 1;
+        }
+
+        return (u8 *)(*slab) + sizeof(struct kmem_slab_page_hdr) + n;
+    }
+    return NULL;
+}
+
+/*
+ * Free allocated memory
+ */
+void
+kfree(void *ptr)
+{
+    struct kmem_slab_page_hdr *slab;
+    u8 *bitmap;
+    u64 n;
+    u64 i;
+    u64 off;
+
+    if ( 0 == (u64)ptr % PAGESIZE ) {
+        phys_mem_free_pages(ptr);
+    } else {
+        /* Slab */
+        /* ToDo: Free page */
+        n = ((PAGESIZE - sizeof(struct kmem_slab_page_hdr)) / (16 + 1));
+        slab = (struct kmem_slab_page_hdr *)(((u64)ptr / PAGESIZE) * PAGESIZE);
+        off = (u64)ptr % PAGESIZE;
+        off = (off - sizeof(struct kmem_slab_page_hdr) - n) / 16;
+        bitmap = (u8 *)slab + sizeof(struct kmem_slab_page_hdr);
+        if ( off >= n ) {
+            /* Error */
+            return;
+        }
+        if ( !(bitmap[off] & 2) ) {
+            /* Error */
+            return;
+        }
+        bitmap[off] &= ~(u64)2;
+        for ( i = off; i < n && (!(bitmap[i] & 2) || bitmap[i] != 0); i++ ) {
+            bitmap[off] &= ~(u64)1;
+        }
+    }
+}
+
+/*
+ * Compare string
+ */
+int
+kstrcmp(const char *a, const char *b)
+{
+    while ( *a || *b ) {
+        if ( *a > *b ) {
+            return 1;
+        } else if ( *a < *b ) {
+            return -1;
+        }
+        a++;
+        b++;
+    }
+
+    return 0;
+}
+
+/*
+ * Compare string not more than n characters
+ */
+int
+kstrncmp(const char *a, const char *b, int n)
+{
+    while ( (*a || *b) && n > 0 ) {
+        if ( *a > *b ) {
+            return 1;
+        } else if ( *a < *b ) {
+            return -1;
+        }
+        a++;
+        b++;
+        n--;
+    }
+
+    return 0;
+}
+
+
+
 
 /*
  * Local variables:

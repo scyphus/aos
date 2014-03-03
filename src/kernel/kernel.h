@@ -19,9 +19,6 @@
 #define PAGESIZE        4096
 
 
-
-
-
 /* DRIVER */
 
 #define NETDEV_MAX_NAME 32
@@ -101,14 +98,21 @@ typedef __builtin_va_list va_list;
 #define alloca(size)            __builtin_alloca((size))
 
 
+/* in kernel.c */
 int kprintf(const char *, ...);
 int kvprintf(const char *, va_list);
 void panic(const char *);
 
 
+/* in util.c */
+int kstrcmp(const char *, const char *);
+int kstrncmp(const char *, const char *, int);
+void kmem_init(void);
 void * kmalloc(u64);
 void kfree(void *);
 
+/* in shell.c */
+void proc_shell(void);
 
 
 /* Architecture-dependent functions */
