@@ -55,7 +55,6 @@ cmp(const u8 *a, const u8 *b, int len)
     return 0;
 }
 
-
 /*
  * APIC
  *   0: Processor Local APIC
@@ -481,7 +480,6 @@ acpi_poweroff(void)
 
     return -1;
 }
-
 
 /*
  * Local variables:

@@ -136,6 +136,21 @@ boot:
 
 	/* Load the kernel: Load 0x80 sectors (64KiB) from 0x1200 (LBA #9) */
 	movb	drive,%dl
+	movw	$0x1000,%ax
+	movw	%ax,%es
+	movl	$0x0,%ebx
+	movb	$0x1b,%dh
+	movw	$9,%ax	/* from LBA 9 */
+	call	read
+	movb	drive,%dl
+	movw	$0x1360,%ax
+	movw	%ax,%es
+	movl	$0x0,%ebx
+	movb	$0x24,%dh
+	movw	$0x24,%ax
+	call	read
+	ljmp	$(KERNEL_SEG),$0
+
 	movw	$KERNEL_SEG,%ax
 	movw	%ax,%es
 	movl	$(KERNEL_SEG<<4),%ebx
@@ -464,6 +479,7 @@ lba2chs:
 /* Compute sector */
 	xorw	%dx,%dx
 	movw	$HEAD_SIZE,%bx
+	mov	%eax,%dr0
 	divw	%bx		/* %dx:%ax / %bx; %ax:quotient, %dx:remainder */
 	incb	%dl
 	movb	%dl,%cl		/* Sector */
@@ -474,7 +490,7 @@ lba2chs:
 	movw	%dx,%bx		/* Save the remainder to %bx */
 	popw	%dx		/* Restore %dx*/
 	movb	%bl,%dh		/* Head */
-	movb	%bl,%ch		/* Track */
+	movb	%al,%ch		/* Track */
 	popw	%bx		/* Restore %bx */
 	ret
 

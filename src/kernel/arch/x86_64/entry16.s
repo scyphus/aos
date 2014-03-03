@@ -26,8 +26,8 @@ kstart:
 	jne	error
 
 	/* Setup temporary IDT and GDT */
-	lidt	idtr-kstart
-	lgdt	gdtr-kstart
+	lidt	(idtr-kstart)
+	lgdt	(gdtr-kstart)
 
 	movl	%cr0,%eax
 	orb	$0x1,%al	/* Enable protected mode */
@@ -45,7 +45,7 @@ halt16:
 
 /* Data section */
 	.align	16
-	.data
+//	.data
 
 /* Pseudo interrupt descriptor table */
 idtr:

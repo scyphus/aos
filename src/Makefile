@@ -30,19 +30,19 @@ kpack: 	kernel/arch/$(ARCH)/entry16.o \
 	kernel/kernel.o \
 	kernel/util.o \
 	kernel/sched.o \
+	kernel/arch/$(ARCH)/arch.o \
+	kernel/arch/$(ARCH)/spinlock.o \
+	kernel/arch/$(ARCH)/kbd.o \
+	kernel/arch/$(ARCH)/vga.o \
+	kernel/arch/$(ARCH)/acpi.o \
+	kernel/arch/$(ARCH)/apic.o \
+	kernel/arch/$(ARCH)/clock.o \
 	kernel/arch/$(ARCH)/trampoline.o \
 	kernel/arch/$(ARCH)/ap_entry32.o \
 	kernel/arch/$(ARCH)/ap_entry64.o \
-	kernel/arch/$(ARCH)/spinlock.o \
-	kernel/arch/$(ARCH)/arch.o \
 	kernel/arch/$(ARCH)/desc.o \
-	kernel/arch/$(ARCH)/acpi.o \
-	kernel/arch/$(ARCH)/apic.o \
 	kernel/arch/$(ARCH)/memory.o \
-	kernel/arch/$(ARCH)/vga.o \
-	kernel/arch/$(ARCH)/kbd.o \
 	kernel/arch/$(ARCH)/console.o \
-	kernel/arch/$(ARCH)/clock.o \
 	kernel/arch/$(ARCH)/cmos.o \
 	kernel/arch/$(ARCH)/i8254.o \
 	drivers/rng/rng.o \

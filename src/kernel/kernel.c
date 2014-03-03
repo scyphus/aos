@@ -20,6 +20,13 @@ extern struct netdev_list *netdev_head;
  */
 void kbd_init(void);
 void kbd_event(void);
+int kbd_read(void);
+
+void proc_shell(void);
+
+/* arch.c */
+int dbg_printf(const char *fmt, ...);
+void arch_bsp_init(void);
 
 /*
  * Print a panic message and hlt processor
@@ -42,10 +49,15 @@ kmain(void)
 
     kmem_slab_head = NULL;
 
+    //__asm__ ("mov %rax,%dr1");
+    //__asm__ ("mov %%rax,%%dr0" :: "a"(&kmain));
     kbd_init();
+    //__asm__ ("mov %%rax,%%dr1" :: "a"(&kbd_init));
+    //__asm__ ("mov %%rax,%%dr2" :: "a"(&arch_bsp_init));
 
     /* Initialize architecture-related devices */
     arch_bsp_init();
+    //__asm__ ("mov %%rax,%%dr5" :: "a"(&kbd_init));
 
     arch_busy_usleep(10000);
 
@@ -159,6 +171,7 @@ void set_cr3(u64);
 u32 bswap32(u32);
 u64 bswap64(u64);
 u64 popcnt(u64);
+#if 0
 u64
 setup_routing_page_table(void)
 {
@@ -244,7 +257,7 @@ setup_routing_page_table(void)
 
     return 0;
 }
-
+#endif
 
 /*
  * Shell process

@@ -99,6 +99,8 @@ vga_putc(int c)
     vga_update_cursor();
 
     spin_unlock(&lock);
+
+    return;
 }
 
 /*

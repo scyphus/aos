@@ -29,7 +29,7 @@ _trampoline:
 	movl	%cr0,%eax
 	orb	$0x1,%al	/* Enable protected mode */
 	movl	%eax,%cr0
-	ljmpl	$AP_GDT_CODE32_SEL,$ap_entry32	/* Go into protected mode */
+	ljmpl	$AP_GDT_CODE32_SEL,$(ap_entry32)	/* Go into protected mode */
 
 /* Data section */
 	.align	16

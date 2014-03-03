@@ -18,6 +18,7 @@ int
 kputc(int c)
 {
     arch_putc(c);
+
     return 0;
 }
 
@@ -319,6 +320,7 @@ int
 kprintf(const char *fmt, ...)
 {
     va_list ap;
+    __asm__ ("mov %%rax,%%dr3" :: "a"(fmt));
 
     va_start(ap, fmt);
     kvprintf(fmt, ap);

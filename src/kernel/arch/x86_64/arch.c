@@ -25,7 +25,9 @@
 
 void apic_test(void);
 void search_clock_sources(void);
-
+void vga_init(void);
+void pci_init(void);
+void e1000_init(void);
 
 extern void trampoline(void);
 extern void trampoline_end(void);
@@ -75,6 +77,11 @@ arch_bsp_init(void)
     //__asm__ __volatile__ ( "1:hlt;jmp 1b;" );
 
     /* Initialize the clock */
+    //__asm__ ("mov %%rax,%%dr3" :: "a"(0x1234));
+    //u64 *pt = 0x13600 - 0x10;
+    //char str[] = "%llx %llx %llx %llx %llx %llx %llx %llx\r\n";
+    //kprintf(str, *pt, *(pt+1), *(pt+2), *(pt+3), *(pt+4), *(pt+5), *(pt+6), *(pt+7));
+    //halt();
     clock_init();
 
     /* Print a message */
