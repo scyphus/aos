@@ -15,6 +15,7 @@
 #define PRINTF_MOD_LONGLONG     2
 
 struct kmem_slab_page_hdr *kmem_slab_head;
+static int kmem_lock;
 
 /*
  * Put a character to the standard output of the kernel
@@ -353,6 +354,7 @@ void
 kmem_init(void)
 {
     kmem_slab_head = NULL;
+    kmem_lock = 0;
 }
 
 /*
@@ -367,9 +369,14 @@ kmalloc(u64 sz)
     u64 i;
     u64 j;
     u64 cnt;
+    void *ret;
+
+    arch_spin_lock(&kmem_lock);
 
     if ( sz > PAGESIZE / 2 ) {
-        return phys_mem_alloc_pages(((sz - 1) / PAGESIZE) + 1);
+        ret = phys_mem_alloc_pages(((sz - 1) / PAGESIZE) + 1);
+        arch_spin_unlock(&kmem_lock);
+        return ret;
     } else {
         n = ((PAGESIZE - sizeof(struct kmem_slab_page_hdr)) / (16 + 1));
         /* Search slab */
@@ -385,8 +392,10 @@ kmalloc(u64 sz)
                         for ( j = i - cnt + 1; j <= i; j++ ) {
                             bitmap[j] |= 1;
                         }
-                        return (u8 *)(*slab) + sizeof(struct kmem_slab_page_hdr)
+                        ret = (u8 *)(*slab) + sizeof(struct kmem_slab_page_hdr)
                             + n + (i - cnt + 1) * 16;
+                        arch_spin_unlock(&kmem_lock);
+                        return ret;
                     }
                 } else {
                     cnt = 0;
@@ -398,6 +407,7 @@ kmalloc(u64 sz)
         *slab = phys_mem_alloc_pages(1);
         if ( NULL == (*slab) ) {
             /* Error */
+            arch_spin_unlock(&kmem_lock);
             return NULL;
         }
         (*slab)->next = NULL;
@@ -410,8 +420,11 @@ kmalloc(u64 sz)
             bitmap[i] |= 1;
         }
 
-        return (u8 *)(*slab) + sizeof(struct kmem_slab_page_hdr) + n;
+        ret = (u8 *)(*slab) + sizeof(struct kmem_slab_page_hdr) + n;
+        arch_spin_unlock(&kmem_lock);
+        return ret;
     }
+    arch_spin_unlock(&kmem_lock);
     return NULL;
 }
 
@@ -427,6 +440,8 @@ kfree(void *ptr)
     u64 i;
     u64 off;
 
+    arch_spin_lock(&kmem_lock);
+
     if ( 0 == (u64)ptr % PAGESIZE ) {
         phys_mem_free_pages(ptr);
     } else {
@@ -439,10 +454,12 @@ kfree(void *ptr)
         bitmap = (u8 *)slab + sizeof(struct kmem_slab_page_hdr);
         if ( off >= n ) {
             /* Error */
+            arch_spin_unlock(&kmem_lock);
             return;
         }
         if ( !(bitmap[off] & 2) ) {
             /* Error */
+            arch_spin_unlock(&kmem_lock);
             return;
         }
         bitmap[off] &= ~(u64)2;
@@ -450,6 +467,7 @@ kfree(void *ptr)
             bitmap[off] &= ~(u64)1;
         }
     }
+    arch_spin_unlock(&kmem_lock);
 }
 
 /*
@@ -489,6 +507,78 @@ kstrncmp(const char *a, const char *b, int n)
     }
 
     return 0;
+}
+
+/*
+ * Count the length of string
+ */
+int
+kstrlen(const char *s)
+{
+    int len;
+
+    len = 0;
+    while ( '\0' != s[len] ) {
+        len++;
+    }
+    return len;
+}
+
+/*
+ * Duplicate the string
+ */
+char *
+kstrdup(const char *s)
+{
+    char *ns;
+    int len;
+    int i;
+
+    len = kstrlen(s);
+    ns = kmalloc(len + 1);
+    if ( NULL == ns ) {
+        return NULL;
+    }
+    for ( i = 0; i < len + 1; i++ ) {
+        ns[i] = s[i];
+    }
+
+    return ns;
+}
+
+/*
+ * Compare memory
+ */
+int
+kmemcmp(const u8 *a, const u8 *b, int n)
+{
+    while ( n > 0 ) {
+        if ( *a > *b ) {
+            return 1;
+        } else if ( *a < *b ) {
+            return -1;
+        }
+        a++;
+        b++;
+        n--;
+    }
+
+    return 0;
+}
+
+/*
+ * Compare string
+ */
+void *
+kmemcpy(u8 *a, const u8 *b, int sz)
+{
+    int i;
+
+    for ( i = 0; i < sz; i++ ) {
+        a[i] = b[i];
+    }
+
+    return a;
 }
 
 

@@ -11,6 +11,8 @@
 #include "../pci/pci.h"
 #include "../../kernel/kernel.h"
 
+void pause(void);
+
 struct netdev_list *netdev_head;
 
 
@@ -110,6 +112,10 @@ struct e1000_device {
     u64 tx_base;
     u32 tx_tail;
     u32 tx_bufsz;
+
+    /* Cache */
+    u32 rx_head_cache;
+    u32 tx_head_cache;
 
     u8 macaddr[6];
 
@@ -360,6 +366,10 @@ e1000_init_hw(struct pci_device *pcidev)
     netdev->rx_bufsz = 768;
     netdev->tx_bufsz = 768;
 
+    /* Cache */
+    netdev->rx_head_cache = 0;
+    netdev->tx_head_cache = 0;
+
     /* ToDo: 16 bytes for alignment */
     netdev->rx_base = (u64)kmalloc(netdev->rx_bufsz
                                    * sizeof(struct e1000_rx_desc));
@@ -429,21 +439,23 @@ e1000_sendpkt(u8 *pkt, u32 len, struct netdev *netdev)
     e1000dev = (struct e1000_device *)netdev->vendor;
     tdh = mmio_read32(e1000dev->mmio, E1000_REG_TDH);
 
-    next_tail = (e1000dev->tx_tail + 16) % e1000dev->tx_bufsz;
+    next_tail = (e1000dev->tx_tail + 1) % e1000dev->tx_bufsz;
 #if 0
     if ( tdh == next_tail ) {
     }
 #endif
     if ( e1000dev->tx_bufsz -
          ((e1000dev->tx_bufsz - tdh + e1000dev->tx_tail) % e1000dev->tx_bufsz)
-         <= 16 ) {
+         <= 1 ) {
         /* Full */
         return -1;
     }
 
+    kprintf("%llx: pkt2\r\n", netdev);
+
     int i;
     int j;
-    for ( i = 0; i < 16; i++ ) {
+    for ( i = 0; i < 1; i++ ) {
         txdesc = (struct e1000_tx_desc *)(e1000dev->tx_base + (e1000dev->tx_tail + i)
                                           * sizeof(struct e1000_tx_desc));
         for ( j = 0; j < len; j++ ) {
@@ -577,6 +589,125 @@ e1000_routing_test(struct netdev *netdev)
         e1000dev->tx_tail = (e1000dev->tx_tail + nrp) % e1000dev->tx_bufsz;
         mmio_write32(e1000dev->mmio, E1000_REG_RDT, e1000dev->rx_tail);
         mmio_write32(e1000dev->mmio, E1000_REG_TDT, e1000dev->tx_tail);
+    }
+
+    return 0;
+}
+
+
+typedef int (*router_rx_cb_t)(u8 *, u32, int);
+int arch_dbg_printf(const char *fmt, ...);
+
+
+/*
+ * Get a valid TX buffer
+ */
+int
+e1000_tx_buf(struct netdev *netdev, u8 **txpkt, u16 **txlen, u16 vlan)
+{
+    struct e1000_device *e1000dev;
+    struct e1000_tx_desc *txdesc;
+    int tx_avl;
+
+    /* Retrieve data structure of e1000 driver */
+    e1000dev = (struct e1000_device *)netdev->vendor;
+
+    /* Get available TX buffer length */
+    tx_avl = e1000dev->tx_bufsz
+        - ((e1000dev->tx_bufsz - e1000dev->tx_head_cache + e1000dev->tx_tail)
+           % e1000dev->tx_bufsz);
+    if ( tx_avl <= 0 ) {
+        return -1;
+    }
+
+    /* Check the head of TX ring buffer */
+    txdesc = (struct e1000_tx_desc *)
+        (e1000dev->tx_base
+         + (e1000dev->tx_tail % e1000dev->tx_bufsz)
+         * sizeof(struct e1000_tx_desc));
+
+    *txpkt = (u8 *)txdesc->address;
+    *txlen = &(txdesc->length);
+
+    txdesc->sta = 0;
+    txdesc->css = 0;
+    txdesc->cso = 0;
+    txdesc->special = vlan;
+    if ( vlan == 0 ) {
+        txdesc->cmd = (1<<3) | (1<<1) | 1;
+    } else {
+        txdesc->cmd = (1<<3) | (1<<1) | 1 | (1<<6);
+    }
+
+    /* Update the tail pointer of the TX buffer */
+    e1000dev->tx_tail = (e1000dev->tx_tail + 1) % e1000dev->tx_bufsz;
+
+    return 0;
+}
+int
+e1000_tx_commit(struct netdev *netdev)
+{
+    struct e1000_device *e1000dev;
+
+    /* Retrieve data structure of e1000 driver */
+    e1000dev = (struct e1000_device *)netdev->vendor;
+
+    /* Write to PCI */
+    mmio_write32(e1000dev->mmio, E1000_REG_TDT, e1000dev->tx_tail);
+
+    u32 tdh;
+    tdh = mmio_read32(e1000dev->mmio, E1000_REG_TDH);
+    e1000dev->tx_head_cache = tdh;
+
+    return 0;
+}
+
+
+/*
+ * Routing process (RX poll)
+ */
+int
+e1000_routing(struct netdev *netdev, router_rx_cb_t cb)
+{
+    struct e1000_device *e1000dev;
+    struct e1000_rx_desc *rxdesc;
+    u32 rdh;
+    u32 tdh;
+    int rx_que;
+    int i;
+    u8 *rxpkt;
+
+    /* Retrieve data structure of e1000 driver */
+    e1000dev = (struct e1000_device *)netdev->vendor;
+
+    for ( ;; ) {
+        /* Get the head pointers of RX/TX ring buffers */
+        rdh = mmio_read32(e1000dev->mmio, E1000_REG_RDH);
+        tdh = mmio_read32(e1000dev->mmio, E1000_REG_TDH);
+
+        /* Update the cache */
+        e1000dev->rx_head_cache = rdh;
+        e1000dev->tx_head_cache = tdh;
+
+        /* Get RX queue length */
+        rx_que = (e1000dev->rx_bufsz - e1000dev->rx_tail + rdh)
+            % e1000dev->rx_bufsz;
+
+        /* Routing */
+        for ( i = 0; i < rx_que; i++ ) {
+            rxdesc = (struct e1000_rx_desc *)
+                (e1000dev->rx_base
+                 + ((e1000dev->rx_tail + i) % e1000dev->rx_bufsz)
+                 * sizeof(struct e1000_rx_desc));
+
+            rxpkt = (u8 *)rxdesc->address;
+
+            cb(rxpkt, rxdesc->length, rxdesc->special);
+        }
+
+        /* Sync RX */
+        e1000dev->rx_tail = (e1000dev->rx_tail + rx_que) % e1000dev->rx_bufsz;
+        mmio_write32(e1000dev->mmio, E1000_REG_RDT, e1000dev->rx_tail);
     }
 
     return 0;

@@ -129,11 +129,11 @@ arch_bsp_init(void)
     ioapic_map_intr(IV_KBD, 1, acpi_ioapic_base); /* IRQ1 */
     ioapic_init();
 
+#if 0
     u64 ptr = 0x80000000;
-
     *(u64 *)(ptr + 0x00200000) = 0xfe123456;
-
     kprintf("DEBUG: %.8x %.8x\r\n", *(u64 *)(ptr), *(u64 *)(ptr + 0x00200000));
+#endif
 
 
     /* Initialize TSS and load it */
@@ -158,7 +158,7 @@ arch_bsp_init(void)
 
 
     /* Check and copy trampoline */
-    tsz = trampoline_end - trampoline;
+    tsz = (u64)trampoline_end - (u64)trampoline;
     if ( tsz > TRAMPOLINE_MAX_SIZE ) {
         /* Error */
         panic("Error! Trampoline size exceeds the maximum allowed size.\r\n");
@@ -188,9 +188,8 @@ arch_bsp_init(void)
 
     /* ToDo: Synchronize all processors */
 
-
     /* Print out the running processors */
-#if 0
+#if 1
     for ( i = 0; i < MAX_PROCESSORS; i++ ) {
         pdata = (struct p_data *)((u64)P_DATA_BASE + i * P_DATA_SIZE);
         if ( pdata->flags & 1 ) {
@@ -232,8 +231,11 @@ arch_ap_init(void)
     /* Wait short to distribute APIC interrupts */
     arch_busy_usleep(AP_WAIT_USEC * this_cpu());
 
+    /* Go tick-less */
+#if 0
     /* Initialize local APIC counter */
     lapic_start_timer(LAPIC_HZ, IV_LOC_TMR);
+#endif
 
     arch_busy_usleep(1);
 }

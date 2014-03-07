@@ -20,7 +20,6 @@
 
 
 /* DRIVER */
-
 #define NETDEV_MAX_NAME 32
 struct netdev {
     char name[NETDEV_MAX_NAME];
@@ -36,6 +35,29 @@ struct netdev_list {
     struct netdev *netdev;
     struct netdev_list *next;
 };
+
+struct peth {
+    char name[NETDEV_MAX_NAME];
+    u8 macaddr[6];
+
+    void *vendor;
+    int (*sendpkt)(u8 *pkt, u32 len, struct peth *peth);
+    int (*recvpkt)(u8 *pkt, u32 len, struct peth *peth);
+};
+
+struct veth {
+    struct peth *parent;
+    u8 macaddr[6];
+    int vlan;
+};
+#if 0
+struct net_ip {
+    struct ipv4_addr **ipv4_addrs;
+    struct ipv6_addr **ipv6_addrs;
+    struct veth **veths;
+};
+#endif
+
 
 void rng_init(void);
 void rng_stir(void);
@@ -107,12 +129,18 @@ void panic(const char *);
 /* in util.c */
 int kstrcmp(const char *, const char *);
 int kstrncmp(const char *, const char *, int);
+int kmemcmp(const u8 *, const u8 *, int);
+void * kmemcpy(u8 *, const u8 *, int);
 void kmem_init(void);
 void * kmalloc(u64);
 void kfree(void *);
+int kstrlen(const char *);
+char * kstrdup(const char *);
 
 /* in shell.c */
 void proc_shell(void);
+/* in router.c */
+void proc_router(void);
 
 
 /* Architecture-dependent functions */

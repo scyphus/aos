@@ -21,6 +21,7 @@
 	.text
 	.globl	kstart64		/* Entry point */
 	.globl	apstart64		/* Application processor */
+	.globl	_hlt1
 	.globl	_pause
 	.globl	_bswap16
 	.globl	_bswap32
@@ -86,6 +87,12 @@ idle:
 	hlt
 	cli
 	jmp	idle
+
+_hlt1:
+	sti
+	hlt
+	cli
+	ret
 
 /* void pause(void); */
 _pause:

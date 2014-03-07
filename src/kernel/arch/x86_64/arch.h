@@ -186,6 +186,7 @@ void ltr(int);
 
 u64 rdtsc(void);
 u64 rdmsr(u64);
+void hlt1(void);
 void pause(void);
 int is_invariant_tsc(void);
 int get_cpu_family(void);

@@ -30,6 +30,7 @@ kpack: 	kernel/arch/$(ARCH)/entry16.o \
 	kernel/kernel.o \
 	kernel/util.o \
 	kernel/shell.o \
+	kernel/router.o \
 	kernel/sched.o \
 	kernel/arch/$(ARCH)/arch.o \
 	kernel/arch/$(ARCH)/spinlock.o \

@@ -11,6 +11,7 @@
 #include "kernel.h"
 
 static int lock;
+static int routing_processor;
 
 /*
  * Temporary: Keyboard drivers
@@ -41,6 +42,9 @@ kmain(void)
     /* Initialize the lock varialbe */
     lock = 0;
 
+    /* Routing processor */
+    routing_processor = -1;
+
     /* Initialize kmem */
     kmem_init();
 
@@ -53,9 +57,6 @@ kmain(void)
     /* Wait for 10ms */
     arch_busy_usleep(10000);
 
-    /* Print out a message */
-    kprintf("\r\nStarting a shell.  Press Esc to power off the machine:\r\n");
-
     /* Initialize random number generator */
     rng_init();
     rng_stir();
@@ -66,6 +67,12 @@ kmain(void)
         kprintf("RNG: %.8x\r\n", rng_random());
     }
 #endif
+
+    /* Wait for router process init */
+    arch_busy_usleep(100000);
+
+    /* Print out a message */
+    kprintf("\r\nStarting a shell.  Press Esc to power off the machine:\r\n");
 
     proc_shell();
 }
@@ -78,6 +85,13 @@ apmain(void)
 {
     /* Initialize this AP */
     arch_ap_init();
+
+    arch_spin_lock(&lock);
+    if ( routing_processor < 0 ) {
+        proc_router();
+        routing_processor = 1;
+    }
+    arch_spin_unlock(&lock);
 }
 
 /*

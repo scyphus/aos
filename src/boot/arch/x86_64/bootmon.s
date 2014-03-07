@@ -149,6 +149,13 @@ boot:
 	movb	$0x24,%dh
 	movw	$0x24,%ax
 	call	read
+	movb	drive,%dl
+	movw	$0x17e0,%ax
+	movw	%ax,%es
+	movl	$0x0,%ebx
+	movb	$0x24,%dh
+	movw	$0x48,%ax
+	call	read
 	ljmp	$(KERNEL_SEG),$0
 
 	movw	$KERNEL_SEG,%ax
