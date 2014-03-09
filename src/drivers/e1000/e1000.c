@@ -648,6 +648,49 @@ e1000_tx_buf(struct netdev *netdev, u8 **txpkt, u16 **txlen, u16 vlan)
     return 0;
 }
 int
+e1000_tx_set(struct netdev *netdev, u64 txpkt, u16 txlen, u16 vlan)
+{
+    struct e1000_device *e1000dev;
+    struct e1000_tx_desc *txdesc;
+    int tx_avl;
+    int ret;
+
+    /* Retrieve data structure of e1000 driver */
+    e1000dev = (struct e1000_device *)netdev->vendor;
+
+    /* Get available TX buffer length */
+    tx_avl = e1000dev->tx_bufsz
+        - ((e1000dev->tx_bufsz - e1000dev->tx_head_cache + e1000dev->tx_tail)
+           % e1000dev->tx_bufsz);
+    if ( tx_avl <= 0 ) {
+        return -1;
+    }
+
+    /* Check the head of TX ring buffer */
+    ret = e1000dev->tx_tail;
+    txdesc = (struct e1000_tx_desc *)
+        (e1000dev->tx_base
+         + (e1000dev->tx_tail % e1000dev->tx_bufsz)
+         * sizeof(struct e1000_tx_desc));
+
+    kmemcpy((u8 *)txdesc->address, (u8 *)txpkt, txlen);
+    txdesc->length = txlen;
+    txdesc->sta = 0;
+    txdesc->css = 0;
+    txdesc->cso = 0;
+    txdesc->special = vlan;
+    if ( vlan == 0 ) {
+        txdesc->cmd = (1<<3) | (1<<1) | 1;
+    } else {
+        txdesc->cmd = (1<<3) | (1<<1) | 1 | (1<<6);
+    }
+
+    /* Update the tail pointer of the TX buffer */
+    e1000dev->tx_tail = (e1000dev->tx_tail + 1) % e1000dev->tx_bufsz;
+
+    return ret;
+}
+int
 e1000_tx_commit(struct netdev *netdev)
 {
     struct e1000_device *e1000dev;
