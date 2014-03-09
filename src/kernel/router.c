@@ -242,7 +242,7 @@ _get_ktxbuf(struct l3if *l3if , struct ktxdesc **desc)
 
     /* Retrieve a buffer */
     *desc = &l3if->txbuf.buf[l3if->txbuf.tail];
-    *desc->status = KTXBUF_PENDING;
+    (*desc)->status = KTXBUF_PENDING;
 
     l3if->txbuf.tail = (l3if->txbuf.tail + 1) % l3if->txbuf.bufsz;
 
@@ -1203,6 +1203,9 @@ _rx_ipv6_to_self(struct l3if *l3if, const u8 *pkt, u32 len, int vlan)
 static int
 _rx_ipv6_routing(struct l3if *l3if, const u8 *pkt, u32 len, int vlan)
 {
+
+
+
     return 0;
 }
 

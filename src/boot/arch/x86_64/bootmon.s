@@ -163,6 +163,58 @@ boot:
 	movb	$0x12,%dh
 	movw	$0x6c,%ax
 	call	read
+	ljmp	$(KERNEL_SEG),$0
+
+
+	movb	drive,%dl
+	movw	$0x1000,%ax
+	movw	%ax,%es
+	movl	$0x0,%ebx
+	movb	$0x9,%dh
+	movw	$9,%ax	/* from LBA 9 */
+	call	read
+	movb	drive,%dl
+	movw	$0x1120,%ax
+	movw	%ax,%es
+	movl	$0x0,%ebx
+	movb	$0x12,%dh
+	movw	$0x12,%ax
+	call	read
+	movb	drive,%dl
+	movw	$0x1360,%ax
+	movw	%ax,%es
+	movl	$0x0,%ebx
+	movb	$0x12,%dh
+	movw	$0x24,%ax
+	call	read
+	movb	drive,%dl
+	movw	$0x15a0,%ax
+	movw	%ax,%es
+	movl	$0x0,%ebx
+	movb	$0x12,%dh
+	movw	$0x36,%ax
+	call	read
+	movb	drive,%dl
+	movw	$0x17e0,%ax
+	movw	%ax,%es
+	movl	$0x0,%ebx
+	movb	$0x12,%dh
+	movw	$0x48,%ax
+	call	read
+	movb	drive,%dl
+	movw	$0x1a20,%ax
+	movw	%ax,%es
+	movl	$0x0,%ebx
+	movb	$0x12,%dh
+	movw	$0x5a,%ax
+	call	read
+	movb	drive,%dl
+	movw	$0x1c60,%ax
+	movw	%ax,%es
+	movl	$0x0,%ebx
+	movb	$0x12,%dh
+	movw	$0x6c,%ax
+	call	read
 	
 	ljmp	$(KERNEL_SEG),$0
 
@@ -462,6 +514,16 @@ read.retry:
 				/*  to %es:[%bx] (results in %ax,%cf) */
 	jc	read.fail	/* Fail (%cf=1) */
 
+	movw	$hex_error,%di		/* Format it as hex */
+	xorw	%bx,%bx
+	movw	%bx,%es
+	call	hex8
+	movw	$ret,%si
+	call	putstr
+	movw	$hex_error,%si
+	call	putstr
+
+
 /* Restore registers */
 	movw	-8(%bp),%dx
 	movw	-6(%bp),%cx
@@ -608,3 +670,6 @@ msg_readerror:
 	.ascii  "\r\n\nRead Error: 0x"
 hex_error:
 	.asciz  "00\r\r"
+
+ret:
+	.asciz  "\r\n"
