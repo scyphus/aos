@@ -166,58 +166,6 @@ boot:
 	ljmp	$(KERNEL_SEG),$0
 
 
-	movb	drive,%dl
-	movw	$0x1000,%ax
-	movw	%ax,%es
-	movl	$0x0,%ebx
-	movb	$0x9,%dh
-	movw	$9,%ax	/* from LBA 9 */
-	call	read
-	movb	drive,%dl
-	movw	$0x1120,%ax
-	movw	%ax,%es
-	movl	$0x0,%ebx
-	movb	$0x12,%dh
-	movw	$0x12,%ax
-	call	read
-	movb	drive,%dl
-	movw	$0x1360,%ax
-	movw	%ax,%es
-	movl	$0x0,%ebx
-	movb	$0x12,%dh
-	movw	$0x24,%ax
-	call	read
-	movb	drive,%dl
-	movw	$0x15a0,%ax
-	movw	%ax,%es
-	movl	$0x0,%ebx
-	movb	$0x12,%dh
-	movw	$0x36,%ax
-	call	read
-	movb	drive,%dl
-	movw	$0x17e0,%ax
-	movw	%ax,%es
-	movl	$0x0,%ebx
-	movb	$0x12,%dh
-	movw	$0x48,%ax
-	call	read
-	movb	drive,%dl
-	movw	$0x1a20,%ax
-	movw	%ax,%es
-	movl	$0x0,%ebx
-	movb	$0x12,%dh
-	movw	$0x5a,%ax
-	call	read
-	movb	drive,%dl
-	movw	$0x1c60,%ax
-	movw	%ax,%es
-	movl	$0x0,%ebx
-	movb	$0x12,%dh
-	movw	$0x6c,%ax
-	call	read
-	
-	ljmp	$(KERNEL_SEG),$0
-
 	movw	$KERNEL_SEG,%ax
 	movw	%ax,%es
 	movl	$(KERNEL_SEG<<4),%ebx
