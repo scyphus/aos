@@ -30,9 +30,6 @@ int e1000_tx_set(struct netdev *, u64, u16, u16);
 
 
 
-
-
-
 struct iphdr {
     u8 ip_vhl;
     u8 ip_tos;
@@ -88,13 +85,16 @@ struct router_nat66 {
 };
 
 
-
 /* FIXME to use buffer directly */
 struct ktxdesc {
     u64 address;
     u16 length;
     u16 vlan;
     int status;
+    union {
+        u8 ipv4[4];
+        u8 ipv6[16];
+    } addr;
 };
 
 struct ktxbuf {
@@ -105,7 +105,7 @@ struct ktxbuf {
 };
 
 
-
+/* ARP */
 struct arp_entry {
     u8 protoaddr[4];
     u8 hwaddr[6];
@@ -117,6 +117,7 @@ struct router_arp {
     int sz;
     struct arp_entry *ent;
 };
+/* ND */
 struct nd_entry {
     u8 neighbor[16];
     u8 linklayeraddr[6];
@@ -129,7 +130,21 @@ struct router_nd {
     struct nd_entry *ent;
 };
 
+/* Routing table */
+struct ipv4_route {
+    u8 addr[4];
+    u8 mask;
+    u8 next[4];
+};
+struct ipv6_route {
+    u8 addr[16];
+    u8 mask;
+    u8 next[16];
+};
+
+/* NAT */
 struct router {
+
     struct router_nat66 nat66;
 };
 
@@ -148,11 +163,6 @@ struct fib6 {
     u8 dstmac[6];
 };
 #endif
-
-struct ipv4_route {
-    u8 addr[4];
-    u8 mask;
-};
 
 struct ipv4_addr {
     u8 addr[4];
@@ -192,6 +202,13 @@ struct l3if_list {
 
 static struct l3if_list *l3if_head;
 
+
+
+
+
+static int _resolve_arp(struct l3if *, const u8 *, u8 *);
+static int _resolve_nd(struct l3if *, const u8 *, u8 *);
+
 /*
 680
 nat-pool-panda
@@ -206,24 +223,13 @@ exp-panda
 
 
 
-static int
-_ipv4_add_route(const u8 *prefix, int mask, const u8 *nexthop)
-{
-    return 0;
-}
-
-static int
-_ipv4_check_route(const u8 *prefix, int mask, u8 *nexthop)
-{
-    return 0;
-}
-
-
 
 #define KTXBUF_AVAILABLE        0
 #define KTXBUF_PENDING          1
-#define KTXBUF_PENDING_ARP      2
-#define KTXBUF_PENDING_ND       3
+#define KTXBUF_PENDING_ARP1     2
+#define KTXBUF_PENDING_ARP2     3
+#define KTXBUF_PENDING_ND1      4
+#define KTXBUF_PENDING_ND2      4
 #define KTXBUF_CTS              0xfe /* Clear to send */
 
 static int
@@ -276,6 +282,32 @@ _commit_ktxbuf(struct l3if *l3if)
             }
         } else if ( KTXBUF_AVAILABLE == l3if->txbuf.buf[i].status && !flag ) {
             l3if->txbuf.head = (l3if->txbuf.head + 1) % l3if->txbuf.bufsz;
+        } else if ( KTXBUF_PENDING == l3if->txbuf.buf[i].status ) {
+            l3if->txbuf.buf[i].status = KTXBUF_AVAILABLE;
+        } else if ( KTXBUF_PENDING_ARP1  == l3if->txbuf.buf[i].status ) {
+            l3if->txbuf.buf[i].status = KTXBUF_PENDING_ARP2;
+            flag = 1;
+        } else if ( KTXBUF_PENDING_ARP2  == l3if->txbuf.buf[i].status ) {
+            ret = _resolve_arp(l3if, l3if->txbuf.buf[i].addr.ipv4,
+                               (u8 *)l3if->txbuf.buf[i].address);
+            if ( ret < 0 ) {
+                l3if->txbuf.buf[i].status = KTXBUF_AVAILABLE;
+            } else {
+                l3if->txbuf.buf[i].status = KTXBUF_CTS;
+            }
+            flag = 1;
+        } else if ( KTXBUF_PENDING_ND1  == l3if->txbuf.buf[i].status ) {
+            l3if->txbuf.buf[i].status = KTXBUF_PENDING_ND2;
+            flag = 1;
+        } else if ( KTXBUF_PENDING_ND2  == l3if->txbuf.buf[i].status ) {
+            ret = _resolve_nd(l3if, l3if->txbuf.buf[i].addr.ipv6,
+                              (u8 *)l3if->txbuf.buf[i].address);
+            if ( ret < 0 ) {
+                l3if->txbuf.buf[i].status = KTXBUF_AVAILABLE;
+            } else {
+                l3if->txbuf.buf[i].status = KTXBUF_CTS;
+            }
+            flag = 1;
         } else {
             flag = 1;
         }
@@ -382,6 +414,140 @@ static u16
 _swapw(u16 w)
 {
     return ((w & 0xff) << 8) | (w >> 8);
+}
+
+/*
+ * Search an interface
+ */
+static struct l3if *
+_search_interface(const char *name)
+{
+    struct l3if_list *l3if_list;
+    struct l3if *l3if;
+
+    /* Search the interface */
+    l3if = NULL;
+    l3if_list = l3if_head;
+    while ( NULL != l3if_list ) {
+        if ( 0 == kstrcmp(l3if_list->l3if->name, name) ) {
+            l3if = l3if_list->l3if;
+            break;
+        }
+        l3if_list = l3if_list->next;
+    }
+
+    return l3if;
+}
+
+static int
+_ipv4_get_addr(struct l3if *l3if, u8 *addr)
+{
+    if ( NULL == l3if->ip4list ) {
+        return -1;
+    }
+    kmemcpy(addr, l3if->ip4list->addr->addr, 4);
+
+    return 0;
+}
+
+static int
+_ipv6_get_global_addr(struct l3if *l3if, u8 *addr)
+{
+    struct ipv6_addr_list *addr_list;
+
+    addr_list = l3if->ip6list;
+    while ( NULL != addr_list ) {
+        if ( 1 == addr_list->addr->scope ) {
+            kmemcpy(addr, addr_list->addr->addr, 16);
+            return 0;
+        }
+        addr_list = addr_list->next;
+    }
+
+    return -1;
+}
+
+/*
+ * Get next hop
+ */
+static struct l3if *
+_ipv4_next_hop(const u8 *dst, u8 *next)
+{
+    /* FIXME */
+
+    if ( dst[0] == 172 && dst[1] == 16 && (dst[2] & 0xfe) == 92 ) {
+        /* Same subnet */
+        kmemcpy(next, dst, 4);
+        return _search_interface("ve910");
+    }
+    if ( dst[0] == 203 && dst[1] == 178 && dst[2] == 158
+         && (dst[3] & 0xc0) == 192 ) {
+        /* Same subnet */
+        kmemcpy(next, dst, 4);
+        return _search_interface("ve680");
+    }
+    if ( dst[0] == 192 && dst[1] == 168 && dst[2] == 56 ) {
+        /* Same subnet */
+        kmemcpy(next, dst, 4);
+        return _search_interface("ve0");
+    }
+
+    next[0] = 203;
+    next[1] = 178;
+    next[2] = 158;
+    next[3] = 193;
+
+    return _search_interface("ve680");;
+}
+
+/*
+ * Get next hop
+ */
+static struct l3if *
+_ipv6_next_hop(const u8 *dst, u8 *next)
+{
+    /* FIXME */
+
+    if ( dst[0] == 0x20 && dst[1] == 0x01 && dst[2] == 0x02 && dst[3] == 0x00
+         && dst[4] == 0x00 && dst[5] == 0x00 && dst[6] == 0xff
+         && dst[7] == 0x91 ) {
+        /* Same subnet */
+        kmemcpy(next, dst, 16);
+        return _search_interface("ve910");
+    }
+    if ( dst[0] == 0x20 && dst[1] == 0x01 && dst[2] == 0x02 && dst[3] == 0x00
+         && dst[4] == 0x00 && dst[5] == 0x00 && dst[6] == 0xff
+         && dst[7] == 0x68 ) {
+        /* Same subnet */
+        kmemcpy(next, dst, 16);
+        return _search_interface("ve910");
+    }
+    if ( dst[0] == 0x20 && dst[1] == 0x01 && dst[2] == 0x0d && dst[3] == 0xb8
+         && dst[4] == 0x00 && dst[5] == 0x00 && dst[6] == 0x00
+         && dst[7] == 0x01 ) {
+        /* Same subnet */
+        kmemcpy(next, dst, 16);
+        return _search_interface("ve0");
+    }
+
+    next[0] = 0x20;
+    next[1] = 0x01;
+    next[2] = 0x02;
+    next[3] = 0x00;
+    next[4] = 0x00;
+    next[5] = 0x00;
+    next[6] = 0xff;
+    next[7] = 0x68;
+    next[8] = 0x00;
+    next[9] = 0x00;
+    next[10] = 0x00;
+    next[11] = 0x00;
+    next[12] = 0x00;
+    next[13] = 0x00;
+    next[14] = 0x00;
+    next[15] = 0x01;
+
+    return _search_interface("ve680");;
 }
 
 
@@ -863,6 +1029,13 @@ _rx_ipv4_to_self(struct l3if *l3if, const u8 *pkt, u32 len, int vlan)
     u16 ip_hdrlen = (ip->ip_vhl & 0xf) << 2;
     u16 p_len = _swapw(ip->ip_len);
     u16 chksum;
+    struct l3if *nextif;
+    u8 nextaddr[4];
+    u8 srcaddr[4];
+    struct ktxdesc *txdesc;
+    u8 *txpkt;
+    int ret;
+
 
     if ( p_len < ip_hdrlen ) {
         return -1;
@@ -875,25 +1048,32 @@ _rx_ipv4_to_self(struct l3if *l3if, const u8 *pkt, u32 len, int vlan)
         if ( 8 == icmp->type ) {
             /* ICMP echo request */
 
+            /* Get the next hop */
+            nextif = _ipv4_next_hop(ip->ip_src, nextaddr);
+            if ( NULL == nextif ) {
+                return -1;
+            }
 
+            /* Get the source address */
+            ret = _ipv4_get_addr(nextif, srcaddr);
+            if ( ret < 0 ) {
+                return -1;
+            }
 
-
-            struct ktxdesc *txdesc;
-            u8 *txpkt;
-            int ret;
-            ret = _get_ktxbuf(l3if, &txdesc);
+            /* Get buffer */
+            ret = _get_ktxbuf(nextif, &txdesc);
             if ( ret < 0 ) {
                 /* Buffer full */
                 return -1;
             }
-            txdesc->status = KTXBUF_CTS;
-            txdesc->vlan = vlan;
             txpkt = (u8 *)txdesc->address;
+            txdesc->status = KTXBUF_CTS;
+            txdesc->vlan = nextif->vlan;
 
-
-
-            ret = _resolve_arp(l3if, ip->ip_src, txpkt);
+            /* Resolve ARP of the next hop */
+            ret = _resolve_arp(nextif, nextaddr, txpkt);
             if ( ret < 0 ) {
+                /* Need ARP resolution */
                 /* ARP request */
                 txpkt[0] = 0xff;
                 txpkt[1] = 0xff;
@@ -901,7 +1081,7 @@ _rx_ipv4_to_self(struct l3if *l3if, const u8 *pkt, u32 len, int vlan)
                 txpkt[3] = 0xff;
                 txpkt[4] = 0xff;
                 txpkt[5] = 0xff;
-                kmemcpy(txpkt+6, l3if->netdev->macaddr, 6);
+                kmemcpy(txpkt+6, nextif->netdev->macaddr, 6);
                 txpkt[12] = 0x08;
                 txpkt[13] = 0x06;
                 txpkt[14] = 0x00;
@@ -912,52 +1092,65 @@ _rx_ipv4_to_self(struct l3if *l3if, const u8 *pkt, u32 len, int vlan)
                 txpkt[19] = 0x04;
                 txpkt[20] = 0x00;
                 txpkt[21] = 0x01;
-                kmemcpy(txpkt+22, l3if->netdev->macaddr, 6);
-                kmemcpy(txpkt+28, ip->ip_dst, 4);
+                kmemcpy(txpkt+22, nextif->netdev->macaddr, 6);
+                kmemcpy(txpkt+28, srcaddr, 4);
                 txpkt[32] = 0;
                 txpkt[33] = 0;
                 txpkt[34] = 0;
                 txpkt[35] = 0;
                 txpkt[36] = 0;
                 txpkt[37] = 0;
-                kmemcpy(txpkt+38, ip->ip_src, 4);
-                txdesc->length = 42;
+                kmemcpy(txpkt+38, nextaddr, 4);
+                /*txdesc->length = 42;*/
                 txdesc->length = 60;
-            } else {
-                kmemcpy(txpkt+6, l3if->netdev->macaddr, 6);
-                txpkt[12] = 0x08;
-                txpkt[13] = 0x00;
-                kmemcpy(txpkt+14, pkt+14, ip_hdrlen + p_len);
-                txpkt[22] = 64;
-                txpkt[24] = 0;
-                txpkt[25] = 0;
 
-                chksum = _checksum(txpkt + 14, ip_hdrlen);
-                txpkt[24] = chksum & 0xff;
-                txpkt[25] = chksum >> 8;
-                txpkt[26] = pkt[30];
-                txpkt[27] = pkt[31];
-                txpkt[28] = pkt[32];
-                txpkt[29] = pkt[33];
-                txpkt[30] = pkt[26];
-                txpkt[31] = pkt[27];
-                txpkt[32] = pkt[28];
-                txpkt[33] = pkt[29];
-                txpkt[14 + ip_hdrlen] = 0;
-                txpkt[14 + ip_hdrlen + 2] = 0;
-                txpkt[14 + ip_hdrlen + 3] = 0;
-                chksum = _checksum(txpkt + 14 + ip_hdrlen, p_len);
-                txpkt[14 + ip_hdrlen + 2] = chksum & 0xff;
-                txpkt[14 + ip_hdrlen + 3] = chksum >> 8;
-
-                txdesc->length = 14 + ip_hdrlen + p_len;
-#if 0
-                arch_dbg_printf("Send an ICMP packet. %x\r\n", ip->ip_vhl);
-#endif
+                /* Get buffer */
+                ret = _get_ktxbuf(nextif, &txdesc);
+                if ( ret < 0 ) {
+                    /* Buffer full */
+                    return -1;
+                }
+                txpkt = (u8 *)txdesc->address;
+                txdesc->status = KTXBUF_PENDING_ARP1;
+                txdesc->vlan = nextif->vlan;
+                kmemcpy(txdesc->addr.ipv4, nextaddr, 4);
             }
+            kmemcpy(txpkt+6, nextif->netdev->macaddr, 6);
+            txpkt[12] = 0x08;
+            txpkt[13] = 0x00;
+
+            txpkt[14] = 0x45;
+            txpkt[15] = 0x00;
+            txpkt[16] = (ip_hdrlen + p_len) >> 8;
+            txpkt[17] = (ip_hdrlen + p_len) & 0xff;
+            txpkt[18] = rng_random();
+            txpkt[19] = rng_random();
+            txpkt[20] = 0;
+            txpkt[21] = 0;
+            txpkt[22] = 64;
+            txpkt[23] = 1;
+            txpkt[24] = 0;
+            txpkt[25] = 0;
+            kmemcpy(txpkt+26, srcaddr, 4);
+            kmemcpy(txpkt+30, ip->ip_src, 4);
+            kmemcpy(txpkt+34, pkt+34, p_len);
+            chksum = _checksum(txpkt + 14, ip_hdrlen);
+            txpkt[24] = chksum & 0xff;
+            txpkt[25] = chksum >> 8;
+
+            txpkt[14 + ip_hdrlen] = 0;
+            txpkt[14 + ip_hdrlen + 1] = 0;
+            txpkt[14 + ip_hdrlen + 2] = 0;
+            txpkt[14 + ip_hdrlen + 3] = 0;
+            chksum = _checksum(txpkt + 14 + ip_hdrlen, p_len);
+            txpkt[14 + ip_hdrlen + 2] = chksum & 0xff;
+            txpkt[14 + ip_hdrlen + 3] = chksum >> 8;
+
+            txdesc->length = 14 + ip_hdrlen + p_len;
+
+            _commit_ktxbuf(nextif);
         }
     }
-    _commit_ktxbuf(l3if);
 
     return 0;
 }
@@ -966,13 +1159,8 @@ _rx_ipv4_to_self(struct l3if *l3if, const u8 *pkt, u32 len, int vlan)
  * Execute routing
  */
 static int
-_rx_ip_routing(struct l3if *l3if, const u8 *pkt, u32 len, int vlan)
+_rx_ipv4_routing(struct l3if *l3if, const u8 *pkt, u32 len, int vlan)
 {
-#if 0
-    const u8 *dstmac = pkt;
-    const u8 *srcmac = pkt + 6;
-#endif
-
     struct iphdr *ip = (struct iphdr *)(pkt + 14);
     u16 ip_hdrlen = (ip->ip_vhl & 0xf) << 2;
     u16 p_len = _swapw(ip->ip_len);
@@ -980,16 +1168,202 @@ _rx_ip_routing(struct l3if *l3if, const u8 *pkt, u32 len, int vlan)
         return -1;
     }
     p_len -= ip_hdrlen;
+    u16 chksum;
+    struct l3if *nextif;
+    u8 nextaddr[4];
+    u8 srcaddr[4];
+    struct ktxdesc *txdesc;
+    u8 *txpkt;
+    int ret;
 
-    /* Do routing!!! */
-    arch_dbg_printf("Routing an IP packet. %x\r\n", ip->ip_vhl);
+    /* Do routing! */
     int ttl = ip->ip_ttl;
     ttl--;
-    if ( ip->ip_ttl < 1 ) {
+    if ( ttl < 1 ) {
         /* ICMP time exceeded */
-    } else {
-        /* Do routing */
+        /* Get the next hop */
+        nextif = _ipv4_next_hop(ip->ip_src, nextaddr);
+        if ( NULL == nextif ) {
+            return -1;
+        }
+
+        /* Get the source address */
+        ret = _ipv4_get_addr(nextif, srcaddr);
+        if ( ret < 0 ) {
+            return -1;
+        }
+
+        /* Get buffer */
+        ret = _get_ktxbuf(nextif, &txdesc);
+        if ( ret < 0 ) {
+            /* Buffer full */
+            return -1;
+        }
+        txpkt = (u8 *)txdesc->address;
+        txdesc->status = KTXBUF_CTS;
+        txdesc->vlan = nextif->vlan;
+
+        /* Resolve ARP of the next hop */
+        ret = _resolve_arp(nextif, nextaddr, txpkt);
+        if ( ret < 0 ) {
+            /* Need ARP resolution */
+            /* ARP request */
+            txpkt[0] = 0xff;
+            txpkt[1] = 0xff;
+            txpkt[2] = 0xff;
+            txpkt[3] = 0xff;
+            txpkt[4] = 0xff;
+            txpkt[5] = 0xff;
+            kmemcpy(txpkt+6, nextif->netdev->macaddr, 6);
+            txpkt[12] = 0x08;
+            txpkt[13] = 0x06;
+            txpkt[14] = 0x00;
+            txpkt[15] = 0x01;
+            txpkt[16] = 0x08;
+            txpkt[17] = 0x00;
+            txpkt[18] = 0x06;
+            txpkt[19] = 0x04;
+            txpkt[20] = 0x00;
+            txpkt[21] = 0x01;
+            kmemcpy(txpkt+22, nextif->netdev->macaddr, 6);
+            kmemcpy(txpkt+28, srcaddr, 4);
+            txpkt[32] = 0;
+            txpkt[33] = 0;
+            txpkt[34] = 0;
+            txpkt[35] = 0;
+            txpkt[36] = 0;
+            txpkt[37] = 0;
+            kmemcpy(txpkt+38, nextaddr, 4);
+            /*txdesc->length = 42;*/
+            txdesc->length = 60;
+
+            /* Get buffer */
+            ret = _get_ktxbuf(nextif, &txdesc);
+            if ( ret < 0 ) {
+                /* Buffer full */
+                return -1;
+            }
+            txpkt = (u8 *)txdesc->address;
+            txdesc->status = KTXBUF_PENDING_ARP1;
+            txdesc->vlan = nextif->vlan;
+            kmemcpy(txdesc->addr.ipv4, nextaddr, 4);
+        }
+        u16 p_len2 = p_len > 8 ? 8 : p_len;
+        kmemcpy(txpkt+6, nextif->netdev->macaddr, 6);
+        txpkt[12] = 0x08;
+        txpkt[13] = 0x00;
+
+        txpkt[14] = 0x45;
+        txpkt[15] = 0x00;
+        txpkt[16] = (ip_hdrlen + ip_hdrlen + p_len2 + 8) >> 8;
+        txpkt[17] = (ip_hdrlen + ip_hdrlen + p_len2 + 8) & 0xff;
+        txpkt[18] = rng_random();
+        txpkt[19] = rng_random();
+        txpkt[20] = 0;
+        txpkt[21] = 0;
+        txpkt[22] = 64;
+        txpkt[23] = 1;
+        txpkt[24] = 0;
+        txpkt[25] = 0;
+        kmemcpy(txpkt+26, srcaddr, 4);
+        kmemcpy(txpkt+30, ip->ip_src, 4);
+        txpkt[14 + ip_hdrlen] = 11;
+        txpkt[14 + ip_hdrlen + 1] = 0;
+        txpkt[14 + ip_hdrlen + 2] = 0;
+        txpkt[14 + ip_hdrlen + 3] = 0;
+        txpkt[14 + ip_hdrlen + 4] = 0;
+        txpkt[14 + ip_hdrlen + 5] = 0;
+        txpkt[14 + ip_hdrlen + 6] = 0;
+        txpkt[14 + ip_hdrlen + 7] = 0;
+        kmemcpy(txpkt+14+ip_hdrlen+8, pkt+14, ip_hdrlen + p_len2);
+        chksum = _checksum(txpkt + 14, ip_hdrlen);
+        txpkt[24] = chksum & 0xff;
+        txpkt[25] = chksum >> 8;
+
+        chksum = _checksum(txpkt + 14 + ip_hdrlen, ip_hdrlen + p_len2 + 8);
+        txpkt[14 + ip_hdrlen + 2] = chksum & 0xff;
+        txpkt[14 + ip_hdrlen + 3] = chksum >> 8;
+
+        txdesc->length = 14 + ip_hdrlen + ip_hdrlen + p_len2 + 8;
+        if ( txdesc->length < 60 ) {
+            txdesc->length = 60;
+        }
+        _commit_ktxbuf(nextif);
+
+        return 0;
     }
+
+    /* Get the next hop */
+    nextif = _ipv4_next_hop(ip->ip_dst, nextaddr);
+    if ( NULL == nextif ) {
+        return -1;
+    }
+
+    /* Get buffer */
+    ret = _get_ktxbuf(nextif, &txdesc);
+    if ( ret < 0 ) {
+        /* Buffer full */
+        return -1;
+    }
+    txpkt = (u8 *)txdesc->address;
+    txdesc->status = KTXBUF_CTS;
+    txdesc->vlan = nextif->vlan;
+
+    /* Resolve ARP of the next hop */
+    ret = _resolve_arp(nextif, nextaddr, txpkt);
+    if ( ret < 0 ) {
+        /* Need ARP resolution */
+        /* ARP request */
+        txpkt[0] = 0xff;
+        txpkt[1] = 0xff;
+        txpkt[2] = 0xff;
+        txpkt[3] = 0xff;
+        txpkt[4] = 0xff;
+        txpkt[5] = 0xff;
+        kmemcpy(txpkt+6, nextif->netdev->macaddr, 6);
+        txpkt[12] = 0x08;
+        txpkt[13] = 0x06;
+        txpkt[14] = 0x00;
+        txpkt[15] = 0x01;
+        txpkt[16] = 0x08;
+        txpkt[17] = 0x00;
+        txpkt[18] = 0x06;
+        txpkt[19] = 0x04;
+        txpkt[20] = 0x00;
+        txpkt[21] = 0x01;
+        kmemcpy(txpkt+22, nextif->netdev->macaddr, 6);
+        kmemcpy(txpkt+28, srcaddr, 4);
+        txpkt[32] = 0;
+        txpkt[33] = 0;
+        txpkt[34] = 0;
+        txpkt[35] = 0;
+        txpkt[36] = 0;
+        txpkt[37] = 0;
+        kmemcpy(txpkt+38, nextaddr, 4);
+        /*txdesc->length = 42;*/
+        txdesc->length = 60;
+
+        /* Get buffer */
+        ret = _get_ktxbuf(nextif, &txdesc);
+        if ( ret < 0 ) {
+            /* Buffer full */
+            return -1;
+        }
+        txpkt = (u8 *)txdesc->address;
+        txdesc->status = KTXBUF_PENDING_ARP1;
+        txdesc->vlan = nextif->vlan;
+        kmemcpy(txdesc->addr.ipv4, nextaddr, 4);
+    }
+    kmemcpy(txpkt+6, nextif->netdev->macaddr, 6);
+    kmemcpy(txpkt+12, pkt, len - 12);
+    txpkt[22] = ttl;
+    chksum = _checksum(txpkt + 14, ip_hdrlen);
+    txpkt[24] = chksum & 0xff;
+    txpkt[25] = chksum >> 8;
+
+    txdesc->length = len;
+
+    _commit_ktxbuf(nextif);
 
     return 0;
 }
@@ -1203,8 +1577,120 @@ _rx_ipv6_to_self(struct l3if *l3if, const u8 *pkt, u32 len, int vlan)
 static int
 _rx_ipv6_routing(struct l3if *l3if, const u8 *pkt, u32 len, int vlan)
 {
+    /* IPv6 */
+    struct ip6hdr *ip6 = (struct ip6hdr *)(pkt + 14);
+    u16 ip6_len = _swapw(ip6->ip6_len);
+    u16 chksum;
+    struct l3if *nextif;
+    u8 nextaddr[16];
+    u8 srcaddr[16];
+    struct ktxdesc *txdesc;
+    u8 *txpkt;
+    int ret;
 
+    /* Do routing! */
+    int limit = ip6->ip6_limit;
+    limit--;
+    if ( limit < 1 ) {
+        /* ICMP time exceeded */
+        /* Get the next hop */
+        nextif = _ipv6_next_hop(ip6->ip6_src, nextaddr);
+        if ( NULL == nextif ) {
+            return -1;
+        }
 
+        /* Get the source address */
+        ret = _ipv6_get_global_addr(nextif, srcaddr);
+        if ( ret < 0 ) {
+            return -1;
+        }
+
+        /* Get buffer */
+        ret = _get_ktxbuf(nextif, &txdesc);
+        if ( ret < 0 ) {
+            /* Buffer full */
+            return -1;
+        }
+        txpkt = (u8 *)txdesc->address;
+        txdesc->status = KTXBUF_CTS;
+        txdesc->vlan = nextif->vlan;
+
+        /* Resolve ND of the next hop */
+        ret = _resolve_nd(nextif, nextaddr, txpkt);
+        if ( ret < 0 ) {
+            /* Need ND resolution */
+            /* FIXME */
+        }
+        u16 p_len2 = ip6_len > 8 ? 8 : ip6_len;
+        kmemcpy(txpkt+6, nextif->netdev->macaddr, 6);
+        txpkt[12] = 0x86;
+        txpkt[13] = 0xdd;
+
+        txpkt[14] = 0x60;
+        txpkt[15] = 0x00;
+        txpkt[16] = 0x00;
+        txpkt[17] = 0x00;
+        txpkt[18] = (40 + p_len2 + 8) >> 8;
+        txpkt[19] = (40 + p_len2 + 8) & 0xff;
+        txpkt[20] = 58;
+        txpkt[21] = 64;
+        kmemcpy(txpkt+22, srcaddr, 16);
+        kmemcpy(txpkt+38, ip6->ip6_src, 16);
+
+        txpkt[14 + 40] = 3;
+        txpkt[14 + 40 + 1] = 0;
+        txpkt[14 + 40 + 2] = 0;
+        txpkt[14 + 40 + 3] = 0;
+        txpkt[14 + 40 + 4] = 0;
+        txpkt[14 + 40 + 5] = 0;
+        txpkt[14 + 40 + 6] = 0;
+        txpkt[14 + 40 + 7] = 0;
+        kmemcpy(txpkt+14+40+8, pkt+14, 40 + p_len2);
+
+        chksum = _icmpv6_checksum(srcaddr, ip6->ip6_src, 40 + p_len2 + 8,
+                                  txpkt + 14 + 40);
+        txpkt[14 + 40 + 2] = chksum & 0xff;
+        txpkt[14 + 40 + 3] = chksum >> 8;
+
+        txdesc->length = 14 + 40 + 40 + p_len2 + 8;
+        if ( txdesc->length < 60 ) {
+            txdesc->length = 60;
+        }
+        _commit_ktxbuf(nextif);
+
+        return 0;
+    }
+
+    /* Get the next hop */
+    nextif = _ipv6_next_hop(ip6->ip6_dst, nextaddr);
+    if ( NULL == nextif ) {
+        return -1;
+    }
+
+    /* Get buffer */
+    ret = _get_ktxbuf(nextif, &txdesc);
+    if ( ret < 0 ) {
+        /* Buffer full */
+        return -1;
+    }
+    txpkt = (u8 *)txdesc->address;
+    txdesc->status = KTXBUF_CTS;
+    txdesc->vlan = nextif->vlan;
+
+    /* Resolve ND of the next hop */
+    ret = _resolve_nd(nextif, nextaddr, txpkt);
+    if ( ret < 0 ) {
+        /* Need ND resolution */
+        /* FIXME */
+    }
+
+    kmemcpy(txpkt+6, nextif->netdev->macaddr, 6);
+    kmemcpy(txpkt+12, pkt, len - 12);
+    txpkt[21] = limit;
+
+    txdesc->length = len;
+
+    _commit_ktxbuf(nextif);
 
     return 0;
 }
@@ -1277,7 +1763,7 @@ _rx_cb(const u8 *pkt, u32 len, int vlan)
             /* Destination is self */
             return _rx_ipv4_to_self(l3if, pkt, len, vlan);
         } else {
-            return _rx_ip_routing(l3if, pkt, len, vlan);
+            return _rx_ipv4_routing(l3if, pkt, len, vlan);
         }
     } else if ( 0x86 == pkt[12] && 0xdd == pkt[13] ) {
         /* IPv6 */
@@ -1367,11 +1853,12 @@ proc_router(void)
         panic("Could not create an interface.\r\n");
     }
     ret = _add_ipv4_addr("ve0", 192, 168, 56, 3, 24);
-    //ret = _add_ipv4_addr("ve0", 10, 211, 55, 3, 24);
+    //ret = _add_ipv4_addr("ve0", 172, 16, 92, 1, 23);;
     if ( ret < 0 ) {
         panic("Could not assign an IPv4 address.\r\n");
     }
     ret = _add_ipv6_addr("ve0", 1, 0x2001, 0xdb8, 0x0, 0x1, 0, 0, 0, 3, 64);
+    //ret = _add_ipv6_addr("ve0", 1, 0x2001, 0x200, 0, 0xff91, 0, 0, 0, 1, 64);
     if ( ret < 0 ) {
         panic("Could not assign an IPv6 address.\r\n");
     }

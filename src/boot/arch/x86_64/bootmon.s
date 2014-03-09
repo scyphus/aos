@@ -136,6 +136,26 @@ boot:
 
 	/* Load the kernel: Load 0x80 sectors (64KiB) from 0x1200 (LBA #9) */
 	movb	drive,%dl
+	testb	$0x80,%dl
+	jz	rd.floopy
+rd.hd:
+	movw	$0x1000,%ax
+	movw	%ax,%es
+	movb	drive,%dl
+	movb	$0x77,%al
+	movb	$0x0,%ch
+	movb	$0xa,%cl
+	movb	$0x0,%dh
+	movl	$0x0,%ebx
+	movb	$0x02,%ah
+	int	$0x13
+	jc	read.fail	/* Fail (%cf=1) */
+	cmpb	$0x77,%al
+	jne	read.fail
+	ljmp	$(KERNEL_SEG),$0
+
+rd.floopy:
+	movb	drive,%dl
 	movw	$0x1000,%ax
 	movw	%ax,%es
 	movl	$0x0,%ebx
@@ -164,7 +184,6 @@ boot:
 	movw	$0x6c,%ax
 	call	read
 	ljmp	$(KERNEL_SEG),$0
-
 
 	movw	$KERNEL_SEG,%ax
 	movw	%ax,%es

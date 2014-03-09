@@ -72,6 +72,8 @@ arch_bsp_init(void)
 
     /* Initialize VGA display */
     vga_init();
+    //kprintf("%llx!\r\n", acpi_load);
+    //__asm__ __volatile__ ("1: cli; hlt; jmp 1b");
 
     /* Find configuration using ACPI */
     acpi_load();
@@ -135,7 +137,6 @@ arch_bsp_init(void)
     kprintf("DEBUG: %.8x %.8x\r\n", *(u64 *)(ptr), *(u64 *)(ptr + 0x00200000));
 #endif
 
-
     /* Initialize TSS and load it */
     arch_dbg_printf("Initializing TSS.\r\n");
     tss_init();
@@ -155,7 +156,6 @@ arch_bsp_init(void)
     arch_dbg_printf("Searching PCI devices.\r\n");
     pci_init();
     e1000_init();
-
 
     /* Check and copy trampoline */
     tsz = (u64)trampoline_end - (u64)trampoline;
