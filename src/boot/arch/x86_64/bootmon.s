@@ -514,16 +514,6 @@ read.retry:
 				/*  to %es:[%bx] (results in %ax,%cf) */
 	jc	read.fail	/* Fail (%cf=1) */
 
-	movw	$hex_error,%di		/* Format it as hex */
-	xorw	%bx,%bx
-	movw	%bx,%es
-	call	hex8
-	movw	$ret,%si
-	call	putstr
-	movw	$hex_error,%si
-	call	putstr
-
-
 /* Restore registers */
 	movw	-8(%bp),%dx
 	movw	-6(%bp),%cx
@@ -670,6 +660,3 @@ msg_readerror:
 	.ascii  "\r\n\nRead Error: 0x"
 hex_error:
 	.asciz  "00\r\r"
-
-ret:
-	.asciz  "\r\n"
