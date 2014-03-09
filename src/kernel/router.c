@@ -757,8 +757,6 @@ _enable_ipv6_ra(const char *name, u16 a0, u16 a1, u16 a2, u16 a3,
 {
     struct l3if_list *l3if_list;
     struct l3if *l3if;
-    struct ipv6_addr_list *ipv6_addr_list;
-    struct ipv6_addr *ipv6_addr;
 
     /* Search the interface */
     l3if = NULL;
@@ -1020,7 +1018,7 @@ _resolve_nd(struct l3if *l3if, const u8 *ipaddr, u8 *macaddr)
  * ARP
  */
 static int
-_rx_arp(struct l3if *l3if, const u8 *pkt, u32 len, int vlan)
+_rx_arp(struct l3if *l3if, const u8 *pkt, u32 len)
 {
     /* ARP */
     if ( len < 14 + 28 ) {
@@ -1045,14 +1043,14 @@ _rx_arp(struct l3if *l3if, const u8 *pkt, u32 len, int vlan)
 
             struct ktxdesc *txdesc;
             u8 *txpkt;
-            u16 *txlen;
             int ret;
-            //e1000_tx_buf(l3if->netdev, &txpkt, &txlen, vlan);
             ret = _get_ktxbuf(l3if, &txdesc);
+            if ( ret < 0 ) {
+                return -1;
+            }
             txdesc->status = KTXBUF_CTS;
-            txdesc->vlan = vlan;
+            txdesc->vlan = l3if->vlan;
             txpkt = (u8 *)txdesc->address;
-            txlen = &txdesc->length;
 
             kmemcpy(txpkt, pkt+22, 6);
             kmemcpy(txpkt+6, l3if->netdev->macaddr, 6);
@@ -1071,7 +1069,7 @@ _rx_arp(struct l3if *l3if, const u8 *pkt, u32 len, int vlan)
             kmemcpy(txpkt+32, pkt+22, 6);
             kmemcpy(txpkt+38, pkt+28, 4);
             /**txlen = 42;*/
-            *txlen = 60;
+            txdesc->length = 60;
 
             _commit_ktxbuf(l3if);
             e1000_tx_commit(l3if->netdev);
@@ -1442,6 +1440,82 @@ _rx_ipv4_routing(struct l3if *l3if, const u8 *pkt, u32 len, int vlan)
     return 0;
 }
 
+/*
+ * Neighbor Solicitation
+ */
+static int
+_ipv6_neighbor_sol(struct l3if *l3if, struct ktxdesc *txdesc, const u8 *srcaddr,
+                   const u8 *ipaddr)
+{
+    u8 *txpkt;
+    u16 chksum;
+
+    txpkt = (u8 *)txdesc->address;
+
+    /* Neighbor solicitation */
+    txpkt[0] = 0x33;
+    txpkt[1] = 0x33;
+    txpkt[2] = 0xff;
+    txpkt[3] = ipaddr[13];
+    txpkt[4] = ipaddr[14];
+    txpkt[5] = ipaddr[15];
+    kmemcpy(txpkt+6, l3if->netdev->macaddr, 6);
+    txpkt[12] = 0x86;
+    txpkt[13] = 0xdd;
+    /* IPv6 header */
+    txpkt[14] = 0x60;
+    txpkt[15] = 0x00;
+    txpkt[16] = 0x00;
+    txpkt[17] = 0x00;
+    txpkt[18] = 0x00;
+    txpkt[19] = 32;
+    txpkt[20] = 58;
+    txpkt[21] = 255;
+
+    kmemcpy(txpkt+22, srcaddr, 16);
+    txpkt[38] = 0xff;
+    txpkt[39] = 0x02;
+    txpkt[40] = 0x00;
+    txpkt[41] = 0x00;
+    txpkt[42] = 0x00;
+    txpkt[43] = 0x00;
+    txpkt[44] = 0x00;
+    txpkt[45] = 0x00;
+    txpkt[46] = 0x00;
+    txpkt[47] = 0x00;
+    txpkt[48] = 0x00;
+    txpkt[49] = 0x01;
+    txpkt[50] = 0xff;
+    txpkt[51] = ipaddr[13];
+    txpkt[52] = ipaddr[14];
+    txpkt[53] = ipaddr[15];
+    /* ICMPv6 */
+    txpkt[54] = 135;
+    txpkt[55] = 0;
+    txpkt[56] = 0;
+    txpkt[57] = 0;
+    txpkt[58] = 0;
+    txpkt[59] = 0;
+    txpkt[60] = 0;
+    txpkt[61] = 0;
+
+    kmemcpy(txpkt+62, ipaddr, 16);
+    txpkt[78] = 1;
+    txpkt[79] = 1;
+    kmemcpy(txpkt+80, l3if->netdev->macaddr, 6);
+    /* Checksum */
+    chksum = _icmpv6_checksum(txpkt+22, txpkt+38, 32, txpkt+14+40);
+    txpkt[56] = chksum & 0xff;
+    txpkt[57] = chksum >> 8;
+
+    txdesc->length = 86;
+    txdesc->vlan = l3if->vlan;
+    txdesc->status = KTXBUF_CTS;
+
+    _commit_ktxbuf(l3if);
+
+    return 0;
+}
 
 /*
  * IPv6 to self
@@ -1452,6 +1526,8 @@ _rx_ipv6_to_self(struct l3if *l3if, const u8 *pkt, u32 len, int vlan)
     /* IPv6 */
     struct ip6hdr *ip6 = (struct ip6hdr *)(pkt + 14);
     u16 ip6_len = _swapw(ip6->ip6_len);
+    struct l3if *nextif;
+    u8 nextaddr[16];
     u8 srcaddr[16];
     int ret;
     struct ktxdesc *txdesc;
@@ -1467,98 +1543,75 @@ _rx_ipv6_to_self(struct l3if *l3if, const u8 *pkt, u32 len, int vlan)
         }
         if ( icmp6->type == 128 && icmp6->code == 0 ) {
             /* Echo request */
-            u16 *txlen;
-            //e1000_tx_buf(l3if->netdev, &txpkt, &txlen, vlan);
-            ret = _get_ktxbuf(l3if, &txdesc);
-            txdesc->status = KTXBUF_CTS;
-            txdesc->vlan = vlan;
-            txpkt = (u8 *)txdesc->address;
-            txlen = &txdesc->length;
 
-            ret = _resolve_nd(l3if, ip6->ip6_src, txpkt);
+            /* Get the next hop */
+            nextif = _ipv6_next_hop(ip6->ip6_src, nextaddr);
+            if ( NULL == nextif ) {
+                return -1;
+            }
+
+            /* Get the source address */
+            if ( ip6->ip6_src[0] == 0xfe && ip6->ip6_src[1] == 0x80 ) {
+                ret = _ipv6_get_local_addr(nextif, srcaddr);
+            } else {
+                ret = _ipv6_get_global_addr(nextif, srcaddr);
+            }
+            if ( ret < 0 ) {
+                return -1;
+            }
+
+            /* Get buffer */
+            ret = _get_ktxbuf(nextif, &txdesc);
+            if ( ret < 0 ) {
+                /* Buffer is full */
+                return -1;
+            }
+            txpkt = (u8 *)txdesc->address;
+            txdesc->status = KTXBUF_CTS;
+            txdesc->vlan = nextif->vlan;
+
+            /* Resolve the next hop from ND table */
+            ret = _resolve_nd(nextif, nextaddr, txpkt);
             if ( ret < 0 ) {
                 /* Neighbor solicitation */
-                txpkt[0] = 0x33;
-                txpkt[1] = 0x33;
-                txpkt[2] = 0xff;
-                txpkt[3] = ip6->ip6_src[13];
-                txpkt[4] = ip6->ip6_src[14];
-                txpkt[5] = ip6->ip6_src[15];
-                kmemcpy(txpkt+6, l3if->netdev->macaddr, 6);
-                txpkt[12] = 0x86;
-                txpkt[13] = 0xdd;
-                /* IPv6 header */
-                txpkt[14] = 0x60;
-                txpkt[15] = 0x00;
-                txpkt[16] = 0x00;
-                txpkt[17] = 0x00;
+                ret = _ipv6_neighbor_sol(nextif, txdesc, srcaddr, nextaddr);
+                if ( ret < 0 ) {
+                    /* ktxbuf will be automatically freed in commit procedure */
+                    return -1;
+                }
 
-                txpkt[18] = 0x00;
-                txpkt[19] = 32;
-                txpkt[20] = 58;
-                txpkt[21] = 255;
-
-                /* FIXME */
-                kmemcpy(txpkt+22, l3if->ip6list->addr->addr, 16);
-                txpkt[38] = 0xff;
-                txpkt[39] = 0x02;
-                txpkt[40] = 0x00;
-                txpkt[41] = 0x00;
-                txpkt[42] = 0x00;
-                txpkt[43] = 0x00;
-                txpkt[44] = 0x00;
-                txpkt[45] = 0x00;
-                txpkt[46] = 0x00;
-                txpkt[47] = 0x00;
-                txpkt[48] = 0x00;
-                txpkt[49] = 0x01;
-                txpkt[50] = 0xff;
-                txpkt[51] = ip6->ip6_src[13];
-                txpkt[52] = ip6->ip6_src[14];
-                txpkt[53] = ip6->ip6_src[15];
-                /* ICMPv6 */
-                txpkt[54] = 135;
-                txpkt[55] = 0;
-                txpkt[56] = 0;
-                txpkt[57] = 0;
-                txpkt[58] = 0;
-                txpkt[59] = 0;
-                txpkt[60] = 0;
-                txpkt[61] = 0;
-
-                kmemcpy(txpkt+62, ip6->ip6_src, 16);
-                txpkt[78] = 1;
-                txpkt[79] = 1;
-                kmemcpy(txpkt+80, l3if->netdev->macaddr, 6);
-                /* Checksum */
-                chksum = _icmpv6_checksum(txpkt+22, txpkt+38, 32,
-                                          txpkt+14+40);
-                txpkt[56] = chksum & 0xff;
-                txpkt[57] = chksum >> 8;
-                *txlen = 86;
-                _commit_ktxbuf(l3if);
-            } else {
-                kmemcpy(txpkt+6, l3if->netdev->macaddr, 6);
-                txpkt[12] = 0x86;
-                txpkt[13] = 0xdd;
-                kmemcpy(txpkt+14, pkt+14, 40 + ip6_len);
-                kmemcpy(txpkt+14+8, ip6->ip6_dst, 16);
-                kmemcpy(txpkt+14+8+16, ip6->ip6_src, 16);
-                txpkt[21] = 64;
-                /* ICMPv6 */
-                txpkt[54] = 129;
-                txpkt[55] = 0;
-                txpkt[56] = 0;
-                txpkt[57] = 0;
-
-                chksum = _icmpv6_checksum(ip6->ip6_dst, ip6->ip6_src,
-                                          ip6_len, txpkt+54);
-                txpkt[56] = chksum & 0xff;
-                txpkt[57] = chksum >> 8;
-
-                *txlen = 14 + 40 + ip6_len;
-                _commit_ktxbuf(l3if);
+                /* Get another buffer */
+                ret = _get_ktxbuf(nextif, &txdesc);
+                if ( ret < 0 ) {
+                    /* Buffer full */
+                    return -1;
+                }
+                txpkt = (u8 *)txdesc->address;
+                txdesc->status = KTXBUF_PENDING_ND1;
+                txdesc->vlan = nextif->vlan;
+                kmemcpy(txdesc->addr.ipv6, nextaddr, 16);
             }
+            kmemcpy(txpkt+6, nextif->netdev->macaddr, 6);
+            txpkt[12] = 0x86;
+            txpkt[13] = 0xdd;
+            kmemcpy(txpkt+14, pkt+14, 40 + ip6_len);
+            kmemcpy(txpkt+14+8, srcaddr, 16);
+            kmemcpy(txpkt+14+8+16, ip6->ip6_src, 16);
+            txpkt[21] = 64;
+            /* ICMPv6 */
+            txpkt[54] = 129;
+            txpkt[55] = 0;
+            txpkt[56] = 0;
+            txpkt[57] = 0;
+
+            chksum = _icmpv6_checksum(ip6->ip6_dst, ip6->ip6_src, ip6_len,
+                                      txpkt+54);
+            txpkt[56] = chksum & 0xff;
+            txpkt[57] = chksum >> 8;
+
+            txdesc->length = 14 + 40 + ip6_len;
+            _commit_ktxbuf(nextif);
+
         } else if ( icmp6->type == 133 && icmp6->code == 0 ) {
             /* Router solicitation */
             if ( ip6_len < 8 ) {
@@ -1582,8 +1635,26 @@ _rx_ipv6_to_self(struct l3if *l3if, const u8 *pkt, u32 len, int vlan)
             txdesc->status = KTXBUF_CTS;
             txdesc->vlan = l3if->vlan;
 
+#if 0
+            u8 dstaddr[16];
+            int j;
+            for ( j = 0; j < 16; j++ ) {
+                dstaddr[j] = 0;
+            }
+            dstaddr[0] = 0xff;
+            dstaddr[1] = 0x02;
+            dstaddr[15] = 0x01;
+#endif
             /* Ethernet */
             kmemcpy(txpkt, pkt+6, 6);
+#if 0
+            txpkt[0] = 0x33;
+            txpkt[1] = 0x33;
+            txpkt[2] = 0x00;
+            txpkt[3] = 0x00;
+            txpkt[4] = 0x00;
+            txpkt[5] = 0x01;
+#endif
             kmemcpy(txpkt+6, l3if->netdev->macaddr, 6);
             txpkt[12] = 0x86;
             txpkt[13] = 0xdd;
@@ -1600,6 +1671,7 @@ _rx_ipv6_to_self(struct l3if *l3if, const u8 *pkt, u32 len, int vlan)
             /* FIXME */
             kmemcpy(txpkt+22, srcaddr, 16);
             kmemcpy(txpkt+38, ip6->ip6_src, 16);
+            //kmemcpy(txpkt+38, dstaddr, 16);
             /* ICMPv6 */
             txpkt[54] = 134;
             txpkt[55] = 0;
@@ -1674,14 +1746,13 @@ _rx_ipv6_to_self(struct l3if *l3if, const u8 *pkt, u32 len, int vlan)
 
             _register_nd(l3if, ip6->ip6_src, option + 2);
 
-            u16 *txlen;
-            int ret;
-
             ret = _get_ktxbuf(l3if, &txdesc);
+            if ( ret < 0 ) {
+                return -1;
+            }
             txdesc->status = KTXBUF_CTS;
             txdesc->vlan = vlan;
             txpkt = (u8 *)txdesc->address;
-            txlen = &txdesc->length;
 
             kmemcpy(txpkt, option + 2, 6);
             kmemcpy(txpkt+6, l3if->netdev->macaddr, 6);
@@ -1719,7 +1790,7 @@ _rx_ipv6_to_self(struct l3if *l3if, const u8 *pkt, u32 len, int vlan)
             chksum = _icmpv6_checksum(txpkt+22, txpkt+38, 32, txpkt+14+40);
             txpkt[56] = chksum & 0xff;
             txpkt[57] = chksum >> 8;
-            *txlen = 86;
+            txdesc->length = 86;
 
             _commit_ktxbuf(l3if);
             e1000_tx_commit(l3if->netdev);
@@ -1793,7 +1864,23 @@ _rx_ipv6_routing(struct l3if *l3if, const u8 *pkt, u32 len, int vlan)
         ret = _resolve_nd(nextif, nextaddr, txpkt);
         if ( ret < 0 ) {
             /* Need ND resolution */
-            /* FIXME */
+            /* Neighbor solicitation */
+            ret = _ipv6_neighbor_sol(nextif, txdesc, srcaddr, nextaddr);
+            if ( ret < 0 ) {
+                /* ktxbuf will be automatically freed in commit procedure */
+                return -1;
+            }
+
+            /* Get another buffer */
+            ret = _get_ktxbuf(nextif, &txdesc);
+            if ( ret < 0 ) {
+                /* Buffer full */
+                return -1;
+            }
+            txpkt = (u8 *)txdesc->address;
+            txdesc->status = KTXBUF_PENDING_ND1;
+            txdesc->vlan = nextif->vlan;
+            kmemcpy(txdesc->addr.ipv6, nextaddr, 16);
         }
         u16 p_len2 = ip6_len > 8 ? 8 : ip6_len;
         kmemcpy(txpkt+6, nextif->netdev->macaddr, 6);
@@ -1855,7 +1942,23 @@ _rx_ipv6_routing(struct l3if *l3if, const u8 *pkt, u32 len, int vlan)
     ret = _resolve_nd(nextif, nextaddr, txpkt);
     if ( ret < 0 ) {
         /* Need ND resolution */
-        /* FIXME */
+        /* Neighbor solicitation */
+        ret = _ipv6_neighbor_sol(nextif, txdesc, srcaddr, nextaddr);
+        if ( ret < 0 ) {
+            /* ktxbuf will be automatically freed in commit procedure */
+            return -1;
+        }
+
+        /* Get another buffer */
+        ret = _get_ktxbuf(nextif, &txdesc);
+        if ( ret < 0 ) {
+            /* Buffer full */
+            return -1;
+        }
+        txpkt = (u8 *)txdesc->address;
+        txdesc->status = KTXBUF_PENDING_ND1;
+        txdesc->vlan = nextif->vlan;
+        kmemcpy(txdesc->addr.ipv6, nextaddr, 16);
     }
 
     kmemcpy(txpkt+6, nextif->netdev->macaddr, 6);
@@ -1914,7 +2017,7 @@ _rx_cb(const u8 *pkt, u32 len, int vlan)
 
     /* Check the ether type */
     if ( 0x08 == pkt[12] && 0x06 == pkt[13] ) {
-        return _rx_arp(l3if, pkt, len, vlan);
+        return _rx_arp(l3if, pkt, len);
     } else if ( 0x08 == pkt[12] && 0x00 == pkt[13] ) {
         /* IPv4 then check the destination */
         struct iphdr *ip = (struct iphdr *)(pkt + 14);
