@@ -20,7 +20,7 @@ extern struct netdev_list *netdev_head;
 #define ARP_TIMEOUT             300
 
 
-typedef int (*router_rx_cb_t)(u8 *, u32, int);
+typedef int (*router_rx_cb_t)(const u8 *, u32, int);
 
 int e1000_routing(struct netdev *, router_rx_cb_t);
 int e1000_tx_buf(struct netdev *, u8 **, u16 **, u16);
@@ -39,6 +39,31 @@ struct iphdr {
     u8 ip_dst[4];
 } __attribute__ ((packed));
 
+struct icmp_hdr {
+    u8 type;
+    u8 code;
+    u16 checksum;
+    u16 ident;
+    u16 seq;
+    // data...
+} __attribute__ ((packed));
+
+struct ip6hdr {
+    u32 ip6_vtf;
+    u16 ip6_len;
+    u8 ip6_next;
+    u8 ip6_limit;
+    u8 ip6_src[16];
+    u8 ip6_dst[16];
+} __attribute__ ((packed));
+
+struct icmp6_hdr {
+    u8 type;
+    u8 code;
+    u16 checksum;
+    // data...
+} __attribute__ ((packed));
+
 
 struct router_nat4 {
 
@@ -55,6 +80,9 @@ struct router_nat66 {
     struct nat66_entry *ent;
 };
 
+
+
+
 struct arp_entry {
     u8 protoaddr[4];
     u8 hwaddr[6];
@@ -62,13 +90,10 @@ struct arp_entry {
     u64 expire;
     int state;
 };
-
 struct router_arp {
     int sz;
     struct arp_entry *ent;
 };
-
-
 struct nd_entry {
     u8 neighbor[16];
     u8 linklayeraddr[6];
@@ -85,7 +110,7 @@ struct router {
     struct router_nat66 nat66;
 };
 
-
+#if 0
 /* RIB */
 struct rib6 {
     u8 ipaddr[16];
@@ -99,7 +124,7 @@ struct fib6 {
     struct rib6 *rib6;
     u8 dstmac[6];
 };
-
+#endif
 
 struct ipv4_route {
     u8 addr[4];
@@ -157,13 +182,117 @@ exp-panda
 
 
 static int
-_ipv4_add_route(u8 *prefix, int mask, u8 *nexthop)
+_ipv4_add_route(const u8 *prefix, int mask, const u8 *nexthop)
+{
+    return 0;
+}
+
+static int
+_ipv4_check_route(const u8 *prefix, int mask, u8 *nexthop)
 {
     return 0;
 }
 
 
 
+
+/*
+ * Comput checksum
+ */
+static u16
+_checksum(const u8 *buf, int len)
+{
+    int nleft;
+    u32 sum;
+    const u16 *cur;
+    union {
+        u16 us;
+        u8 uc[2];
+    } last;
+    u16 ret;
+
+    nleft = len;
+    sum = 0;
+    cur = (const u16 *)buf;
+
+    while ( nleft > 1 ) {
+        sum += *cur;
+        cur += 1;
+        nleft -= 2;
+    }
+    if ( 1 == nleft ) {
+        last.uc[0] = *(const u8 *)cur;
+        last.uc[1] = 0;
+        sum += last.us;
+    }
+    sum = (sum >> 16) + (sum & 0xffff);
+    sum += (sum >> 16);
+    ret = ~sum;
+
+    return ret;
+}
+
+/*
+ * Comput ICMPv6 checksum
+ */
+static u16
+_icmpv6_checksum(const u8 *src, const u8 *dst, u32 len, const u8 *data)
+{
+    u8 phdr[40];
+    int nleft;
+    u32 sum;
+    const u16 *cur;
+    union {
+        u16 us;
+        u8 uc[2];
+    } last;
+    u16 ret;
+    int i;
+
+    kmemcpy(phdr, src, 16);
+    kmemcpy(phdr+16, dst, 16);
+    phdr[32] = (len >> 24) & 0xff;
+    phdr[33] = (len >> 16) & 0xff;
+    phdr[34] = (len >> 8) & 0xff;
+    phdr[35] = len & 0xff;
+    phdr[36] = 0;
+    phdr[37] = 0;
+    phdr[38] = 0;
+    phdr[39] = 58;
+
+    sum = 0;
+    for ( i = 0; i < 20; i++ ) {
+        sum += *(const u16 *)(phdr + i * 2);
+    }
+
+    nleft = len;
+    cur = (const u16 *)data;
+    while ( nleft > 1 ) {
+        sum += *cur;
+        cur += 1;
+        nleft -= 2;
+    }
+    if ( 1 == nleft ) {
+        last.uc[0] = *(const u8 *)cur;
+        last.uc[1] = 0;
+        sum += last.us;
+    }
+
+    sum = (sum >> 16) + (sum & 0xffff);
+    sum += (sum >> 16);
+    ret = ~sum;
+
+    return ret;
+}
+
+/*
+ * Swap bytes
+ */
+static u16
+_swapw(u16 w)
+{
+    return ((w & 0xff) << 8) | (w >> 8);
+}
 
 
 
@@ -219,6 +348,9 @@ _add_ipv4_addr(const char *name, u8 a0, u8 a1, u8 a2, u8 a3, u8 mask)
     return 0;
 }
 
+/*
+ * Check if the specified IPv4 address is assigned to the L3 interface
+ */
 static int
 _check_ipv4(struct l3if *l3if, const u8 *addr)
 {
@@ -234,6 +366,26 @@ _check_ipv4(struct l3if *l3if, const u8 *addr)
 
     return -1;
 }
+
+/*
+ * Check if the specified IPv6 address is assigned to the L3 interface
+ */
+static int
+_check_ipv6(struct l3if *l3if, const u8 *addr)
+{
+    struct ipv6_addr_list *addr_list;
+
+    addr_list = l3if->ip6list;
+    while ( NULL != addr_list ) {
+        if ( 0 == kmemcmp(addr_list->addr->addr, addr, 16) ) {
+            return 0;
+        }
+        addr_list = addr_list->next;
+    }
+
+    return -1;
+}
+
 
 /*
  * Add IPv6 address
@@ -298,8 +450,6 @@ _add_ipv6_addr(const char *name, u16 a0, u16 a1, u16 a2, u16 a3,
 
     return 0;
 }
-
-
 
 /*
  * Create an L3 interface
@@ -368,7 +518,7 @@ _create_l3interface(const char *name, struct netdev *netdev, int vlan)
 
 /* Register an ARP entry */
 static int
-_register_arp(struct l3if *l3if, u8 *ipaddr, u8 *macaddr)
+_register_arp(struct l3if *l3if, const u8 *ipaddr, const u8 *macaddr)
 {
     int i;
     u64 nowms;
@@ -405,22 +555,237 @@ _register_arp(struct l3if *l3if, u8 *ipaddr, u8 *macaddr)
     return -1;
 }
 
+/*
+ * Resolve MAC address from ARP table
+ */
+static int
+_resolve_arp(struct l3if *l3if, const u8 *ipaddr, u8 *macaddr)
+{
+    int i;
+
+    for ( i = 0; i < ARP_TABLE_SIZE; i++ ) {
+        /* Check the existing entry */
+        if ( l3if->arp.ent[i].state >= 0 ) {
+            if ( 0 == kmemcmp(l3if->arp.ent[i].protoaddr, ipaddr, 4) ) {
+                /* Found then insert it */
+                kmemcpy(macaddr, l3if->arp.ent[i].hwaddr, 6);
+                return 0;
+            }
+        }
+    }
+
+    return -1;
+}
+
+/* Register an ND entry */
+static int
+_register_nd(struct l3if *l3if, const u8 *ipaddr, const u8 *macaddr)
+{
+    int i;
+    u64 nowms;
+    u64 expire;
+
+    nowms = arch_clock_get() / 1000 / 1000;
+    expire = nowms + 300 * 1000;
+
+    for ( i = 0; i < ND_TABLE_SIZE; i++ ) {
+        /* Check the existing entry */
+        if ( l3if->nd.ent[i].state >= 0 ) {
+            if ( 0 == kmemcmp(l3if->nd.ent[i].neighbor, ipaddr, 16) ) {
+                /* Found then update it */
+                l3if->nd.ent[i].state = 1;
+                l3if->nd.ent[i].expire = expire;
+                return 0;
+            }
+        }
+    }
+
+    for ( i = 0; i < ND_TABLE_SIZE; i++ ) {
+        /* Search available entry */
+        if ( -1 == l3if->nd.ent[i].state ) {
+            kmemcpy(l3if->nd.ent[i].neighbor, ipaddr, 16);
+            kmemcpy(l3if->nd.ent[i].linklayeraddr, macaddr, 6);
+            l3if->nd.ent[i].state = 1;
+            l3if->nd.ent[i].expire = expire;
+            l3if->nd.ent[i].netif = l3if;
+
+            arch_dbg_printf("Registered an ND entry \r\n");
+            return 0;
+        }
+    }
+
+    return -1;
+}
+
+/*
+ * Resolve MAC address from ND table
+ */
+static int
+_resolve_nd(struct l3if *l3if, const u8 *ipaddr, u8 *macaddr)
+{
+    int i;
+
+    for ( i = 0; i < ND_TABLE_SIZE; i++ ) {
+        /* Check the existing entry */
+        if ( l3if->nd.ent[i].state >= 0 ) {
+            if ( 0 == kmemcmp(l3if->nd.ent[i].neighbor, ipaddr, 16) ) {
+                /* Found then insert it */
+                kmemcpy(macaddr, l3if->nd.ent[i].linklayeraddr, 6);
+                return 0;
+            }
+        }
+    }
+
+    return -1;
+}
+
+
+
+static int
+_rx_ip_to_self(struct l3if *l3if, const u8 *pkt, u32 len, int vlan)
+{
+    struct iphdr *ip = (struct iphdr *)(pkt + 14);
+    u16 ip_hdrlen = (ip->ip_vhl & 0xf) << 2;
+    u16 p_len = _swapw(ip->ip_len);
+    u16 chksum;
+    if ( p_len < ip_hdrlen ) {
+        return -1;
+    }
+    p_len -= ip_hdrlen;
+
+    if ( 1 == ip->ip_proto ) {
+        /* ICMP */
+        struct icmp_hdr *icmp = (struct icmp_hdr *)(pkt+14+ip_hdrlen);
+        if ( 8 == icmp->type ) {
+            /* ICMP echo request */
+
+            u8 *txpkt;
+            u16 *txlen;
+            int ret;
+            e1000_tx_buf(l3if->netdev, &txpkt, &txlen, vlan);
+
+            ret = _resolve_arp(l3if, ip->ip_src, txpkt);
+            if ( ret < 0 ) {
+                /* ARP request */
+                txpkt[0] = 0xff;
+                txpkt[1] = 0xff;
+                txpkt[2] = 0xff;
+                txpkt[3] = 0xff;
+                txpkt[4] = 0xff;
+                txpkt[5] = 0xff;
+                kmemcpy(txpkt+6, l3if->netdev->macaddr, 6);
+                txpkt[12] = 0x08;
+                txpkt[13] = 0x06;
+                txpkt[14] = 0x00;
+                txpkt[15] = 0x01;
+                txpkt[16] = 0x08;
+                txpkt[17] = 0x00;
+                txpkt[18] = 0x06;
+                txpkt[19] = 0x04;
+                txpkt[20] = 0x00;
+                txpkt[21] = 0x01;
+                kmemcpy(txpkt+22, l3if->netdev->macaddr, 6);
+                kmemcpy(txpkt+28, ip->ip_dst, 4);
+                txpkt[32] = 0;
+                txpkt[33] = 0;
+                txpkt[34] = 0;
+                txpkt[35] = 0;
+                txpkt[36] = 0;
+                txpkt[37] = 0;
+                kmemcpy(txpkt+38, ip->ip_src, 4);
+                *txlen = 42;
+                *txlen = 60;
+            } else {
+                kmemcpy(txpkt+6, l3if->netdev->macaddr, 6);
+                txpkt[12] = 0x08;
+                txpkt[13] = 0x00;
+                kmemcpy(txpkt+14, pkt+14, ip_hdrlen + p_len);
+                txpkt[22] = 64;
+                txpkt[24] = 0;
+                txpkt[25] = 0;
+
+                chksum = _checksum(txpkt + 14, ip_hdrlen);
+                txpkt[24] = chksum & 0xff;
+                txpkt[25] = chksum >> 8;
+                txpkt[26] = pkt[30];
+                txpkt[27] = pkt[31];
+                txpkt[28] = pkt[32];
+                txpkt[29] = pkt[33];
+                txpkt[30] = pkt[26];
+                txpkt[31] = pkt[27];
+                txpkt[32] = pkt[28];
+                txpkt[33] = pkt[29];
+                txpkt[14 + ip_hdrlen] = 0;
+                txpkt[14 + ip_hdrlen + 2] = 0;
+                txpkt[14 + ip_hdrlen + 3] = 0;
+                chksum = _checksum(txpkt + 14 + ip_hdrlen, p_len);
+                txpkt[14 + ip_hdrlen + 2] = chksum & 0xff;
+                txpkt[14 + ip_hdrlen + 3] = chksum >> 8;
+
+                *txlen = 14 + ip_hdrlen + p_len;
+#if 0
+                arch_dbg_printf("Send an ICMP packet. %x\r\n", ip->ip_vhl);
+#endif
+            }
+        }
+    }
+
+    return 0;
+}
+
+/*
+ * Execute routing
+ */
+static int
+_rx_ip_routing(struct l3if *l3if, const u8 *pkt, u32 len, int vlan)
+{
+#if 0
+    const u8 *dstmac = pkt;
+    const u8 *srcmac = pkt + 6;
+#endif
+
+    struct iphdr *ip = (struct iphdr *)(pkt + 14);
+    u16 ip_hdrlen = (ip->ip_vhl & 0xf) << 2;
+    u16 p_len = _swapw(ip->ip_len);
+    if ( p_len < ip_hdrlen ) {
+        return -1;
+    }
+    p_len -= ip_hdrlen;
+
+    /* Do routing!!! */
+    arch_dbg_printf("Routing an IP packet. %x\r\n", ip->ip_vhl);
+    int ttl = ip->ip_ttl;
+    ttl--;
+    if ( ip->ip_ttl < 1 ) {
+        /* ICMP time exceeded */
+    } else {
+        /* Do routing */
+    }
+
+    return 0;
+}
+
+
+
+
+
 
 /*
  * RX callback
  */
 static int
-_rx_cb(u8 *pkt, u32 len, int vlan)
+_rx_cb(const u8 *pkt, u32 len, int vlan)
 {
     struct l3if_list *l3if_list;
     struct l3if *l3if;
 
+#if 0
     arch_dbg_printf("YYY VLAN=%d len=%d\r\n", vlan, len);
     arch_dbg_printf(" %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x"
                     " %02x %02x %02x %02x\r\n",
                     pkt[0], pkt[1], pkt[2], pkt[3], pkt[4], pkt[5], pkt[6],
                     pkt[7], pkt[8], pkt[9], pkt[10], pkt[11], pkt[12], pkt[13]);
-
+#endif
 
     /* Search vlan interface */
     l3if_list = l3if_head;
@@ -440,11 +805,13 @@ _rx_cb(u8 *pkt, u32 len, int vlan)
     /* Check the destination */
     if ( !(0xff == pkt[0] && 0xff == pkt[1] && 0xff == pkt[2]
            && 0xff == pkt[3] && 0xff == pkt[4] && 0xff == pkt[5])
-         || !kmemcmp(pkt, l3if->netdev->macaddr, 6) ) {
-        /* Neither broadcast nor unicast to this interface */
+         && !(0x33 == pkt[0] && 0x33 == pkt[1])
+         && 0 != kmemcmp(pkt, l3if->netdev->macaddr, 6) ) {
+        /* Neither broadcast, IPv6 multicast nor unicast to this interface */
         return -1;
     }
 
+    /* Check the ether type */
     if ( 0x08 == pkt[12] && 0x06 == pkt[13] ) {
         /* ARP */
         if ( len < 14 + 28 ) {
@@ -487,7 +854,8 @@ _rx_cb(u8 *pkt, u32 len, int vlan)
                 kmemcpy(txpkt+28, pkt+38, 4);
                 kmemcpy(txpkt+32, pkt+22, 6);
                 kmemcpy(txpkt+38, pkt+28, 4);
-                *txlen = 42;
+                /**txlen = 42;*/
+                *txlen = 60;
 
                 e1000_tx_commit(l3if->netdev);
             } else if ( 2 == mode ) {
@@ -504,14 +872,34 @@ _rx_cb(u8 *pkt, u32 len, int vlan)
             }
         }
     } else if ( 0x08 == pkt[12] && 0x00 == pkt[13] ) {
-        /* IP then check the destination */
-
-        u8 *dstmac = pkt;
-        u8 *srcmac = pkt + 6;
+        /* IPv4 then check the destination */
         struct iphdr *ip = (struct iphdr *)(pkt + 14);
 
+        /* Check the version */
+        if ( (ip->ip_vhl >> 4) != 4 ) {
+            return -1;
+        }
+        u16 ip_hdrlen = (ip->ip_vhl & 0xf) << 2;
+        u16 p_len = _swapw(ip->ip_len);
+        if ( p_len < ip_hdrlen ) {
+            return -1;
+        }
+        p_len -= ip_hdrlen;
+        u16 chksum = _checksum(pkt + 14, ip_hdrlen);
+
+        /* Verify the checksum */
+        if ( 0 != chksum && 0xffff != chksum ) {
+            /* Invalid checksum */
+            /*arch_dbg_printf("Invalid checksum. %x\r\n", chksum);*/
+            return -1;
+        }
+
+        /* Check the IP address */
         if ( 0 == _check_ipv4(l3if, ip->ip_dst) ) {
-            arch_dbg_printf("Received an IP packet. %x\r\n", ip->ip_vhl);
+            /* Destination is self */
+            return _rx_ip_to_self(l3if, pkt, len, vlan);
+        } else {
+            return _rx_ip_routing(l3if, pkt, len, vlan);
         }
 
 #if 0
@@ -525,6 +913,201 @@ _rx_cb(u8 *pkt, u32 len, int vlan)
         u8 *dstip = pkt + 30;
 #endif
 
+    } else if ( 0x86 == pkt[12] && 0xdd == pkt[13] ) {
+        /* IPv6 */
+        struct ip6hdr *ip6 = (struct ip6hdr *)(pkt + 14);
+
+        /* Check the version */
+        if ( ((ip6->ip6_vtf >> 4) & 0xf) != 6 ) {
+            arch_dbg_printf("Invalid IPv6 packet: %x\r\n",
+                            ip6->ip6_vtf);
+            return -1;
+        }
+
+        u16 ip6_len = _swapw(ip6->ip6_len);
+
+        if ( ip6->ip6_next == 0x3a ) {
+            struct icmp6_hdr *icmp6 = (struct icmp6_hdr *)(pkt + 14 + 40);
+
+            u16 chksum = _icmpv6_checksum(ip6->ip6_src, ip6->ip6_dst, ip6_len,
+                                          pkt + 14 + 40);
+            if ( chksum != 0 && chksum != 0xffff ) {
+                arch_dbg_printf("Invalid checksum: %x\r\n", chksum);
+                return -1;
+            }
+
+            if ( icmp6->type == 128 && icmp6->code == 0 ) {
+                if ( _check_ipv6(l3if, ip6->ip6_dst) < 0 ) {
+                    return -1;
+                }
+                /* Echo request */
+                u8 *txpkt;
+                u16 *txlen;
+                int ret;
+                e1000_tx_buf(l3if->netdev, &txpkt, &txlen, vlan);
+
+                ret = _resolve_nd(l3if, ip6->ip6_src, txpkt);
+                if ( ret < 0 ) {
+                    /* Neighbor solicitation */
+                    txpkt[0] = 0x33;
+                    txpkt[1] = 0x33;
+                    txpkt[2] = 0xff;
+                    txpkt[3] = ip6->ip6_src[13];
+                    txpkt[4] = ip6->ip6_src[14];
+                    txpkt[5] = ip6->ip6_src[15];
+                    kmemcpy(txpkt+6, l3if->netdev->macaddr, 6);
+                    txpkt[12] = 0x86;
+                    txpkt[13] = 0xdd;
+                    /* IPv6 header */
+                    txpkt[14] = 0x60;
+                    txpkt[15] = 0x00;
+                    txpkt[16] = 0x00;
+                    txpkt[17] = 0x00;
+
+                    txpkt[18] = 0x00;
+                    txpkt[19] = 32;
+                    txpkt[20] = 58;
+                    txpkt[21] = 255;
+
+                    /* FIXME */
+                    kmemcpy(txpkt+22, l3if->ip6list->addr->addr, 16);
+                    txpkt[38] = 0xff;
+                    txpkt[39] = 0x02;
+                    txpkt[40] = 0x00;
+                    txpkt[41] = 0x00;
+                    txpkt[42] = 0x00;
+                    txpkt[43] = 0x00;
+                    txpkt[44] = 0x00;
+                    txpkt[45] = 0x00;
+                    txpkt[46] = 0x00;
+                    txpkt[47] = 0x00;
+                    txpkt[48] = 0x00;
+                    txpkt[49] = 0x01;
+                    txpkt[50] = 0xff;
+                    txpkt[51] = ip6->ip6_src[13];
+                    txpkt[52] = ip6->ip6_src[14];
+                    txpkt[53] = ip6->ip6_src[15];
+                    /* ICMPv6 */
+                    txpkt[54] = 135;
+                    txpkt[55] = 0;
+                    txpkt[56] = 0;
+                    txpkt[57] = 0;
+                    txpkt[58] = 0;
+                    txpkt[59] = 0;
+                    txpkt[60] = 0;
+                    txpkt[61] = 0;
+
+                    kmemcpy(txpkt+62, ip6->ip6_src, 16);
+                    txpkt[78] = 1;
+                    txpkt[79] = 1;
+                    kmemcpy(txpkt+80, l3if->netdev->macaddr, 6);
+                    /* Checksum */
+                    chksum = _icmpv6_checksum(txpkt+22, txpkt+38, 32,
+                                              txpkt+14+40);
+                    txpkt[56] = chksum & 0xff;
+                    txpkt[57] = chksum >> 8;
+                    *txlen = 86;
+                } else {
+                    kmemcpy(txpkt+6, l3if->netdev->macaddr, 6);
+                    txpkt[12] = 0x86;
+                    txpkt[13] = 0xdd;
+                    kmemcpy(txpkt+14, pkt+14, 40 + ip6_len);
+                    kmemcpy(txpkt+14+8, ip6->ip6_dst, 16);
+                    kmemcpy(txpkt+14+8+16, ip6->ip6_src, 16);
+                    txpkt[21] = 64;
+                    /* ICMPv6 */
+                    txpkt[54] = 129;
+                    txpkt[55] = 0;
+                    txpkt[56] = 0;
+                    txpkt[57] = 0;
+
+                    chksum = _icmpv6_checksum(ip6->ip6_dst, ip6->ip6_src,
+                                              ip6_len, txpkt+54);
+                    txpkt[56] = chksum & 0xff;
+                    txpkt[57] = chksum >> 8;
+
+                    *txlen = 14 + 40 + ip6_len;
+                }
+            } else if ( icmp6->type == 133 ) {
+                /* Router solicitation */
+            } else if ( icmp6->type == 135 && icmp6->code == 0 ) {
+                if ( ip6_len == 8 + 16 ) {
+                    /* DAD */
+                }
+                if ( ip6_len < 8 + 16 + 8 ) {
+                    return -1;
+                }
+
+                /* Neighbor solicitation */
+                const u8 *target = pkt + 14 + 40 + 8;
+
+                /* Type(1), length(1) in 8-octet from type, value */
+                const u8 *option = pkt + 14 + 40 + 8 + 16;
+                if ( option[0] != 1 || option[1] != 1 ) {
+                    return -1;
+                }
+
+                if ( _check_ipv6(l3if, target) < 0 ) {
+                    /* This host is not the target */
+                    arch_dbg_printf("Not target \r\n");
+                    return -1;
+                }
+
+                _register_nd(l3if, ip6->ip6_src, option + 2);
+
+                u8 *txpkt;
+                u16 *txlen;
+                e1000_tx_buf(l3if->netdev, &txpkt, &txlen, vlan);
+
+                kmemcpy(txpkt, option + 2, 6);
+                kmemcpy(txpkt+6, l3if->netdev->macaddr, 6);
+                txpkt[12] = 0x86;
+                txpkt[13] = 0xdd;
+                /* IPv6 header */
+                txpkt[14] = 0x60;
+                txpkt[15] = 0x00;
+                txpkt[16] = 0x00;
+                txpkt[17] = 0x00;
+
+                txpkt[18] = 0x00;
+                txpkt[19] = 32;
+                txpkt[20] = 58;
+                txpkt[21] = 255;
+
+                /* FIXME */
+                kmemcpy(txpkt+22, target, 16);
+                kmemcpy(txpkt+38, pkt+22, 16);
+                /* ICMPv6 */
+                txpkt[54] = 136;
+                txpkt[55] = 0;
+                txpkt[56] = 0;
+                txpkt[57] = 0;
+                txpkt[58] = (1<<7) | (1<<6) | (1<<5);
+                txpkt[59] = 0;
+                txpkt[60] = 0;
+                txpkt[61] = 0;
+
+                kmemcpy(txpkt+62, target, 16);
+                txpkt[78] = 2;
+                txpkt[79] = 1;
+                kmemcpy(txpkt+80, l3if->netdev->macaddr, 6);
+                /* Checksum */
+                chksum = _icmpv6_checksum(txpkt+22, txpkt+38, 32, txpkt+14+40);
+                txpkt[56] = chksum & 0xff;
+                txpkt[57] = chksum >> 8;
+                *txlen = 86;
+
+                e1000_tx_commit(l3if->netdev);
+
+            } else if ( icmp6->type == 136 ) {
+                /* Neighbor advertisement */
+            } else {
+                arch_dbg_printf("IPv6 ICMP packet %d\r\n", icmp6->type);
+            }
+
+        } else {
+            arch_dbg_printf("IPv6 packet\r\n");
+        }
     }
 
     return 0;
@@ -596,9 +1179,14 @@ proc_router(void)
     if ( ret < 0 ) {
         panic("Could not create an interface.\r\n");
     }
-    ret = _add_ipv4_addr("ve0", 192, 168, 56, 2, 24);
+    ret = _add_ipv4_addr("ve0", 192, 168, 56, 3, 24);
+    //ret = _add_ipv4_addr("ve0", 10, 211, 55, 3, 24);
     if ( ret < 0 ) {
         panic("Could not assign an IPv4 address.\r\n");
+    }
+    ret = _add_ipv6_addr("ve0", 0x2001, 0xdb8, 0x0, 0x1, 0, 0, 0, 3, 64);
+    if ( ret < 0 ) {
+        panic("Could not assign an IPv6 address.\r\n");
     }
 
     e1000_routing(list->netdev, _rx_cb);

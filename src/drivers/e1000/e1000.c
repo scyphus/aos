@@ -50,7 +50,7 @@ struct netdev_list *netdev_head;
 #define E1000_CTRL_RST  (1<<26)
 #define E1000_CTRL_VME  (1<<30)
 
-#define E1000_CTRL_EXT_LINK_MODE_MASK (u32)(3<<22)
+#define E1000_CTRL_EXT_LINK_MODE_MASK (u32)(3ULL<<22)
 
 #define E1000_RCTL_EN   (1<<1)
 #define E1000_RCTL_SBP  (1<<2)
@@ -356,6 +356,8 @@ e1000_init_hw(struct pci_device *pcidev)
     }
 
     /* Enable interrupt (REG_IMS <- 0x1F6DC, then read REG_ICR ) */
+    //mmio_write32(netdev->mmio, E1000_REG_IMS, 0x1f6dc);
+    //mmio_read32(netdev->mmio, 0xc0);
 
     /* Start TX/RX */
     struct e1000_rx_desc *rxdesc;
@@ -372,7 +374,7 @@ e1000_init_hw(struct pci_device *pcidev)
 
     /* ToDo: 16 bytes for alignment */
     netdev->rx_base = (u64)kmalloc(netdev->rx_bufsz
-                                   * sizeof(struct e1000_rx_desc));
+                                   * sizeof(struct e1000_rx_desc) + 16);
     if ( 0 == netdev->rx_base ) {
         kfree(netdev);
         return NULL;
@@ -394,15 +396,18 @@ e1000_init_hw(struct pci_device *pcidev)
     mmio_write32(netdev->mmio, E1000_REG_RDH, 0);
     /* RDT must be larger than 0 for the initial value to receive the first
        packet but I don't know why */
-    mmio_write32(netdev->mmio, E1000_REG_RDT, netdev->rx_bufsz);
+    mmio_write32(netdev->mmio, E1000_REG_RDT, netdev->rx_bufsz - 1);
     mmio_write32(netdev->mmio, E1000_REG_RCTL,
-                 E1000_RCTL_EN | E1000_RCTL_SBP | E1000_RCTL_UPE
+                 E1000_RCTL_SBP | E1000_RCTL_UPE
                  | E1000_RCTL_MPE | E1000_RCTL_LPE | E1000_RCTL_BAM
                  | E1000_RCTL_BSIZE_8192 | E1000_RCTL_SECRC);
+    /* Enable */
+    mmio_write32(netdev->mmio, E1000_REG_RCTL,
+                 mmio_read32(netdev->mmio, E1000_REG_RCTL) | E1000_RCTL_EN);
 
     /* ToDo: 16 bytes for alignment */
     netdev->tx_base = (u64)kmalloc(netdev->tx_bufsz
-                                   * sizeof(struct e1000_tx_desc));
+                                   * sizeof(struct e1000_tx_desc) + 16);
     for ( i = 0; i < netdev->tx_bufsz; i++ ) {
         txdesc = (struct e1000_tx_desc *)(netdev->tx_base
                                           + i * sizeof(struct e1000_tx_desc));
@@ -450,8 +455,6 @@ e1000_sendpkt(u8 *pkt, u32 len, struct netdev *netdev)
         /* Full */
         return -1;
     }
-
-    kprintf("%llx: pkt2\r\n", netdev);
 
     int i;
     int j;
@@ -595,7 +598,7 @@ e1000_routing_test(struct netdev *netdev)
 }
 
 
-typedef int (*router_rx_cb_t)(u8 *, u32, int);
+typedef int (*router_rx_cb_t)(const u8 *, u32, int);
 int arch_dbg_printf(const char *fmt, ...);
 
 
@@ -680,6 +683,12 @@ e1000_routing(struct netdev *netdev, router_rx_cb_t cb)
     /* Retrieve data structure of e1000 driver */
     e1000dev = (struct e1000_device *)netdev->vendor;
 
+#if 0
+    kprintf("[%x : %x]\r\n",
+            mmio_read32(e1000dev->mmio, E1000_REG_RDH),
+            mmio_read32(e1000dev->mmio, E1000_REG_RDT));
+#endif
+
     for ( ;; ) {
         /* Get the head pointers of RX/TX ring buffers */
         rdh = mmio_read32(e1000dev->mmio, E1000_REG_RDH);
@@ -693,6 +702,29 @@ e1000_routing(struct netdev *netdev, router_rx_cb_t cb)
         rx_que = (e1000dev->rx_bufsz - e1000dev->rx_tail + rdh)
             % e1000dev->rx_bufsz;
 
+#if 0
+        rxdesc = (struct e1000_rx_desc *)
+            (e1000dev->rx_base + e1000dev->rx_tail * sizeof(struct e1000_rx_desc));
+        kprintf("[%d : %d / %d /// %x | %d]\r\n", rdh, e1000dev->rx_tail, rx_que,
+                rxdesc->status, mmio_read32(e1000dev->mmio, E1000_REG_RDH));
+#endif
+
+#if 0
+        /* Device status */
+        kprintf("[%x : %x]\r\n",
+                mmio_read32(e1000dev->mmio, E1000_REG_RDH),
+                mmio_read32(e1000dev->mmio, E1000_REG_RDT));
+#endif
+
+        if ( rx_que <= 0 ) {
+            continue;
+        }
+#if 0
+        kprintf("[%x : %x]\r\n",
+                mmio_read32(e1000dev->mmio, E1000_REG_RDH),
+                mmio_read32(e1000dev->mmio, E1000_REG_RDT));
+#endif
+
         /* Routing */
         for ( i = 0; i < rx_que; i++ ) {
             rxdesc = (struct e1000_rx_desc *)
@@ -700,14 +732,36 @@ e1000_routing(struct netdev *netdev, router_rx_cb_t cb)
                  + ((e1000dev->rx_tail + i) % e1000dev->rx_bufsz)
                  * sizeof(struct e1000_rx_desc));
 
+#if 0
+            kprintf("[%x %x %x]\r\n",
+                    rxdesc->checksum, rxdesc->status, rxdesc->errors);
+#endif
             rxpkt = (u8 *)rxdesc->address;
 
-            cb(rxpkt, rxdesc->length, rxdesc->special);
+            if ( rxdesc->status & (1<<3) ) {
+                /* VLAN packet (VP) */
+                cb(rxpkt, rxdesc->length, rxdesc->special);
+            } else {
+                cb(rxpkt, rxdesc->length, 0);
+            }
+
+            rxdesc->status = 0;
         }
 
         /* Sync RX */
-        e1000dev->rx_tail = (e1000dev->rx_tail + rx_que) % e1000dev->rx_bufsz;
+        e1000dev->rx_tail = (e1000dev->rx_tail + rx_que - 1) % e1000dev->rx_bufsz;
         mmio_write32(e1000dev->mmio, E1000_REG_RDT, e1000dev->rx_tail);
+        e1000dev->rx_tail = (e1000dev->rx_tail + 1) % e1000dev->rx_bufsz;
+
+        /* Commit TX queue */
+        e1000_tx_commit(netdev);
+
+#if 0
+        kprintf("C0 : %x %x %x \r\n",
+                mmio_read32(e1000dev->mmio, 0xc0),
+                mmio_read32(e1000dev->mmio, 0xc0),
+                mmio_read32(e1000dev->mmio, 0xc0));
+#endif
     }
 
     return 0;
