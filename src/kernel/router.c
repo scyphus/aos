@@ -1090,6 +1090,50 @@ _rx_arp(struct l3if *l3if, const u8 *pkt, u32 len)
     return 0;
 }
 
+/*
+ * ARP request
+ */
+static int
+_ipv4_arp(struct l3if *l3if, struct ktxdesc *txdesc, const u8 *srcaddr,
+          const u8 *dstaddr)
+{
+    u8 *txpkt;
+
+    txpkt = (u8 *)txdesc->address;
+
+    txpkt[0] = 0xff;
+    txpkt[1] = 0xff;
+    txpkt[2] = 0xff;
+    txpkt[3] = 0xff;
+    txpkt[4] = 0xff;
+    txpkt[5] = 0xff;
+    kmemcpy(txpkt+6, l3if->netdev->macaddr, 6);
+    txpkt[12] = 0x08;
+    txpkt[13] = 0x06;
+    txpkt[14] = 0x00;
+    txpkt[15] = 0x01;
+    txpkt[16] = 0x08;
+    txpkt[17] = 0x00;
+    txpkt[18] = 0x06;
+    txpkt[19] = 0x04;
+    txpkt[20] = 0x00;
+    txpkt[21] = 0x01;
+    kmemcpy(txpkt+22, l3if->netdev->macaddr, 6);
+    kmemcpy(txpkt+28, srcaddr, 4);
+    txpkt[32] = 0;
+    txpkt[33] = 0;
+    txpkt[34] = 0;
+    txpkt[35] = 0;
+    txpkt[36] = 0;
+    txpkt[37] = 0;
+    kmemcpy(txpkt+38, dstaddr, 4);
+    /*txdesc->length = 42;*/
+    txdesc->length = 60;
+    txdesc->status = KTXBUF_CTS;
+    txdesc->vlan = l3if->vlan;
+
+    return 0;
+}
 
 /*
  * IPv4 to self
@@ -1147,35 +1191,10 @@ _rx_ipv4_to_self(struct l3if *l3if, const u8 *pkt, u32 len, int vlan)
             if ( ret < 0 ) {
                 /* Need ARP resolution */
                 /* ARP request */
-                txpkt[0] = 0xff;
-                txpkt[1] = 0xff;
-                txpkt[2] = 0xff;
-                txpkt[3] = 0xff;
-                txpkt[4] = 0xff;
-                txpkt[5] = 0xff;
-                kmemcpy(txpkt+6, nextif->netdev->macaddr, 6);
-                txpkt[12] = 0x08;
-                txpkt[13] = 0x06;
-                txpkt[14] = 0x00;
-                txpkt[15] = 0x01;
-                txpkt[16] = 0x08;
-                txpkt[17] = 0x00;
-                txpkt[18] = 0x06;
-                txpkt[19] = 0x04;
-                txpkt[20] = 0x00;
-                txpkt[21] = 0x01;
-                kmemcpy(txpkt+22, nextif->netdev->macaddr, 6);
-                kmemcpy(txpkt+28, srcaddr, 4);
-                txpkt[32] = 0;
-                txpkt[33] = 0;
-                txpkt[34] = 0;
-                txpkt[35] = 0;
-                txpkt[36] = 0;
-                txpkt[37] = 0;
-                kmemcpy(txpkt+38, nextaddr, 4);
-                /*txdesc->length = 42;*/
-                txdesc->length = 60;
-
+                ret = _ipv4_arp(nextif, txdesc, srcaddr, nextaddr);
+                if ( ret < 0 ) {
+                    return -1;
+                }
                 /* Get buffer */
                 ret = _get_ktxbuf(nextif, &txdesc);
                 if ( ret < 0 ) {
@@ -1280,34 +1299,10 @@ _rx_ipv4_routing(struct l3if *l3if, const u8 *pkt, u32 len, int vlan)
         if ( ret < 0 ) {
             /* Need ARP resolution */
             /* ARP request */
-            txpkt[0] = 0xff;
-            txpkt[1] = 0xff;
-            txpkt[2] = 0xff;
-            txpkt[3] = 0xff;
-            txpkt[4] = 0xff;
-            txpkt[5] = 0xff;
-            kmemcpy(txpkt+6, nextif->netdev->macaddr, 6);
-            txpkt[12] = 0x08;
-            txpkt[13] = 0x06;
-            txpkt[14] = 0x00;
-            txpkt[15] = 0x01;
-            txpkt[16] = 0x08;
-            txpkt[17] = 0x00;
-            txpkt[18] = 0x06;
-            txpkt[19] = 0x04;
-            txpkt[20] = 0x00;
-            txpkt[21] = 0x01;
-            kmemcpy(txpkt+22, nextif->netdev->macaddr, 6);
-            kmemcpy(txpkt+28, srcaddr, 4);
-            txpkt[32] = 0;
-            txpkt[33] = 0;
-            txpkt[34] = 0;
-            txpkt[35] = 0;
-            txpkt[36] = 0;
-            txpkt[37] = 0;
-            kmemcpy(txpkt+38, nextaddr, 4);
-            /*txdesc->length = 42;*/
-            txdesc->length = 60;
+            ret = _ipv4_arp(nextif, txdesc, srcaddr, nextaddr);
+            if ( ret < 0 ) {
+                return -1;
+            }
 
             /* Get buffer */
             ret = _get_ktxbuf(nextif, &txdesc);
@@ -1386,34 +1381,10 @@ _rx_ipv4_routing(struct l3if *l3if, const u8 *pkt, u32 len, int vlan)
     if ( ret < 0 ) {
         /* Need ARP resolution */
         /* ARP request */
-        txpkt[0] = 0xff;
-        txpkt[1] = 0xff;
-        txpkt[2] = 0xff;
-        txpkt[3] = 0xff;
-        txpkt[4] = 0xff;
-        txpkt[5] = 0xff;
-        kmemcpy(txpkt+6, nextif->netdev->macaddr, 6);
-        txpkt[12] = 0x08;
-        txpkt[13] = 0x06;
-        txpkt[14] = 0x00;
-        txpkt[15] = 0x01;
-        txpkt[16] = 0x08;
-        txpkt[17] = 0x00;
-        txpkt[18] = 0x06;
-        txpkt[19] = 0x04;
-        txpkt[20] = 0x00;
-        txpkt[21] = 0x01;
-        kmemcpy(txpkt+22, nextif->netdev->macaddr, 6);
-        kmemcpy(txpkt+28, srcaddr, 4);
-        txpkt[32] = 0;
-        txpkt[33] = 0;
-        txpkt[34] = 0;
-        txpkt[35] = 0;
-        txpkt[36] = 0;
-        txpkt[37] = 0;
-        kmemcpy(txpkt+38, nextaddr, 4);
-        /*txdesc->length = 42;*/
-        txdesc->length = 60;
+        ret = _ipv4_arp(nextif, txdesc, srcaddr, nextaddr);
+        if ( ret < 0 ) {
+            return -1;
+        }
 
         /* Get buffer */
         ret = _get_ktxbuf(nextif, &txdesc);
@@ -1810,10 +1781,7 @@ _rx_ipv6_to_self(struct l3if *l3if, const u8 *pkt, u32 len, int vlan)
             /* FIXME: Check flags */
             _register_nd(l3if, target, option + 2);
 
-        } else {
-            arch_dbg_printf("IPv6 ICMP packet %d\r\n", icmp6->type);
         }
-
     }
 
     return 0;
