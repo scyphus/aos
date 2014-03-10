@@ -221,6 +221,7 @@ static struct l3if_list *l3if_head;
 
 static int _resolve_arp(struct l3if *, const u8 *, u8 *);
 static int _resolve_nd(struct l3if *, const u8 *, u8 *);
+static int _nat66_check(struct l3if *, const u8 *);
 
 /*
 680
@@ -685,6 +686,9 @@ _check_ipv6(struct l3if *l3if, const u8 *addr)
          && addr[12] == 0xff ) {
         /* Solicited-Node Address */
         return 0;
+    } else if ( addr[0] == 0xff && addr[1] == 0x02 ) {
+        /* Multicast */
+        return 0;
     }
 
     return -1;
@@ -799,6 +803,35 @@ _enable_ipv6_ra(const char *name, u16 a0, u16 a1, u16 a2, u16 a3,
     l3if->ra.prefix[14] = (a7 >> 8);
     l3if->ra.prefix[15] = a7 & 0xff;
     l3if->ra.length = preflen;
+
+    return 0;
+}
+
+/*
+ * Enable NAT66
+ */
+static int
+_enable_nat66(const char *name)
+{
+    struct l3if_list *l3if_list;
+    struct l3if *l3if;
+
+    /* Search the interface */
+    l3if = NULL;
+    l3if_list = l3if_head;
+    while ( NULL != l3if_list ) {
+        if ( 0 == kstrcmp(l3if_list->l3if->name, name) ) {
+            l3if = l3if_list->l3if;
+            break;
+        }
+        l3if_list = l3if_list->next;
+    }
+    if ( NULL == l3if ) {
+        /* Not found */
+        return -1;
+    }
+
+    l3if->nat66.enable = 1;
 
     return 0;
 }
@@ -922,7 +955,7 @@ _register_arp(struct l3if *l3if, const u8 *ipaddr, const u8 *macaddr)
     nowms = arch_clock_get() / 1000 / 1000;
     expire = nowms + 300 * 1000;
 
-    for ( i = 0; i < ARP_TABLE_SIZE; i++ ) {
+    for ( i = 0; i < l3if->arp.sz; i++ ) {
         /* Check the existing entry */
         if ( l3if->arp.ent[i].state >= 0 ) {
             if ( 0 == kmemcmp(l3if->arp.ent[i].protoaddr, ipaddr, 4) ) {
@@ -935,7 +968,7 @@ _register_arp(struct l3if *l3if, const u8 *ipaddr, const u8 *macaddr)
         }
     }
 
-    for ( i = 0; i < ARP_TABLE_SIZE; i++ ) {
+    for ( i = 0; i < l3if->arp.sz; i++ ) {
         /* Search available entry */
         if ( -1 == l3if->arp.ent[i].state ) {
             kmemcpy(l3if->arp.ent[i].protoaddr, ipaddr, 4);
@@ -959,7 +992,7 @@ _resolve_arp(struct l3if *l3if, const u8 *ipaddr, u8 *macaddr)
 {
     int i;
 
-    for ( i = 0; i < ARP_TABLE_SIZE; i++ ) {
+    for ( i = 0; i < l3if->arp.sz; i++ ) {
         /* Check the existing entry */
         if ( l3if->arp.ent[i].state >= 0 ) {
             if ( 0 == kmemcmp(l3if->arp.ent[i].protoaddr, ipaddr, 4) ) {
@@ -984,7 +1017,7 @@ _register_nd(struct l3if *l3if, const u8 *ipaddr, const u8 *macaddr)
     nowms = arch_clock_get() / 1000 / 1000;
     expire = nowms + 300 * 1000;
 
-    for ( i = 0; i < ND_TABLE_SIZE; i++ ) {
+    for ( i = 0; i < l3if->nd.sz; i++ ) {
         /* Check the existing entry */
         if ( l3if->nd.ent[i].state >= 0 ) {
             if ( 0 == kmemcmp(l3if->nd.ent[i].neighbor, ipaddr, 16) ) {
@@ -997,7 +1030,7 @@ _register_nd(struct l3if *l3if, const u8 *ipaddr, const u8 *macaddr)
         }
     }
 
-    for ( i = 0; i < ND_TABLE_SIZE; i++ ) {
+    for ( i = 0; i < l3if->nd.sz; i++ ) {
         /* Search available entry */
         if ( -1 == l3if->nd.ent[i].state ) {
             kmemcpy(l3if->nd.ent[i].neighbor, ipaddr, 16);
@@ -1022,7 +1055,7 @@ _resolve_nd(struct l3if *l3if, const u8 *ipaddr, u8 *macaddr)
 {
     int i;
 
-    for ( i = 0; i < ND_TABLE_SIZE; i++ ) {
+    for ( i = 0; i < l3if->nd.sz; i++ ) {
         /* Check the existing entry */
         if ( l3if->nd.ent[i].state >= 0 ) {
             if ( 0 == kmemcmp(l3if->nd.ent[i].neighbor, ipaddr, 16) ) {
@@ -1733,9 +1766,13 @@ _rx_ipv6_to_self(struct l3if *l3if, const u8 *pkt, u32 len)
                 /* DAD */
                 dad = 1;
             }
-            if ( _check_ipv6(l3if, target) < 0 ) {
-                /* This host is not the target */
-                return -1;
+            if ( l3if->nat66.enable && _nat66_check(l3if, target) >= 0 ) {
+                /* NAT66 reserved */
+            } else {
+                if ( _check_ipv6(l3if, target) < 0 ) {
+                    /* This host is not the target */
+                    return -1;
+                }
             }
 
             if ( ip6_len >= 8 + 16 + 8 ) {
@@ -1856,6 +1893,121 @@ _rx_ipv6_to_self(struct l3if *l3if, const u8 *pkt, u32 len)
 }
 
 static int
+_nat66_convert(struct l3if *l3if, const u8 *mac, const u8 *origip, u8 *dst)
+{
+    int i;
+    u32 chksum1;
+    u32 chksum2;
+    u64 nowms;
+    u64 expire;
+    u8 genip[16];
+    u16 *cur;
+
+    nowms = arch_clock_get() / 1000 / 1000;
+    expire = nowms + 300 * 1000;
+
+    for ( i = 0; i < l3if->nat66.sz; i++ ) {
+        if ( l3if->nat66.ent[i].state >= 0 ) {
+            if ( 0 == kmemcmp(origip, l3if->nat66.ent[i].orig_addr, 16) ) {
+                /* Update */
+                l3if->nat66.ent[i].expire = expire;
+                kmemcpy(dst, l3if->nat66.ent[i].priv_addr, 16);
+                return 0;
+            } else if ( l3if->nat66.ent[i].expire < nowms ) {
+                l3if->nat66.ent[i].state= -1;
+            }
+        }
+    }
+
+    /* Generate new address */
+    for ( i = 0; i < 8; i++ ) {
+        genip[i] = origip[i];
+    }
+    genip[8] = mac[0] | 0x2;
+    genip[9] = mac[1];
+    genip[10] = mac[2];
+    genip[11] = 0;
+    genip[12] = 0;
+    genip[13] = mac[3];
+    genip[14] = mac[4];
+    genip[15] = mac[5];
+
+    chksum1 = 0;
+    cur = (u16 *)origip;
+    for ( i = 0; i < 8; i++ ) {
+        chksum1 += *cur;
+        cur++;
+    }
+    chksum1 = (chksum1 >> 16) + (chksum1 & 0xffff);
+    chksum1 += (chksum1 >> 16);
+
+    chksum2 = 0;
+    cur = (u16 *)genip;
+    for ( i = 0; i < 8; i++ ) {
+        chksum2 += *cur;
+        cur++;
+    }
+    chksum2 = (chksum2 >> 16) + (chksum2 & 0xffff);
+    chksum2 += (chksum2 >> 16);
+
+    if ( chksum1 >= chksum2 ) {
+        genip[11] = (chksum1 - chksum2) >> 8;
+        genip[12] = (chksum1 - chksum2) & 0xff;
+    } else {
+        genip[11] = (0xffff + chksum1 - chksum2) >> 8;
+        genip[12] = (0xffff + chksum1 - chksum2) & 0xff;
+    }
+
+    for ( i = 0; i < l3if->nat66.sz; i++ ) {
+        if ( l3if->nat66.ent[i].state < 0 ) {
+            kmemcpy(l3if->nat66.ent[i].orig_addr, origip, 16);
+            kmemcpy(l3if->nat66.ent[i].priv_addr, genip, 16);
+            kmemcpy(dst, genip, 16);
+            l3if->nat66.ent[i].state = 1;
+            l3if->nat66.ent[i].expire = expire;
+            return 0;
+        }
+    }
+
+    return -1;
+}
+
+static int
+_nat66_reverse(struct l3if *l3if, const u8 *privip, u8 *dst)
+{
+    int i;
+
+    for ( i = 0; i < l3if->nat66.sz; i++ ) {
+        if ( l3if->nat66.ent[i].state >= 0 ) {
+            if ( 0 == kmemcmp(privip, l3if->nat66.ent[i].priv_addr, 16) ) {
+                /* Return */
+                kmemcpy(dst, l3if->nat66.ent[i].orig_addr, 16);
+                return 0;
+            }
+        }
+    }
+
+    return -1;
+}
+
+static int
+_nat66_check(struct l3if *l3if, const u8 *target)
+{
+    int i;
+
+    for ( i = 0; i < l3if->nat66.sz; i++ ) {
+        if ( l3if->nat66.ent[i].state >= 0 ) {
+            if ( 0 == kmemcmp(target, l3if->nat66.ent[i].priv_addr, 16) ) {
+                /* Return */
+                return 0;
+            }
+        }
+    }
+
+    return -1;
+}
+
+static int
 _rx_ipv6_routing(struct l3if *l3if, const u8 *pkt, u32 len, int vlan)
 {
     /* IPv6 */
@@ -1865,13 +2017,10 @@ _rx_ipv6_routing(struct l3if *l3if, const u8 *pkt, u32 len, int vlan)
     struct l3if *nextif;
     u8 nextaddr[16];
     u8 srcaddr[16];
+    u8 convaddr[16];
     struct ktxdesc *txdesc;
     u8 *txpkt;
     int ret;
-
-    /* NAT66 (incoming) */
-    if ( l3if->nat66.enable ) {
-    }
 
     /* Do routing! */
     int limit = ip6->ip6_limit;
@@ -1968,6 +2117,32 @@ _rx_ipv6_routing(struct l3if *l3if, const u8 *pkt, u32 len, int vlan)
         return -1;
     }
     //arch_dbg_printf("%x %s\r\n", ret & 0x0, nextif->name);
+
+    if ( l3if->nat66.enable && l3if != nextif ) {
+        /* NAT66 (incoming) */
+        ret = _nat66_convert(l3if, pkt+6, ip6->ip6_src, convaddr);
+        if ( ret >= 0 ) {
+            kmemcpy(ip6->ip6_src, convaddr, 16);
+        }
+    }
+    if ( nextif->nat66.enable && l3if != nextif ) {
+        /* NAT66 (outgoing) */
+        ret = _nat66_reverse(nextif, ip6->ip6_dst, convaddr);
+        if ( ret >= 0 ) {
+            kmemcpy(ip6->ip6_dst, convaddr, 16);
+#if 0
+            kprintf("XXXX [%x %x %x %x %x %x %x %x]\r\n",
+                    convaddr[8], convaddr[9], convaddr[10], convaddr[11],
+                    convaddr[12], convaddr[13], convaddr[14], convaddr[15]);
+#endif
+        }
+    }
+
+    /* Do it again */
+    nextif = _ipv6_next_hop(ip6->ip6_dst, nextaddr);
+    if ( NULL == nextif ) {
+        return -1;
+    }
 
     /* Get the source address */
     ret = _ipv6_get_global_addr(nextif, srcaddr);
@@ -2159,6 +2334,7 @@ proc_router(void)
         panic("Could not assign an IPv6 address.\r\n");
     }
     _enable_ipv6_ra("ve910", 0x2001, 0x200, 0, 0xff91, 0, 0, 0, 0, 64);
+    _enable_nat66("ve910");
 
     /* For testing */
     ret = _create_l3interface("ve0", list->netdev, 0);
@@ -2176,6 +2352,7 @@ proc_router(void)
         panic("Could not assign an IPv6 address.\r\n");
     }
     _enable_ipv6_ra("ve0", 0x2001, 0xdb8, 0x0, 0x1, 0, 0, 0, 0, 64);
+    _enable_nat66("ve0");
 
     e1000_routing(list->netdev, _rx_cb);
 
