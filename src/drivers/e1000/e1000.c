@@ -783,7 +783,7 @@ e1000_routing(struct netdev *netdev, router_rx_cb_t cb)
 
             if ( rxdesc->status & (1<<3) ) {
                 /* VLAN packet (VP) */
-                cb(rxpkt, rxdesc->length, rxdesc->special);
+                cb(rxpkt, rxdesc->length, rxdesc->special & 0xfff);
             } else {
                 cb(rxpkt, rxdesc->length, 0);
             }
