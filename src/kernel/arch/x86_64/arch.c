@@ -28,6 +28,7 @@ void search_clock_sources(void);
 void vga_init(void);
 void pci_init(void);
 void e1000_init(void);
+void ahci_init(void);
 
 extern void trampoline(void);
 extern void trampoline_end(void);
@@ -156,6 +157,7 @@ arch_bsp_init(void)
     arch_dbg_printf("Searching PCI devices.\r\n");
     pci_init();
     e1000_init();
+    ahci_init();
 
     /* Check and copy trampoline */
     tsz = (u64)trampoline_end - (u64)trampoline;

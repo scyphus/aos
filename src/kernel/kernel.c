@@ -86,12 +86,14 @@ apmain(void)
     /* Initialize this AP */
     arch_ap_init();
 
+#if 0
     arch_spin_lock(&lock);
     if ( routing_processor < 0 ) {
         proc_router();
         routing_processor = 1;
     }
     arch_spin_unlock(&lock);
+#endif
 }
 
 /*

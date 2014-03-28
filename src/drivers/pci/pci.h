@@ -24,6 +24,7 @@ struct pci {
     struct pci *next;
 };
 
+u16 pci_read_config(u16, u16, u16, u16);
 u64 pci_read_mmio(u8, u8, u8);
 struct pci * pci_list(void);
 

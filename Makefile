@@ -1,7 +1,7 @@
 #
 # $Id$
 #
-# Copyright (c) 2013 Scyphus Solutions. All rights reserved.
+# Copyright (c) 2013-2014 Scyphus Solutions. All rights reserved.
 # Authors:
 #      Hirochika Asai  <asai@scyphus.co.jp>
 #
@@ -20,6 +20,7 @@ fdimage:
 	make -C src bootmon
 	make -C src kpack
 	./tools/fdtool/fdtool ./aos.img src/diskboot src/bootmon src/kpack
+#	qemu-img convert -f raw -O vdi ./aos.img ./aos.vdi
 
 image: fdimage
 

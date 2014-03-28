@@ -50,6 +50,7 @@ kpack: 	kernel/arch/$(ARCH)/entry16.o \
 	drivers/rng/rng.o \
 	drivers/net/net.o \
 	drivers/e1000/e1000.o \
+	drivers/ahci/ahci.o \
 	drivers/pci/pci.o
 	$(LD) -N -e kstart -Ttext=0x10000 --oformat binary -o $@ $^
 

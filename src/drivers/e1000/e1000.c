@@ -84,6 +84,8 @@ struct netdev_list *netdev_head;
 #define E1000_82577LM           0x10ea
 #define E1000_82579LM           0x1502
 
+#define IXGBE_X520              0x1502
+
 struct e1000_tx_desc {
     u64 address;
     u16 length;

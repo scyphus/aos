@@ -246,10 +246,14 @@ pci_init(void)
     struct pci *pci;
     pci = pci_head;
     while ( pci ) {
-        if ( pci->device->vendor_id == 0x1425 ) {
+        if ( pci->device->vendor_id == 0x1425 /* Chelsio */
+             || (pci->device->vendor_id == 0x8086
+                 && pci->device->device_id == 0x2829 /* Intel AHCI */)
+             || (pci->device->vendor_id == 0x8086
+                 && pci->device->device_id == 0x10fb /* Intel X520 */) ) {
             u32 x = 0;
             int j;
-            for ( j = 0; j < 1; j++ ) {
+            for ( j = 0; j <= 5; j++ ) {
                 x = pci_read_config(pci->device->bus, pci->device->slot, pci->device->func, 0x10 + j * 4);
                 x |= (u32)pci_read_config(pci->device->bus, pci->device->slot, pci->device->func, 0x12 + j * 4) << 16;
                 arch_dbg_printf("%d.%d.%d %.4x:%.4x BAR%d %.8x\r\n",
