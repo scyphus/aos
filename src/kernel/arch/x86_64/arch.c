@@ -73,7 +73,10 @@ arch_bsp_init(void)
 
     /* Initialize VGA display */
     vga_init();
-    //kprintf("%llx!\r\n", acpi_load);
+    //u16 *ptr = (u16 *)0x000b8000;
+    //*ptr = (0x07 << 8) | 'a';
+    //kprintf("a");
+    //kprintf(s, "a", *(u32 *)(0x13600), 15);
     //__asm__ __volatile__ ("1: cli; hlt; jmp 1b");
 
     /* Find configuration using ACPI */
@@ -157,6 +160,7 @@ arch_bsp_init(void)
     arch_dbg_printf("Searching PCI devices.\r\n");
     pci_init();
     e1000_init();
+    ixgbe_init();
     ahci_init();
 
     /* Check and copy trampoline */

@@ -33,29 +33,6 @@ pci_read_config(u16 bus, u16 slot, u16 func, u16 offset)
     return (inl(0xcfc) >> ((offset & 2) * 8)) & 0xffff;
 }
 
-void
-pci_write_config(u16 bus, u16 slot, u16 func, u16 val)
-{
-}
-
-
-u16
-pci_check_vendor(u16 bus, u16 slot)
-{
-    u16 vendor;
-#if 0
-    u16 device;
-#endif
-
-    vendor = pci_read_config(bus, slot, 0, 0);
-#if 0
-    if ( 0xffff != vendor ) {
-        device = pci_read_config(bus, slot, 0, 2);
-    }
-#endif
-    return vendor;
-}
-
 u64
 pci_read_mmio(u8 bus, u8 slot, u8 func)
 {
@@ -242,7 +219,7 @@ pci_init(void)
     /* Search all PCI devices */
     pci_check_all_buses();
 
-#if 1
+#if 0
     struct pci *pci;
     pci = pci_head;
     while ( pci ) {

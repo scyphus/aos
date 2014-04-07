@@ -8,6 +8,8 @@
 #include <aos/const.h>
 #include "kernel.h"
 
+#if 0
+
 /* Temporary */
 int arch_dbg_printf(const char *fmt, ...);
 
@@ -19,7 +21,6 @@ extern struct netdev_list *netdev_head;
 #define NAT66_TABLE_SIZE        65536
 #define ARP_TIMEOUT             300
 #define KTXBUF_SIZE             768
-
 
 typedef int (*router_rx_cb_t)(const u8 *, u32, int);
 
@@ -2285,12 +2286,15 @@ _rx_cb(const u8 *pkt, u32 len, int vlan)
     return 0;
 }
 
+#endif
+
 /*
  * Router processess
  */
 void
 proc_router(void)
 {
+#if 0
     struct router *rt;
 
     /* Initialize the lock variable */
@@ -2358,6 +2362,7 @@ proc_router(void)
 
     /* Free the router instance */
     kfree(rt);
+#endif
 }
 
 /*

@@ -9,7 +9,7 @@
 #include "../pci/pci.h"
 #include "../../kernel/kernel.h"
 
-
+#if 0
 struct ahci_device {
     u64 abar;
 
@@ -577,19 +577,6 @@ ahci_update_hw(void)
             case 0x2829:
                 /* 82801HBM AHCI Controller */
                 dev = ahci_init_hw(pci->device);
-#if 0
-                /* Read BAR5 */
-                bar5 = pci_read_config(pci->device->bus, pci->device->slot,
-                                       pci->device->func, 0x10 + 4 * 5);
-                bar5 |= ((u32)pci_read_config(pci->device->bus,
-                                             pci->device->slot,
-                                             pci->device->func,
-                                              0x12 + 4 * 5))
-                    << 16;
-                kprintf("XX %x\r\n", *(u32 *)((u64)bar5+0x0c));
-                kprintf("XX %x\r\n", *(u32 *)((u64)bar5+0x100+0x28));
-                kprintf("XX %x\r\n", *(u32 *)((u64)bar5+0x100+0x24));
-#endif
                 break;
             default:
                 ;
@@ -598,6 +585,7 @@ ahci_update_hw(void)
         pci = pci->next;
     }
 }
+#endif
 
 /*
  * Initialize AHCI driver
@@ -606,7 +594,7 @@ void
 ahci_init(void)
 {
     /* Initialize the driver */
-    ahci_update_hw();
+    //ahci_update_hw();
 }
 
 

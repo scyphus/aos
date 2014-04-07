@@ -12,14 +12,19 @@ all:
 fdtool:
 	make -C tools/fdtool fdtool
 
-tools: fdtool
+efitool:
+	make -C tools/efitool efitool
+
+tools: fdtool efitool
 
 fdimage:
 	@echo "Make sure tools are compiled."
 	make -C src diskboot
 	make -C src bootmon
+	make -C src bootx64.efi
 	make -C src kpack
 	./tools/fdtool/fdtool ./aos.img src/diskboot src/bootmon src/kpack
+	./tools/efitool/efitool ./aos.efi ./src/bootx64.efi
 #	qemu-img convert -f raw -O vdi ./aos.img ./aos.vdi
 
 image: fdimage

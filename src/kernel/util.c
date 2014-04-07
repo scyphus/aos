@@ -341,6 +341,7 @@ kprintf(const char *fmt, ...)
     va_list ap;
 
     va_start(ap, fmt);
+    //kputc(*fmt);
     kvprintf(fmt, ap);
     va_end(ap);
 

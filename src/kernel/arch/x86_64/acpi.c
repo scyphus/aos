@@ -357,7 +357,6 @@ acpi_load(void)
     acpi_smi_cmd_port = 0;
     acpi_enable_val = 0;
 
-
     /* Check 1KB of EBDA, first */
     ebda = *(u16 *)0x040e;
     if ( ebda ) {
