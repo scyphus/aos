@@ -10,7 +10,8 @@ ARCH=x86_64
 
 diskboot: ASFLAGS=-nostdlib -I./boot/arch/$(ARCH)/
 bootmon: ASFLAGS=-nostdlib -I./boot/arch/$(ARCH)/
-bootmon: CFLAGS=-Wall -mno-sse3 -fleading-underscore -nostdlib -m64
+bootmon: CFLAGS=-I./include \
+	-Wall -mno-sse3 -fleading-underscore -nostdlib -m64
 bootx64.efi: ASFLAGS=-nostdlib -I./kernel/arch/$(ARCH)/
 bootx64.efi: CFLAGS=-Wall -mno-sse3 -fleading-underscore -nostdlib -m64
 kpack: ASFLAGS=-nostdlib -I./kernel/arch/$(ARCH)/

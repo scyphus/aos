@@ -5,7 +5,7 @@
  *      Hirochika Asai  <asai@scyphus.co.jp>
  */
 
-	.set	KERNEL_LBA,0x9		/* Kernel is located at LBA 9 */
+	.set	KERNEL_LBA,0x21		/* Kernel is located at LBA 33 */
 	.set	KERNEL_SIZE,0x40	/* 64 sectors (32KiB) */
 	/* Disk information */
 	.set	HEAD_SIZE,18            /* 18 sectors per head/track */
@@ -134,7 +134,7 @@ boot:
 	call	load_mm		/* Load system address map to %es:%di */
 	movw	%ax,(BOOTINFO_BASE)
 
-	/* Load the kernel: Load 0x80 sectors (64KiB) from 0x1200 (LBA #9) */
+	/* Load the kernel: Load 0x80 sectors (64KiB) from LBA #33 */
 	movb	drive,%dl
 	testb	$0x80,%dl
 	//jz	rd.floopy
@@ -185,7 +185,7 @@ rd.floppy:
 	movw	%ax,%es
 	movl	$0x0,%ebx
 	movb	$0x1b,%dh
-	movw	$9,%ax	/* from LBA 9 */
+	movw	$33,%ax	/* from LBA 33 */
 	call	read
 	movb	drive,%dl
 	movw	$0x1360,%ax
@@ -215,7 +215,7 @@ rd.floppy:
 	movw	%ax,%es
 	movl	$(KERNEL_SEG<<4),%ebx
 	movb	$KERNEL_SIZE,%dh
-	movw	$KERNEL_LBA,%ax	/* from LBA 9 */
+	movw	$KERNEL_LBA,%ax	/* from LBA 33 */
 	call	read
 
 	ljmp	$(KERNEL_SEG),$0
@@ -640,7 +640,7 @@ dap:
 	.byte	0
 	.word	0x7f
 	.word	0x0,0x1000	/* offset:segment */
-	.quad	0x9
+	.quad	0x21
 
 
 /* Messages */

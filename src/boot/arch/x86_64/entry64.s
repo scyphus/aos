@@ -13,7 +13,10 @@
 
 	.globl	entry64		/* Entry point */
 	.globl	_ljmp64
-
+	.globl	_inl
+	.globl	_outl
+	.globl	_spin_lock
+	.globl	_spin_unlock
 
 	.align	16
 	.code64
@@ -46,14 +49,42 @@ entry64:
 	call	_cboot
 	jmp	halt64
 
+/* Halt (64bit mode) */
+halt64:
+	hlt
+	jmp	halt64
+
 _ljmp64:
 	/* Load code64 descriptor */
 	pushq	$GDT_CODE64_SEL
 	pushq	%rdi
 	lretq
 
+/* int inl(int port); */
+_inl:
+	movw	%di,%dx
+	xorq	%rax,%rax
+	inl	%dx,%eax
+	ret
 
-/* Halt (64bit mode) */
-halt64:
-	hlt
-	jmp	halt64
+/* void outl(int port, int value); */
+_outl:
+	movw	%di,%dx
+	movl	%esi,%eax
+	outl	%eax,%dx
+	ret
+
+/* void spin_lock(u32 *); */
+_spin_lock:
+	movl	$1,%eax
+1:	xchgl	(%rdi),%eax
+	testl	%eax,%eax
+	jnz	1b
+	ret
+
+/* void spin_unlock(u32 *); */
+_spin_unlock:
+	xorl	%eax,%eax
+	xchgl	(%rdi),%eax
+	ret
+

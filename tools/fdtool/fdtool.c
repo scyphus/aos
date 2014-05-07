@@ -16,7 +16,7 @@
 #define FLOPPY_SIZE 1474560
 #define MBR_SIZE 512
 #define IPL_SIZE 446
-#define LOADER_SIZE 4096
+#define LOADER_SIZE 4096 * 4
 #define BUFFER_SIZE 512
 
 void
@@ -27,7 +27,7 @@ usage(const char *prog)
             "\tAlign and merge `ipl', `loader', and kernel to"
             " `output-image-file'.\r\n"
             "\tThe size of `ipl' must be less than or equal to 446 bytes.\r\n"
-            "\tThe size of `loader' must be less than or equal to 4096"
+            "\tThe size of `loader' must be less than or equal to 16KiB"
             " bytes.\r\n"
             "\tThe overall size must be less than or equal to 14.4MiB.\r\n",
             prog);
@@ -164,7 +164,7 @@ main(int argc, const char *const argv[])
 
     /* Check the filesize of loader */
     if ( loadersize > LOADER_SIZE ) {
-        fprintf(stderr, "Invalid loader size (loader must be in 4096 bytes)\n");
+        fprintf(stderr, "Invalid loader size (loader must be in 16KiB)\n");
         return EXIT_FAILURE;
     }
 

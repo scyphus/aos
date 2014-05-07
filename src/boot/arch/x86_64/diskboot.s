@@ -7,7 +7,7 @@
 
 	.set	BOOTMON_SEG,0x0900	/* Memory where to load kernel loader */
 	.set	BOOTMON_OFF,0x0000	/*  segment and offset [0900:0000] */
-	.set	BOOTMON_SIZE,0x8	/* Size of kernel loader in sectors */
+	.set	BOOTMON_SIZE,0x20	/* Size of kernel loader in sectors */
 
 	/* Disk information */
 	.set	HEAD_SIZE,18            /* 18 sectors per head/track */

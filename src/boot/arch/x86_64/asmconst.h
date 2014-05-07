@@ -16,7 +16,6 @@
 	.set	IVT_IRQ8,0x70		/* IRQ8=0x70 (BIOS default) */
 
 	.set	KERNEL_SEG,0x1000	/* Memory where to load kernel */
-	//.set	KERNEL_SEG,0x0000	/* Memory where to load kernel */
 
 
 /* Temporary GDT for bootstrap processors */

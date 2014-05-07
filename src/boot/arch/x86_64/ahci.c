@@ -5,164 +5,8 @@
  *      Hirochika Asai  <asai@scyphus.co.jp>
  */
 
+#include <aos/const.h>
 #include "boot.h"
-
-/*
- * Boot function
- */
-void
-cboot(void)
-{
-    //unsigned short *x = (unsigned short *)0x000b8000;
-    //*x = (0x07 << 8) | 'x';
-
-    /* Long jump */
-    ljmp64((void *)0x10000);
-}
-
-#if 0
-
-#define PCI_CONFIG_ADDR 0xcf8
-#define PCI_CONFIG_DATA 0xcfc
-
-typedef unsigned char u8;
-typedef unsigned short u16;
-typedef unsigned int u32;
-typedef unsigned long long u64;
-#define NULL (void *)0
-
-struct pci_device {
-    u16 bus;
-    u16 slot;
-    u16 func;
-    u16 vendor_id;
-    u16 device_id;
-    u8 intr_pin;
-    u8 intr_line;
-};
-struct pci_device pci_ahci;
-
-
-u16
-pci_read_config(u16 bus, u16 slot, u16 func, u16 offset)
-{
-    u32 addr;
-
-    addr = ((u32)bus << 16) | ((u32)slot << 11) | ((u32)func << 8)
-        | ((u32)offset & 0xfc);
-    /* Set enable bit */
-    addr |= (u32)0x80000000;
-
-    outl(PCI_CONFIG_ADDR, addr);
-    return (inl(0xcfc) >> ((offset & 2) * 8)) & 0xffff;
-}
-
-/*
- * Get header type
- */
-u8
-pci_get_header_type(u16 bus, u16 slot, u16 func)
-{
-    return pci_read_config(bus, slot, func, 0x0e) & 0xff;
-}
-
-/*
- * Check function
- */
-void
-pci_check_function(u8 bus, u8 slot, u8 func)
-{
-    u16 vendor;
-    u16 device;
-    u16 reg;
-
-    vendor = pci_read_config(bus, slot, func, 0);
-    device = pci_read_config(bus, slot, func, 2);
-
-    /* Read interrupt pin and line */
-    reg = pci_read_config(bus, slot, func, 0x3c);
-
-    pci_ahci.bus = bus;
-    pci_ahci.slot = slot;
-    pci_ahci.func = func;
-    pci_ahci.vendor_id = vendor;
-    pci_ahci.device_id = device;
-    pci_ahci.intr_pin = (u8)(reg >> 8);
-    pci_ahci.intr_line = (u8)(reg & 0xff);
-}
-
-/*
- * Check a specified device
- */
-void
-pci_check_device(u8 bus, u8 device)
-{
-    u16 vendor;
-    u8 func;
-    u8 hdr_type;
-
-    func = 0;
-    vendor = pci_read_config(bus, device, func, 0);
-    if ( 0xffff == vendor ) {
-        return;
-    }
-
-    pci_check_function(bus, device, func);
-    hdr_type = pci_get_header_type(bus, device, func);
-
-    if ( hdr_type & 0x80 ) {
-        /* Multiple functions */
-        for ( func = 1; func < 8; func++ ) {
-            vendor = pci_read_config(bus, device, func, 0);
-            if ( 0xffff != vendor ) {
-                pci_check_function(bus, device, func);
-            }
-         }
-    }
-}
-
-/*
- * Check a specified bus
- */
-void
-pci_check_bus(u8 bus)
-{
-    u8 device;
-
-    for ( device = 0; device < 32; device++ ) {
-        pci_check_device(bus, device);
-    }
-}
-
-/*
- * Check all PCI buses
- */
-void
-pci_check_all_buses(void)
-{
-    u16 bus;
-    u8 func;
-    u8 hdr_type;
-    u16 vendor;
-
-    hdr_type = pci_get_header_type(0, 0, 0);
-    if ( !(hdr_type & 0x80) ) {
-        /* Single PCI host controller */
-        for ( bus = 0; bus < 256; bus++ ) {
-            pci_check_bus(bus);
-        }
-    } else {
-        /* Multiple PCI host controllers */
-        for ( func = 0; func < 8; func++ ) {
-            vendor = pci_read_config(0, 0, func, 0);
-            if ( 0xffff != vendor ) {
-                break;
-            }
-            bus = func;
-            pci_check_bus(bus);
-        }
-    }
-}
 
 struct ahci_device {
     u64 abar;
@@ -377,8 +221,8 @@ port_rebase(hba_port *port, int portno)
     // Command list maxim size = 32*32 = 1K per port
     u8 *x;
 
-    x = kmalloc(4096);
-    port->clb = (u32)x;
+    x = bmalloc(4096);
+    port->clb = (u32)(u64)x;
     port->clbu = (u32)(((u64)x) >> 32);
     for ( i = 0; i < 1024; i++ ) {
         x[i] = 0;
@@ -386,8 +230,8 @@ port_rebase(hba_port *port, int portno)
 
     // FIS offset: 32K+256*portno
     // FIS entry size = 256 bytes per port
-    x = kmalloc(4096);
-    port->fb = (u32)x;
+    x = bmalloc(4096);
+    port->fb = (u32)(u64)x;
     port->fbu = (u32)(((u64)x) >> 32);
     for ( i = 0; i < 256; i++ ) {
         x[i] = 0;
@@ -395,13 +239,13 @@ port_rebase(hba_port *port, int portno)
 
     // Command table offset: 40K + 8K*portno
     // Command table size = 256*32 = 8K per port
-    hba_cmd_header *hdr = (hba_cmd_header*)(port->clb);
+    hba_cmd_header *hdr = (hba_cmd_header *)((u64)port->clb);
     for ( i = 0; i < 32; i++ ) {
         hdr[i].prdtl = 8;       // 8 prdt entries per command table
                                 // 256 bytes per command table, 64+16+48+16*8
         // Command table offset: 40K + 8K*portno + cmdheader_index*256
-        x = kmalloc(4096);
-        hdr[i].ctba = (u32)x;
+        x = bmalloc(4096);
+        hdr[i].ctba = (u32)(u64)x;
         hdr[i].ctbau = (u32)(((u64)x) >> 32);
         for ( i = 0; i < 256; i++ ) {
             x[i] = 0;
@@ -443,17 +287,17 @@ _read_test(hba_port *port, u64 start, u32 count, u8 *buf)
     slot = _find_cmdslot(port);
     if ( -1 == slot ) {
         /* Error */
-        arch_dbg_printf("Read error: Could not find a free command slots\r\n");
+        //arch_dbg_printf("Read error: Could not find a free command slots\r\n");
         return;
     }
 
-    hba_cmd_header *hdr = port->clb;
+    hba_cmd_header *hdr = (hba_cmd_header *)(u64)port->clb;
     hdr += slot;
     hdr->cfl = sizeof(fis_reg_h2d) / sizeof(u32); // command size
     hdr->w = 0; // Read from device
     hdr->prdtl = ((count-1) >> 4) + 1; // PRDT entries count
 
-    hba_cmd_tbl *tbl = (hba_cmd_tbl *)hdr->ctba;
+    hba_cmd_tbl *tbl = (hba_cmd_tbl *)(u64)hdr->ctba;
     for ( i = 0; i < sizeof(hba_cmd_tbl)
               + (hdr->prdtl-1) * sizeof(hba_prdt_entry); i ++ ) {
         *(((u8 *)tbl) + i) = 0;
@@ -461,7 +305,7 @@ _read_test(hba_port *port, u64 start, u32 count, u8 *buf)
 
     // 8K bytes (16 sectors) per PRDT
     for ( i = 0; i < hdr->prdtl - 1; i++ ) {
-        tbl->prdt_entry[i].dba = (u32)buf;
+        tbl->prdt_entry[i].dba = (u32)(u64)buf;
         tbl->prdt_entry[i].dbc = 8 * 1024; // 8K bytes
         tbl->prdt_entry[i].i = 1;
         buf += 4 * 1024; // 4K words
@@ -469,7 +313,7 @@ _read_test(hba_port *port, u64 start, u32 count, u8 *buf)
     }
 
     // Last entry
-    tbl->prdt_entry[i].dba = (u32)buf;
+    tbl->prdt_entry[i].dba = (u32)(u64)buf;
     tbl->prdt_entry[i].dbc = count << 9; // 512 bytes per sector
     tbl->prdt_entry[i].i = 1;
 
@@ -497,12 +341,12 @@ _read_test(hba_port *port, u64 start, u32 count, u8 *buf)
         spin++;
     }
     if ( spin == 1000000 ) {
-        kprintf("Port is hung\r\n");
+        //kprintf("Port is hung\r\n");
         return;
     }
 
     port->ci = 1<<slot;	// Issue command
-    kprintf("XXXX %x\r\n", port->ci);
+    //kprintf("XXXX %x\r\n", port->ci);
 
     // Wait for completion
     while ( 1 ) {
@@ -512,17 +356,17 @@ _read_test(hba_port *port, u64 start, u32 count, u8 *buf)
             break;
         }
         if ( port->is & HBA_PxIS_TFES ) { // Task file error
-            kprintf("Read disk error\r\n");
+            //kprintf("Read disk error\r\n");
             return;
         }
     }
 
     // Check again
     if ( port->is & HBA_PxIS_TFES ) {
-        kprintf("Read disk error\r\n");
+        //kprintf("Read disk error\r\n");
         return;
     }
-    kprintf("!!!!! %d\r\n", slot);
+    //kprintf("!!!!! %d\r\n", slot);
 }
 
 static void
@@ -539,7 +383,7 @@ _write_test(hba_port *port, u64 start, u32 count, u8 *buf)
     slot = _find_cmdslot(port);
     if ( -1 == slot ) {
         /* Error */
-        arch_dbg_printf("Write error: Could not find a free command slots\r\n");
+        //arch_dbg_printf("Write error: Could not find a free command slots\r\n");
         return;
     }
 
@@ -593,12 +437,12 @@ _write_test(hba_port *port, u64 start, u32 count, u8 *buf)
         spin++;
     }
     if ( spin == 1000000 ) {
-        kprintf("Port is hung\r\n");
+        //kprintf("Port is hung\r\n");
         return;
     }
 
     port->ci = 1<<slot;	// Issue command
-    kprintf("XXXX %x\r\n", port->ci);
+    //kprintf("XXXX %x\r\n", port->ci);
 
     // Wait for completion
     while ( 1 ) {
@@ -608,17 +452,17 @@ _write_test(hba_port *port, u64 start, u32 count, u8 *buf)
             break;
         }
         if ( port->is & HBA_PxIS_TFES ) { // Task file error
-            kprintf("Write disk error\r\n");
+            //kprintf("Write disk error\r\n");
             return;
         }
     }
 
     // Check again
     if ( port->is & HBA_PxIS_TFES ) {
-        kprintf("Write disk error\r\n");
+        //kprintf("Write disk error\r\n");
         return;
     }
-    kprintf("!!!!! %d\r\n", slot);
+    //kprintf("!!!!! %d\r\n", slot);
 }
 
 
@@ -631,14 +475,14 @@ ahci_init_hw(struct pci_device *pcidev)
     int i;
 
     /* Allocate for an AHCI device */
-    dev = kmalloc(sizeof(struct ahci_device));
+    dev = bmalloc(sizeof(struct ahci_device));
     if ( NULL == dev ) {
         return NULL;
     }
 
     /* Assert */
     if ( 0x8086 != pcidev->vendor_id ) {
-        kfree(dev);
+        bfree(dev);
         return NULL;
     }
 
@@ -683,14 +527,14 @@ ahci_init_hw(struct pci_device *pcidev)
              * PM: 0x96690101 (Port multiplier
              */
             hba_mem *x = dev->abar;
-            u8 *str = kmalloc(4096);
+            u8 *str = bmalloc(4096);
             if ( (ssts & 0xf) == 3 && ((ssts >> 8) & 0xf) == 1
                  && sig == 0x101 ) {
-                kprintf("XX %x\r\n", ssts);
+                //kprintf("XX %x\r\n", ssts);
 
                 port_rebase(&(x->ports[i]), i);
 
-                kprintf("XX *** %x %x\r\n", x->ports[i].clb, x->ports[i].ssts);
+                //kprintf("XX *** %x %x\r\n", x->ports[i].clb, x->ports[i].ssts);
 
                 str[0] = 0xab;
                 str[1] = 0xab;
@@ -703,9 +547,9 @@ ahci_init_hw(struct pci_device *pcidev)
                 //_write_test(&(x->ports[i]), 0, 512, str);
                 //_read_test(&(x->ports[i]), 0, 4096, str);
 
-                kprintf("@@ %.2x %.2x %.2x %.2x %.2x %.2x %.2x %.2x\r\n",
+                /*kprintf("@@ %.2x %.2x %.2x %.2x %.2x %.2x %.2x %.2x\r\n",
                         str[0], str[1], str[2], str[3], str[4], str[5],
-                        str[6], str[7]);
+                        str[6], str[7]);*/
 
             }
         }
@@ -741,19 +585,16 @@ ahci_update_hw(void)
 }
 
 /*
- * AHCI
+ * Initialize AHCI driver
  */
 void
 ahci_init(void)
 {
-    /* Search all PCI devices */
-    pci_check_all_buses();
-
-    /* Search the driver */
+    /* Initialize the driver */
     //ahci_update_hw();
 }
 
-#endif
+
 
 /*
  * Local variables:

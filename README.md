@@ -34,14 +34,30 @@ Hirochika Asai
 - boot_cp0.5: Load kernel and execute the program
 
 ## Physical memory map
+### Boot monitor
     Start    End       Description
     ----------------------------------------------------------
     00000500 00007bff  Default stack in boot monitor
     00007c00 00007dff  MBR
     00007e00 00007fff  free
     00008000 00008fff  boot information
-    00009000 00009fff  boot monitor
-    0000a000 0000ffff  free (reserved for boot monitor)
+    00009000 0000cfff  boot monitor (16KiB)
+    0000d000 0000ffff  free (reserved for boot monitor)
+    ----------------------------------------------------------
+    00010000 00079fff  free
+    00079000 0007ffff  page table (at least 24KiB = 6 * 4KiB)
+    00080000 000fffff  free or reserved (We don't use here)
+    ----------------------------------------------------------
+    * managed by the memory allocator below *
+    ----------------------------------------------------------
+    00100000 --------  free
+
+### Kernel
+    Start    End       Description
+    ----------------------------------------------------------
+    00000500 00007fff  free
+    00008000 00008fff  boot information
+    00009000 0000ffff  free
     ----------------------------------------------------------
     00010000 00017fff  kernel
     00018000 0001ffff  free (reserved for kernel)
