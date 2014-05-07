@@ -10,8 +10,9 @@ ARCH=x86_64
 
 diskboot: ASFLAGS=-nostdlib -I./boot/arch/$(ARCH)/
 bootmon: ASFLAGS=-nostdlib -I./boot/arch/$(ARCH)/
+bootmon: CFLAGS=-Wall -mno-sse3 -fleading-underscore -nostdlib -m64
 bootx64.efi: ASFLAGS=-nostdlib -I./kernel/arch/$(ARCH)/
-bootx64.efi: CFLAGS=-nostdlib -m64
+bootx64.efi: CFLAGS=-Wall -mno-sse3 -fleading-underscore -nostdlib -m64
 kpack: ASFLAGS=-nostdlib -I./kernel/arch/$(ARCH)/
 kpack: CFLAGS=-I./include \
 	-Wall -mno-sse3 -fleading-underscore -nostdlib -m64
@@ -21,14 +22,22 @@ diskboot: boot/arch/$(ARCH)/diskboot.o
 	$(LD) -N -e start -Ttext=0x7c00 --oformat binary -o $@ $^
 
 ## Boot monitor
-bootmon: boot/arch/$(ARCH)/bootmon.o
+boot/arch/$(ARCH)/bootmon.o: boot/arch/$(ARCH)/asmconst.h
+boot/arch/$(ARCH)/entry16.o: boot/arch/$(ARCH)/asmconst.h
+boot/arch/$(ARCH)/entry32.o: boot/arch/$(ARCH)/asmconst.h
+boot/arch/$(ARCH)/entry64.o: boot/arch/$(ARCH)/asmconst.h
+bootmon: boot/arch/$(ARCH)/bootmon.o \
+	boot/arch/$(ARCH)/entry16.o \
+	boot/arch/$(ARCH)/entry32.o \
+	boot/arch/$(ARCH)/entry64.o \
+	boot/arch/$(ARCH)/boot.o
 	$(LD) -N -e bootmon -Ttext=0x09000 --oformat binary -o $@ $^
 
 bootx64.efi: efi/arch/$(ARCH)/efi.o
 	$(LD) -N -e efimain -Ttext=0x7000 --oformat binary -o $@ $^
 
 ## Kernel
-kpack: 	kernel/arch/$(ARCH)/entry16.o \
+kpack: kernel/arch/$(ARCH)/entry16.o \
 	kernel/arch/$(ARCH)/entry32.o \
 	kernel/arch/$(ARCH)/entry64.o \
 	kernel/arch/$(ARCH)/asm.o \
@@ -58,7 +67,7 @@ kpack: 	kernel/arch/$(ARCH)/entry16.o \
 	drivers/ixgbe/ixgbe.o \
 	drivers/ahci/ahci.o \
 	drivers/pci/pci.o
-	$(LD) -N -e kstart -Ttext=0x10000 --oformat binary -o $@ $^
+	$(LD) -N -e kstart64 -Ttext=0x10000 --oformat binary -o $@ $^
 
 ## Dependencies
 kernel/kernel.o: kernel/kernel.h

@@ -33,6 +33,16 @@ panic(const char *s)
     arch_crash();
 }
 
+int ixgbe_forwarding_test1(struct netdev *, struct netdev *);
+int ixgbe_forwarding_test2(struct netdev *, struct netdev *);
+extern struct netdev_list *netdev2_head;
+
+#define PERFEVTSELx_MSR_BASE 0x186      /* 3B. 18.2.2.2 */
+#define PMCx_MSR_BASE 0x0c1             /* 3B. 18.2.2.2 */
+#define PERFEVTSELx_EN (1<<22)
+#define PERFEVTSELx_OS (1<<17)
+#define PERFEVTSELx_USR (1<<16)
+
 /*
  * Entry point to C function for BSP called from asm.s
  */
@@ -74,6 +84,39 @@ kmain(void)
     /* Print out a message */
     kprintf("\r\nStarting a shell.  Press Esc to power off the machine:\r\n");
 
+#if 0
+    struct netdev_list *list;
+    list = netdev2_head;
+    ixgbe_forwarding_test1(list->netdev, list->next->netdev);
+#endif
+
+#if 0
+    u64 val;
+    __asm__ __volatile__ ("wrmsr" :: "a"(0), "d"(0), "c"(PERFEVTSELx_MSR_BASE));
+    __asm__ __volatile__ ("wrmsr" :: "a"(0), "d"(0), "c"(PERFEVTSELx_MSR_BASE+1));
+    __asm__ __volatile__ ("wrmsr" :: "a"(0), "d"(0), "c"(PMCx_MSR_BASE));
+    __asm__ __volatile__ ("wrmsr" :: "a"(0), "d"(0), "c"(PMCx_MSR_BASE+1));
+    val = 0x2e | (0x4f << 8) |PERFEVTSELx_EN |PERFEVTSELx_OS|PERFEVTSELx_USR;
+    __asm__ __volatile__ ("wrmsr" :: "a"((u32)val), "d"(val>>32), "c"(PERFEVTSELx_MSR_BASE));
+    val = 0x2e | (0x41 << 8) |PERFEVTSELx_EN |PERFEVTSELx_OS|PERFEVTSELx_USR;
+    __asm__ __volatile__ ("wrmsr" :: "a"((u32)val), "d"(val>>32), "c"(PERFEVTSELx_MSR_BASE+1));
+
+    u32 *data = kmalloc(10000*10000*sizeof(u32));
+    int i,j;
+    int x;
+    for ( i = 0; i < 10000*10000; i++ ) {
+        data[i] = i;
+    }
+    for ( i = 0; i < 10000*10000; i++ ) {
+        x = data[i];
+    }
+    kfree(data);
+
+    u32 a,d;
+    __asm__ __volatile__ ("rdpmc" : "=a"(a), "=d"(d) : "c"(1));
+    kprintf("RDPMC %x %x\r\n", a, d);
+#endif
+
     proc_shell();
 }
 
@@ -90,6 +133,18 @@ apmain(void)
     arch_spin_lock(&lock);
     if ( routing_processor < 0 ) {
         proc_router();
+        routing_processor = 1;
+    }
+    arch_spin_unlock(&lock);
+#endif
+
+#if 0
+    struct netdev_list *list;
+
+    list = netdev2_head;
+    arch_spin_lock(&lock);
+    if ( routing_processor < 0 ) {
+        ixgbe_forwarding_test2(list->netdev, list->next->netdev);
         routing_processor = 1;
     }
     arch_spin_unlock(&lock);

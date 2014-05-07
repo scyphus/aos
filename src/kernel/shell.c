@@ -108,15 +108,35 @@ _builtin_show(char *const argv[])
 /*
  * test packet
  */
-int ixgbe_tx_test(struct netdev *, u8 *, int);
+int ixgbe_tx_test(struct netdev *, u8 *, int, int);
 int
 _builtin_test(char *const argv[])
 {
     struct netdev_list *list;
     u8 *pkt;
     //int pktsz = 64 - 18;
-    int pktsz = 64 - 18;
     int i;
+    int sz;
+    int blk;
+    char *s;
+
+    s = argv[1];
+    sz = 0;
+    while ( *s ) {
+        sz *= 10;
+        sz += *s - '0';
+        s++;
+    }
+    s = argv[2];
+    blk = 0;
+    while ( *s ) {
+        blk *= 10;
+        blk += *s - '0';
+        s++;
+    }
+    kprintf("Testing: %d/%d\r\n", sz, blk);
+
+    int pktsz = sz - 18;
 
     pkt = kmalloc(9200);
 
@@ -213,7 +233,7 @@ _builtin_test(char *const argv[])
     pkt[24] = cs & 0xff;
     pkt[25] = cs >> 8;
 
-    ixgbe_tx_test(list->netdev, pkt, pktsz + 18 - 4);
+    ixgbe_tx_test(list->netdev, pkt, pktsz + 18 - 4, blk);
     //kprintf("%llx: pkt\r\n", list->netdev);
     //list->netdev->sendpkt(pkt, pktsz + 18 - 4, list->netdev);
 

@@ -1,5 +1,5 @@
 /*_
- * Copyright 2013 Scyphus Solutions Co. Ltd.  All rights reserved.
+ * Copyright 2013-2014 Scyphus Solutions Co. Ltd.  All rights reserved.
  *
  * Authors:
  *      Hirochika Asai  <asai@scyphus.co.jp>
@@ -16,7 +16,7 @@
 	/* Include other constant values */
 	.include	"asmconst.h"
 
-	.file		"loader.s"
+	.file		"bootmon.s"
 
 	.org	0x0,0x0
 
@@ -147,7 +147,8 @@ rd.hd:
 	int	$0x13
 	//jc	read.fail	/* Fail (%cf=1) */
 	jc	rd.floppy
-	ljmp	$(KERNEL_SEG),$0
+	//ljmp	$(KERNEL_SEG),$entry16
+	jmp	entry16
 
 	movw	$0x1000,%ax
 	movw	%ax,%es
@@ -207,7 +208,8 @@ rd.floppy:
 	movb	$0x12,%dh
 	movw	$0x6c,%ax
 	call	read
-	ljmp	$(KERNEL_SEG),$0
+	//ljmp	$(KERNEL_SEG),$0
+	jmp	entry16
 
 	movw	$KERNEL_SEG,%ax
 	movw	%ax,%es
