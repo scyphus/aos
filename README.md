@@ -96,6 +96,25 @@ Hirochika Asai
         u32 attr;
     }
 
+## Disk usage
+### GPT
+    Start    End       Description
+    ----------------------------------------------------------
+    00000000 000001ff  LBA 0
+    00000200 000043ff  LBA 1-34
+    00004400 0000ffff  Partition 1: Stage 2
+    00010000 --------  Partition 2: Filesystem
+    ----------------------------------------------------------
+
+### MBR
+    Start    End       Description
+    ----------------------------------------------------------
+    00000000 000001ff  MBR
+    00000200 0000ffff  Stage 2
+    00010000 --------  Partition 1: Filesystem
+    ----------------------------------------------------------
+
+
 ## Interrupt Service Routine
   0--15 reserved by processor
   20 IRQ0  I/O APIC timer
