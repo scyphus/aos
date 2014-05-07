@@ -18,6 +18,7 @@
 	.align	16
 	.code64
 
+/* Entry point for 64-bit long mode code */
 entry64:
 	cli
 	xorl	%eax,%eax
@@ -56,4 +57,3 @@ _ljmp64:
 halt64:
 	hlt
 	jmp	halt64
-

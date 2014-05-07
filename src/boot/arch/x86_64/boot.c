@@ -21,7 +21,6 @@ cboot(void)
     ljmp64(0x10000);
 }
 
-
 /*
  * Local variables:
  * tab-width: 4

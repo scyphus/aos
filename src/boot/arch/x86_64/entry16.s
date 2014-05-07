@@ -34,10 +34,9 @@ halt16:
 	jmp	halt16
 
 
-
 /* Data section */
 	.align	16
-	//.data
+	.data
 
 /* Pseudo interrupt descriptor table */
 idtr:
@@ -55,5 +54,4 @@ gdt.1:
 gdtr:
 	.word	gdt.1-gdt-1		/* Limit */
 	.long	gdt			/* Address */
-
 
