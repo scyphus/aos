@@ -31,17 +31,21 @@ bootmon: boot/arch/$(ARCH)/bootmon.o \
 	boot/arch/$(ARCH)/entry16.o \
 	boot/arch/$(ARCH)/entry32.o \
 	boot/arch/$(ARCH)/entry64.o \
-	boot/arch/$(ARCH)/boot.o
+	boot/arch/$(ARCH)/boot.o \
+	boot/arch/$(ARCH)/memory.o \
+	boot/arch/$(ARCH)/pci.o \
+	boot/arch/$(ARCH)/ahci.o \
+	boot/arch/$(ARCH)/fat.o
 	$(LD) -N -e bootmon -Ttext=0x09000 --oformat binary -o $@ $^
 
 bootx64.efi: efi/arch/$(ARCH)/efi.o
 	$(LD) -N -e efimain -Ttext=0x7000 --oformat binary -o $@ $^
 
 ## Kernel
-kpack: kernel/arch/$(ARCH)/entry16.o \
+kpack: kernel/arch/$(ARCH)/asm.o \
+	kernel/arch/$(ARCH)/entry16.o \
 	kernel/arch/$(ARCH)/entry32.o \
 	kernel/arch/$(ARCH)/entry64.o \
-	kernel/arch/$(ARCH)/asm.o \
 	kernel/kernel.o \
 	kernel/router.o \
 	kernel/util.o \

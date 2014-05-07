@@ -72,6 +72,7 @@ memory_init(struct bootinfo *bi)
 
     /* Clear physical memory space */
     phys_mem = NULL;
+    bmem_slab_head = NULL;
 
     /* Check the number of address map entries */
     if ( bi->sysaddrmap.n <= 0 ) {

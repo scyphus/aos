@@ -9,7 +9,7 @@
 #include "../pci/pci.h"
 #include "../../kernel/kernel.h"
 
-#if 0
+#if 1
 struct ahci_device {
     u64 abar;
 
@@ -196,11 +196,8 @@ stop_cmd(hba_port *port)
     // Clear ST (bit0)
     port->cmd &= ~HBA_PxCMD_ST;
 
-    // Wait until FR (bit14), CR (bit15) are cleared
+    // Wait until CR (bit15) is cleared
     while ( 1 ) {
-        if ( port->cmd & HBA_PxCMD_FR ) {
-            continue;
-        }
         if ( port->cmd & HBA_PxCMD_CR ) {
             continue;
         }
@@ -209,12 +206,21 @@ stop_cmd(hba_port *port)
 
     // Clear FRE (bit4)
     port->cmd &= ~HBA_PxCMD_FRE;
+
+    // Wait until FR (bit14) is cleared
+    while ( 1 ) {
+        if ( port->cmd & HBA_PxCMD_FR ) {
+            continue;
+        }
+        break;
+    }
 }
 
 void
 port_rebase(hba_port *port, int portno)
 {
     int i;
+
     stop_cmd(port); // Stop command engine
 
     // Command list offset: 1K*portno
@@ -224,8 +230,8 @@ port_rebase(hba_port *port, int portno)
     u8 *x;
 
     x = kmalloc(4096);
-    port->clb = (u32)x;
-    port->clbu = (u32)(((u64)x) >> 32);
+    port->clb = x;
+    port->clbu = (((u64)x) >> 32);
     for ( i = 0; i < 1024; i++ ) {
         x[i] = 0;
     }
@@ -233,8 +239,8 @@ port_rebase(hba_port *port, int portno)
     // FIS offset: 32K+256*portno
     // FIS entry size = 256 bytes per port
     x = kmalloc(4096);
-    port->fb = (u32)x;
-    port->fbu = (u32)(((u64)x) >> 32);
+    port->fb = x;
+    port->fbu = (((u64)x) >> 32);
     for ( i = 0; i < 256; i++ ) {
         x[i] = 0;
     }
@@ -247,8 +253,8 @@ port_rebase(hba_port *port, int portno)
                                 // 256 bytes per command table, 64+16+48+16*8
         // Command table offset: 40K + 8K*portno + cmdheader_index*256
         x = kmalloc(4096);
-        hdr[i].ctba = (u32)x;
-        hdr[i].ctbau = (u32)(((u64)x) >> 32);
+        hdr[i].ctba = x;
+        hdr[i].ctbau = (((u64)x) >> 32);
         for ( i = 0; i < 256; i++ ) {
             x[i] = 0;
         }
@@ -532,7 +538,7 @@ ahci_init_hw(struct pci_device *pcidev)
             u8 *str = kmalloc(4096);
             if ( (ssts & 0xf) == 3 && ((ssts >> 8) & 0xf) == 1
                  && sig == 0x101 ) {
-                kprintf("XX %x\r\n", ssts);
+                kprintf("XX:%d %x %x %x\r\n", i, ssts, sig, &x->ports[i]);
 
                 port_rebase(&(x->ports[i]), i);
 

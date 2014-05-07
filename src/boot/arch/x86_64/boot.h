@@ -43,6 +43,15 @@ struct pci {
 };
 
 
+typedef int (*read_f)(void *);
+typedef int (*write_f)(void *);
+
+/* Block device */
+struct block_dev {
+    read_f read;
+    write_f write;
+};
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -57,9 +66,10 @@ extern "C" {
     /* Defined in memory.c */
     int memory_init(struct bootinfo *);
     void * bmalloc(u64);
-    int bfree(void *);
+    void bfree(void *);
 
     /* Defined in pci.c */
+    void pci_init(void);
     u16 pci_read_config(u16, u16, u16, u16);
     u64 pci_read_mmio(u8, u8, u8);
     struct pci * pci_list(void);

@@ -194,11 +194,8 @@ stop_cmd(hba_port *port)
     // Clear ST (bit0)
     port->cmd &= ~HBA_PxCMD_ST;
 
-    // Wait until FR (bit14), CR (bit15) are cleared
+    // Wait until CR (bit15) is cleared
     while ( 1 ) {
-        if ( port->cmd & HBA_PxCMD_FR ) {
-            continue;
-        }
         if ( port->cmd & HBA_PxCMD_CR ) {
             continue;
         }
@@ -207,12 +204,22 @@ stop_cmd(hba_port *port)
 
     // Clear FRE (bit4)
     port->cmd &= ~HBA_PxCMD_FRE;
+
+    // Wait until FR (bit14) is cleared
+    while ( 1 ) {
+        if ( port->cmd & HBA_PxCMD_FR ) {
+            continue;
+        }
+        break;
+    }
+
 }
 
 void
 port_rebase(hba_port *port, int portno)
 {
     int i;
+
     stop_cmd(port); // Stop command engine
 
     // Command list offset: 1K*portno
@@ -591,10 +598,8 @@ void
 ahci_init(void)
 {
     /* Initialize the driver */
-    //ahci_update_hw();
+    ahci_update_hw();
 }
-
-
 
 /*
  * Local variables:

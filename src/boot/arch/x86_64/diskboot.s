@@ -51,6 +51,19 @@ start:
 	movw	$msg_welcome,%si	/* %ds:(%si) -> welcome message */
 	call	putstr
 
+
+/* Check partition table */
+	movl	$0x1be,%eax
+	cmpb	$0xee,4(%eax)
+	je	gpt
+/* MBR */
+	movw	$1,%ax
+	jmp	load_bootmon
+/* GPT */
+gpt:
+	movw	$34,%ax
+
+
 /* Read the boot monitor */
 load_bootmon:
 /* Load 0x8 sectors (4KiB) from the sector next to MBR */

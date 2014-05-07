@@ -16,6 +16,11 @@ cboot(void)
     //unsigned short *x = (unsigned short *)0x000b8000;
     //*x = (0x07 << 8) | 'x';
 
+    /* Initialize PCI */
+    memory_init(0x00008000);
+    pci_init();
+    ahci_init();
+
     /* Long jump */
     ljmp64((void *)0x10000);
 }
