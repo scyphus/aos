@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <time.h>
 
 /* 14.4MiB */
 #define FLOPPY_SIZE 1474560
@@ -18,7 +19,6 @@
 #define IPL_SIZE 446
 #define LOADER_SIZE 4096 * 4
 #define BUFFER_SIZE 512
-#define DISK_SIGNATURE 
 
 void
 usage(const char *prog)
@@ -50,6 +50,7 @@ main(int argc, const char *const argv[])
     off_t cur;
     off_t iplsize;
     off_t loadersize;
+    off_t kernelsize;
     size_t n;
     size_t nw;
     off_t done;
@@ -162,11 +163,13 @@ main(int argc, const char *const argv[])
     buf[13] = 0x0a;
     buf[14] = 0x00;
     buf[15] = 0x00;
-    while ( cur < 462 ) {
+    done = 0;
+    while ( done < 16 ) {
         /* Note: Enough buffer size to write */
-        nw = fwrite(buf, 1, 462 - cur, imgfp);
-        cur += nw;
+        nw = fwrite(buf + done, 1, 16 - done, imgfp);
+        done += nw;
     }
+    cur += done;
     /* Partition entry #2 */
     (void)memset(buf, 0, sizeof(buf));
     while ( cur < 478 ) {
@@ -234,10 +237,10 @@ main(int argc, const char *const argv[])
 
     /* Padding with 0 */
     (void)memset(buf, 0, sizeof(buf));
-    while ( cur < MBR_SIZE + LOADER_SIZE ) {
+    while ( cur < 0x10000 ) {
         /* Compute the size */
-        if ( MBR_SIZE + LOADER_SIZE - cur < sizeof(buf)  ) {
-            n = MBR_SIZE + LOADER_SIZE - cur;
+        if ( 0x10000 - cur < sizeof(buf)  ) {
+            n = 0x10000 - cur;
         } else {
             n = sizeof(buf);
         }
@@ -250,6 +253,198 @@ main(int argc, const char *const argv[])
         cur += done;
     }
 
+    /* Create a FAT12 volume */
+    /* BS_jmpBoot */
+    buf[0] = 0xeb;
+    buf[1] = 62;
+    buf[2] = 0x90;              /* nop */
+    /* BS_OEMName */
+    (void)memcpy(buf+3, "AOS  1.0", 8);
+    /* BPB_BytsPerSec */
+    buf[11] = 0x00;
+    buf[12] = 0x02;
+    /* BPB_SecPerClus */
+    buf[13] = 0x08;
+    /* BPB_RsvdSecCnt */
+    buf[14] = 0x01;
+    buf[15] = 0x00;
+    /* BPB_NumFATs */
+    buf[16] = 0x02;
+    /* BPB_RootEntCnt */
+    buf[17] = 0x00;
+    buf[18] = 0x02;
+    /* BPB_TotSec16 */
+    buf[19] = 0xc0;
+    buf[20] = 0x0a;
+    /* BPB_Media */
+    buf[21] = 0xf8;
+    /* BPB_FATSz16 */
+    buf[22] = 0x08;
+    buf[23] = 0x00;
+    /* BPB_SecPerTrk */
+    buf[24] = 0x20;
+    buf[25] = 0x00;
+    /* BPB_NumHeads */
+    buf[26] = 0x20;
+    buf[27] = 0x00;
+    /* BPB_HiddSec */
+    buf[28] = 0x00;
+    buf[29] = 0x08;
+    buf[30] = 0x00;
+    buf[31] = 0x00;
+    /* BPB_TotSec32 */
+    buf[32] = 0x00;
+    buf[33] = 0x00;
+    buf[34] = 0x00;
+    buf[35] = 0x00;
+    /* BS_DrvNum */
+    buf[36] = 0x80;
+    /* BS_Reserved1 */
+    buf[37] = 0x00;
+    /* BS_BootSig */
+    buf[38] = 0x29;
+    /* BS_VolID */
+    time_t timer;
+    struct tm *tm;
+    time(&timer);
+    tm = localtime(&timer);
+    buf[39] = (tm->tm_sec/2) | ((tm->tm_min & 0x7) << 5);
+    buf[40] = (tm->tm_min >> 3) | (tm->tm_hour << 3);
+    buf[41] = tm->tm_mday | ((tm->tm_mon & 0x7) << 5);
+    buf[42] = (tm->tm_mon >> 3) | (tm->tm_year - 80);
+    /* BS_VolLab */
+    memcpy(buf+43, "NO NAME    ", 11);
+    /* BS_FilSysType */
+    memcpy(buf+54, "FAT12   ", 8);
+
+    /* Write */
+    done = 0;
+    while ( done < 62 ) {
+        /* Note: Enough buffer size to write */
+        nw = fwrite(buf + done, 1, 62 - done, imgfp);
+        done += nw;
+    }
+    (void)memset(buf, 0, sizeof(buf));
+    while ( done < 510 ) {
+        /* Note: Enough buffer size to write */
+        nw = fwrite(buf, 1, 510 - done, imgfp);
+        done += nw;
+    }
+    cur += done;
+    /* Write magic (signature: 0x55 0xaa) */
+    if ( EOF == fputc(0x55, imgfp) ) {
+        perror("fputc");
+        return EXIT_FAILURE;
+    }
+    cur++;
+    if ( EOF == fputc(0xaa, imgfp) ) {
+        perror("fputc");
+        return EXIT_FAILURE;
+    }
+    cur++;
+
+
+    /* Get the filesize of loader */
+    if ( 0 != fseeko(kernelfp, 0, SEEK_END) ) {
+        perror("fseeko");
+        return EXIT_FAILURE;
+    }
+    kernelsize = ftello(kernelfp);
+    if ( -1 == kernelsize ) {
+        perror("fseeko");
+        return EXIT_FAILURE;
+    }
+    if ( 0 != fseeko(kernelfp, 0, SEEK_SET) ) {
+        perror("fseeko");
+        return EXIT_FAILURE;
+    }
+
+    /* Cluster size = 8 * 512 = 4096 (4KiB) */
+    int clst;
+    int next;
+    unsigned char cbuf[512 * 32];
+    int i;
+    clst = (kernelsize - 1) / 4096 + 1;
+
+    for ( i = 0; i < 512 * 8; i++ ) {
+        cbuf[i] = 0;
+    }
+
+    /* FAT[0], FAT[1] */
+    cbuf[0] = 0xf8;
+    cbuf[1] = 0xff;
+    cbuf[2] = 0xff;
+
+    /* FAT[2]-FAT[clst+1] */
+    if ( (512 * 8) * 8 / 12 <= clst + 2 ) {
+        /* FAT sectors cannot be in 8 sectors. */
+        fprintf(stderr, "FAT size error %d\n", clst);
+        return EXIT_FAILURE;
+    }
+
+    /* FAT sector */
+    for ( i = 2; i < clst + 2; i++ ) {
+        if ( i == clst + 1 ) {
+            next = 0xfff;
+        } else {
+            next = i + 1;
+        }
+        int x = i * 3 / 2;
+        if ( i % 2 ) {
+            /* Odd */
+            cbuf[x] |= (next << 4) & 0xf0;
+            cbuf[x+1] = next >> 4;
+        } else {
+            /* Even */
+            cbuf[x] = next & 0xff;
+            cbuf[x+1] |= (next >> 8) & 0xf;
+        }
+    }
+    done = 0;
+    while ( done < 512 * 8 ) {
+        nw = fwrite(cbuf+done, 1, 512 * 8 - done, imgfp);
+        done += nw;
+    }
+    cur += done;
+
+    /* One more */
+    done = 0;
+    while ( done < 512 * 8 ) {
+        nw = fwrite(cbuf+done, 1, 512 * 8 - done, imgfp);
+        done += nw;
+    }
+    cur += done;
+
+    /* Root */
+    (void)memset(cbuf, 0, 512 * 32);
+    memcpy(cbuf, "NO NAME    ", 11);
+    cbuf[11] = 0x08;
+    cbuf[12] = 0x00;
+    cbuf[13] = 0x00;
+    cbuf[22] = (tm->tm_sec/2) | ((tm->tm_min & 0x7) << 5);
+    cbuf[23] = (tm->tm_min >> 3) | (tm->tm_hour << 3);
+    cbuf[24] = tm->tm_mday | ((tm->tm_mon & 0x7) << 5);
+    cbuf[25] = (tm->tm_mon >> 3) | (tm->tm_year - 80);
+    memcpy(cbuf+32, "KERNEL     ", 11);
+    cbuf[43] = 0x01/* | 0x04*/;
+    cbuf[44] = 0x00;
+    cbuf[45] = 0x00;
+    cbuf[54] = (tm->tm_sec/2) | ((tm->tm_min & 0x7) << 5);
+    cbuf[55] = (tm->tm_min >> 3) | (tm->tm_hour << 3);
+    cbuf[56] = tm->tm_mday | ((tm->tm_mon & 0x7) << 5);
+    cbuf[57] = (tm->tm_mon >> 3) | (tm->tm_year - 80);
+    cbuf[58] = 0x02;
+    cbuf[59] = 0x00;
+    cbuf[60] = kernelsize & 0xff;
+    cbuf[61] = (kernelsize >> 8) & 0xff;
+    cbuf[62] = (kernelsize >> 16) & 0xff;
+    cbuf[63] = (kernelsize >> 24) & 0xff;
+    done = 0;
+    while ( done < 512 * 32 ) {
+        nw = fwrite(cbuf+done, 1, 512 * 32 - done, imgfp);
+        done += nw;
+    }
+    cur += done;
 
     /* Copy kernel program */
     while ( !feof(kernelfp) ) {
