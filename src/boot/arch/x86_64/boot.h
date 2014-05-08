@@ -43,11 +43,11 @@ struct pci {
 };
 
 
+/* Block device */
 typedef int (*read_f)(void *);
 typedef int (*write_f)(void *);
-
-/* Block device */
 struct block_dev {
+    void *user;
     read_f read;
     write_f write;
 };

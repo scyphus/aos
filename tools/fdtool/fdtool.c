@@ -18,6 +18,7 @@
 #define IPL_SIZE 446
 #define LOADER_SIZE 4096 * 4
 #define BUFFER_SIZE 512
+#define DISK_SIGNATURE 
 
 void
 usage(const char *prog)
@@ -126,14 +127,66 @@ main(int argc, const char *const argv[])
         done += n;
     }
 
-    /* Padding with 0 */
     cur = iplsize;
+
+    /* Padding with 0 */
     (void)memset(buf, 0, sizeof(buf));
-    while ( cur < MBR_SIZE - 2 ) {
+    while ( cur < 446 ) {
         /* Note: Enough buffer size to write */
-        nw = fwrite(buf, 1, MBR_SIZE - 2 - cur, imgfp);
+        nw = fwrite(buf, 1, 446 - cur, imgfp);
         cur += nw;
     }
+
+    /* Partition entry #1 */
+    /*(1023, 255, 63) for GPT*/
+    buf[0] = 0x80;
+    /* 3 bytes; H[7:0] C[9:8]S[5:0] C[7:0] */
+    /* CHS to LBA: LBA = (C * #H + H) * #S + (S - 1) */
+    /* #H = 255, #S = 63 */
+    buf[1] = 0x02;
+    buf[2] = 0x03;
+    buf[3] = 0x00;
+    /* Partition type (FAT) */
+    buf[4] = 0x0b;
+    /* Last */
+    buf[5] = 0x2d;
+    buf[6] = 0x2d;
+    buf[7] = 0x00;
+    /* LBA of the first sector (little endian) */
+    buf[8] = 0x80;
+    buf[9] = 0x00;
+    buf[10] = 0x00;
+    buf[11] = 0x00;
+    /* # of sectors */
+    buf[12] = 0xc0;
+    buf[13] = 0x0a;
+    buf[14] = 0x00;
+    buf[15] = 0x00;
+    while ( cur < 462 ) {
+        /* Note: Enough buffer size to write */
+        nw = fwrite(buf, 1, 462 - cur, imgfp);
+        cur += nw;
+    }
+    /* Partition entry #2 */
+    (void)memset(buf, 0, sizeof(buf));
+    while ( cur < 478 ) {
+        /* Note: Enough buffer size to write */
+        nw = fwrite(buf, 1, 478 - cur, imgfp);
+        cur += nw;
+    }
+    /* Partition entry #3 */
+    while ( cur < 494 ) {
+        /* Note: Enough buffer size to write */
+        nw = fwrite(buf, 1, 494 - cur, imgfp);
+        cur += nw;
+    }
+    /* Partition entry #4 */
+    while ( cur < 510 ) {
+        /* Note: Enough buffer size to write */
+        nw = fwrite(buf, 1, 510 - cur, imgfp);
+        cur += nw;
+    }
+
     /* Write magic (signature: 0x55 0xaa) */
     if ( EOF == fputc(0x55, imgfp) ) {
         perror("fputc");
@@ -145,7 +198,6 @@ main(int argc, const char *const argv[])
         return EXIT_FAILURE;
     }
     cur++;
-
 
     /* Get the filesize of loader */
     if ( 0 != fseeko(loaderfp, 0, SEEK_END) ) {
