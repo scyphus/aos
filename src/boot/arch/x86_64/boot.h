@@ -44,12 +44,18 @@ struct pci {
 
 
 /* Block device */
-typedef int (*read_f)(void *);
-typedef int (*write_f)(void *);
-struct block_dev {
-    void *user;
-    read_f read;
-    write_f write;
+struct blkdev;
+typedef int (*blk_read_f)(struct blkdev *, u64, u32, u8 *);
+typedef int (*blk_write_f)(struct blkdev *, u64, u32, u8 *);
+struct blkdev {
+    blk_read_f read;
+    blk_write_f write;
+    void *parent;
+};
+
+struct blkdev_list {
+    struct blkdev *blkdev;
+    struct blkdev_list *next;
 };
 
 #ifdef __cplusplus

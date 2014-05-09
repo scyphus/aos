@@ -8,10 +8,18 @@
 #include <aos/const.h>
 #include "boot.h"
 
+
+#define LH32_TO_PTR(l, h)       (void *)(((u64)(l)) | ((u64)(h)) << 32)
+
+extern struct blkdev_list *blkdev_head;
+
 struct ahci_device {
     u64 abar;
-
     struct pci_device *pci_device;
+};
+struct ahci_port {
+    struct ahci_device *ahci;
+    int port;
 };
 
 typedef volatile struct _hba_port {
@@ -161,12 +169,18 @@ typedef enum {
 #define ATA_DEV_BUSY 0x80
 #define ATA_DEV_DRQ 0x08
 
+/*
+ * Read data from AHCI register
+ */
 static __inline__ u32
 abar_read32(u64 base, u64 offset)
 {
     return *(u32 *)(base + offset);
 }
 
+/*
+ * Write data to AHCI register
+ */
 static __inline__ void
 abar_write32(u64 base, u64 offset, u32 value)
 {
@@ -174,53 +188,48 @@ abar_write32(u64 base, u64 offset, u32 value)
 }
 
 
-// Start command engine
+/* Start command engine */
 void
 start_cmd(hba_port *port)
 {
-    // Wait until CR (bit15) is cleared
+    /* Wait until CR (bit15) is cleared */
     while ( port->cmd & HBA_PxCMD_CR ) {
     }
 
-    // Set FRE (bit4) and ST (bit0)
+    /* Set FRE (bit4) and ST (bit0) */
     port->cmd |= HBA_PxCMD_FRE;
     port->cmd |= HBA_PxCMD_ST;
 }
 
-// Stop command engine
+/* Stop command engine */
 void
 stop_cmd(hba_port *port)
 {
-    // Clear ST (bit0)
+    /* Clear ST (bit0) */
     port->cmd &= ~HBA_PxCMD_ST;
 
-    // Wait until CR (bit15) is cleared
-    while ( 1 ) {
-        if ( port->cmd & HBA_PxCMD_CR ) {
-            continue;
-        }
-        break;
+    /* Wait until CR (bit15) is cleared */
+    while ( port->cmd & HBA_PxCMD_CR ) {
     }
 
-    // Clear FRE (bit4)
+    /* Clear FRE (bit4) */
     port->cmd &= ~HBA_PxCMD_FRE;
 
-    // Wait until FR (bit14) is cleared
-    while ( 1 ) {
-        if ( port->cmd & HBA_PxCMD_FR ) {
-            continue;
-        }
-        break;
+    /* Wait until FR (bit14) is cleared */
+    while ( port->cmd & HBA_PxCMD_FR ) {
     }
-
 }
 
-void
+/*
+ * Rebase
+ */
+static void
 port_rebase(hba_port *port, int portno)
 {
     int i;
 
-    stop_cmd(port); // Stop command engine
+    /* Stop the command engine */
+    stop_cmd(port);
 
     // Command list offset: 1K*portno
     // Command list entry size = 32
@@ -262,7 +271,9 @@ port_rebase(hba_port *port, int portno)
     start_cmd(port);    // Start command engine
 }
 
-
+/*
+ * Find an available command slot
+ */
 static int
 _find_cmdslot(hba_port *port)
 {
@@ -280,25 +291,34 @@ _find_cmdslot(hba_port *port)
     return -1;
 }
 
-static void
-_read_test(hba_port *port, u64 start, u32 count, u8 *buf)
+/*
+ * Read
+ */
+static int
+_read(struct blkdev *blkdev, u64 start, u32 count, u8 *buf)
 {
+    hba_port *port;
+    hba_cmd_header *hdr;
     int slot;
     int i;
     int spin;
 
+    /* Obtain port structure */
+    port = (hba_port *)blkdev->parent;
+
+    /* # of retries */
     spin = 0;
 
     port->is = (u32)-1;
 
+    /* Find an available command slot */
     slot = _find_cmdslot(port);
     if ( -1 == slot ) {
         /* Error */
-        //arch_dbg_printf("Read error: Could not find a free command slots\r\n");
-        return;
+        return -1;
     }
 
-    hba_cmd_header *hdr = (hba_cmd_header *)(u64)port->clb;
+    hdr = (hba_cmd_header *)(u64)port->clb;
     hdr += slot;
     hdr->cfl = sizeof(fis_reg_h2d) / sizeof(u32); // command size
     hdr->w = 0; // Read from device
@@ -349,11 +369,10 @@ _read_test(hba_port *port, u64 start, u32 count, u8 *buf)
     }
     if ( spin == 1000000 ) {
         //kprintf("Port is hung\r\n");
-        return;
+        return -1;
     }
 
     port->ci = 1<<slot;	// Issue command
-    //kprintf("XXXX %x\r\n", port->ci);
 
     // Wait for completion
     while ( 1 ) {
@@ -364,43 +383,46 @@ _read_test(hba_port *port, u64 start, u32 count, u8 *buf)
         }
         if ( port->is & HBA_PxIS_TFES ) { // Task file error
             //kprintf("Read disk error\r\n");
-            return;
+            return -1;
         }
     }
 
     // Check again
     if ( port->is & HBA_PxIS_TFES ) {
-        //kprintf("Read disk error\r\n");
-        return;
+        return -1;
     }
-    //kprintf("!!!!! %d\r\n", slot);
+
+    return 0;
 }
 
-static void
-_write_test(hba_port *port, u64 start, u32 count, u8 *buf)
+/* Write */
+static int
+_write(struct blkdev *blkdev, u64 start, u32 count, u8 *buf)
 {
+    hba_port *port;
     int slot;
     int i;
     int spin;
 
     spin = 0;
 
+    port = blkdev->parent;
+
     port->is = (u32)-1;
 
     slot = _find_cmdslot(port);
     if ( -1 == slot ) {
         /* Error */
-        //arch_dbg_printf("Write error: Could not find a free command slots\r\n");
-        return;
+        return -1;
     }
 
-    hba_cmd_header *hdr = port->clb;
+    hba_cmd_header *hdr = (hba_cmd_header *)LH32_TO_PTR(port->clb, port->clbu);
     hdr += slot;
     hdr->cfl = sizeof(fis_reg_h2d) / sizeof(u32); // command size
     hdr->w = 0; // Read from device
     hdr->prdtl = ((count-1) >> 4) + 1; // PRDT entries count
 
-    hba_cmd_tbl *tbl = (hba_cmd_tbl *)hdr->ctba;
+    hba_cmd_tbl *tbl = (hba_cmd_tbl *)LH32_TO_PTR(hdr->ctba, hdr->ctbau);
     for ( i = 0; i < sizeof(hba_cmd_tbl)
               + (hdr->prdtl-1) * sizeof(hba_prdt_entry); i ++ ) {
         *(((u8 *)tbl) + i) = 0;
@@ -408,7 +430,8 @@ _write_test(hba_port *port, u64 start, u32 count, u8 *buf)
 
     // 8K bytes (16 sectors) per PRDT
     for ( i = 0; i < hdr->prdtl - 1; i++ ) {
-        tbl->prdt_entry[i].dba = (u32)buf;
+        tbl->prdt_entry[i].dba = (u32)(u64)buf;
+        tbl->prdt_entry[i].dbau = (u32)(((u64)buf) >> 32);
         tbl->prdt_entry[i].dbc = 8 * 1024; // 8K bytes
         tbl->prdt_entry[i].i = 1;
         buf += 4 * 1024; // 4K words
@@ -416,7 +439,8 @@ _write_test(hba_port *port, u64 start, u32 count, u8 *buf)
     }
 
     // Last entry
-    tbl->prdt_entry[i].dba = (u32)buf;
+    tbl->prdt_entry[i].dba = (u32)(u64)buf;
+    tbl->prdt_entry[i].dbau = (u32)(((u64)buf) >> 32);
     tbl->prdt_entry[i].dbc = count << 9; // 512 bytes per sector
     tbl->prdt_entry[i].i = 1;
 
@@ -445,7 +469,7 @@ _write_test(hba_port *port, u64 start, u32 count, u8 *buf)
     }
     if ( spin == 1000000 ) {
         //kprintf("Port is hung\r\n");
-        return;
+        return -1;
     }
 
     port->ci = 1<<slot;	// Issue command
@@ -460,25 +484,30 @@ _write_test(hba_port *port, u64 start, u32 count, u8 *buf)
         }
         if ( port->is & HBA_PxIS_TFES ) { // Task file error
             //kprintf("Write disk error\r\n");
-            return;
+            return -1;
         }
     }
 
     // Check again
     if ( port->is & HBA_PxIS_TFES ) {
         //kprintf("Write disk error\r\n");
-        return;
+        return -1;
     }
-    //kprintf("!!!!! %d\r\n", slot);
+
+    return 0;
 }
 
-
+/*
+ * Initialize the hardware
+ */
 struct ahci_device *
 ahci_init_hw(struct pci_device *pcidev)
 {
     struct ahci_device *dev;
-    u16 m16;
-    u32 m32;
+    hba_mem *mem;
+    u32 pi;
+    u32 ssts;
+    u32 sig;
     int i;
 
     /* Allocate for an AHCI device */
@@ -500,12 +529,12 @@ ahci_init_hw(struct pci_device *pcidev)
                                        pcidev->func, 0x12 + 4 * 5)) << 16;
 
     /* Implemented port */
-    u32 pi = abar_read32(dev->abar, 0x0c);
+    pi = abar_read32(dev->abar, 0x0c);
     for ( i = 0; i < 32; i++ ) {
         if ( pi & 1 ) {
             /* Implemented */
-            u32 ssts = abar_read32(dev->abar, 0x100 + 0x80 * i + 0x28);
-            u32 sig = abar_read32(dev->abar, 0x100 + 0x80 * i + 0x24);
+            ssts = abar_read32(dev->abar, 0x100 + 0x80 * i + 0x28);
+            sig = abar_read32(dev->abar, 0x100 + 0x80 * i + 0x24);
             /*
              * [11:8]: Interface Power Management
              *      0: Device not present or communication not established
@@ -533,37 +562,18 @@ ahci_init_hw(struct pci_device *pcidev)
              * SEMB: 0xC33C0101 (Enclosure management bridge)
              * PM: 0x96690101 (Port multiplier
              */
-            hba_mem *x = dev->abar;
-            u8 *str = bmalloc(4096);
+            mem = (hba_mem *)dev->abar;
             if ( (ssts & 0xf) == 3 && ((ssts >> 8) & 0xf) == 1
                  && sig == 0x101 ) {
-                //kprintf("XX %x\r\n", ssts);
 
-                port_rebase(&(x->ports[i]), i);
-
-                //kprintf("XX *** %x %x\r\n", x->ports[i].clb, x->ports[i].ssts);
-
-                str[0] = 0xab;
-                str[1] = 0xab;
-                str[2] = 0xab;
-                str[3] = 0xab;
-                str[4] = 0xab;
-                str[5] = 0xab;
-                str[6] = 0xab;
-                str[7] = 0xab;
-                //_write_test(&(x->ports[i]), 0, 512, str);
-                //_read_test(&(x->ports[i]), 0, 4096, str);
-
-                /*kprintf("@@ %.2x %.2x %.2x %.2x %.2x %.2x %.2x %.2x\r\n",
-                        str[0], str[1], str[2], str[3], str[4], str[5],
-                        str[6], str[7]);*/
-
+                /* Rebase each port port */
+                port_rebase(&(mem->ports[i]), i);
             }
         }
         pi >>= 1;
     }
 
-    return NULL;
+    return dev;
 }
 
 /*
@@ -574,7 +584,9 @@ ahci_update_hw(void)
 {
     struct pci *pci;
     struct ahci_device *dev;
+    struct blkdev *blkdev;
 
+    /* Search AHCI controller from PCI */
     pci = pci_list();
     while ( NULL != pci ) {
         if ( 0x8086 == pci->device->vendor_id ) {
@@ -582,6 +594,12 @@ ahci_update_hw(void)
             case 0x2829:
                 /* 82801HBM AHCI Controller */
                 dev = ahci_init_hw(pci->device);
+                if ( NULL != dev ) {
+                    blkdev = bmalloc(sizeof(struct blkdev));
+                    blkdev->read = _read;
+                    blkdev->write = _write;
+                    blkdev->parent = dev;
+                }
                 break;
             default:
                 ;
