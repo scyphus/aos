@@ -20,16 +20,6 @@ Hirochika Asai
 - Support FAT16/32 in boot monittor
 - Setup BSP in kernel (not reuse the boot monitor's one)
 
-
-## Checkpoints
-- boot_cp0.1: Simple boot example (just printing a welcome message
-  and stop CPU)
-- boot_cp0.2: Load boot monitor from MBR and jump there (and then
-  immediately shutoff the machine using APM)
-- boot_cp0.3: Get into protected mode
-- boot_cp0.4: Get into long mode from boot monitor
-- boot_cp0.5: Load kernel and execute the program
-
 ## Physical memory map
 ### Boot monitor
     Start    End       Description
