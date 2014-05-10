@@ -344,7 +344,6 @@ fat_load_kernel(struct blkdev *blkdev, u64 addr)
                 next = cl;
                 for ( ;; ) {
                     cl = next;
-                    /* Even */
                     next = (u16)cluster[cl * 2] | (u16)cluster[cl * 2 + 1];
                     blkdev->read(blkdev, lba
                                  + (bpb->common.bpb_bytes_per_sec * data_start_sec)
