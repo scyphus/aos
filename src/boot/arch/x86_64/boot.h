@@ -86,7 +86,6 @@ extern "C" {
     /* Defined in fat.c */
     int fat_load_kernel(struct blkdev *, u64);
 
-
 #ifdef __cplusplus
 }
 #endif
