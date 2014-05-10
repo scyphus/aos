@@ -13,6 +13,7 @@
 
 	.globl	entry64		/* Entry point */
 	.globl	_ljmp64
+	.globl	_halt64
 	.globl	_inl
 	.globl	_outl
 	.globl	_spin_lock
@@ -47,12 +48,12 @@ entry64:
 
 	/* Jump to the kernel main function */
 	call	_cboot
-	jmp	halt64
+	jmp	_halt64
 
 /* Halt (64bit mode) */
-halt64:
+_halt64:
 	hlt
-	jmp	halt64
+	jmp	_halt64
 
 _ljmp64:
 	/* Load code64 descriptor */

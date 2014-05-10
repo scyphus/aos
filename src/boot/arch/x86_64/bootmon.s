@@ -144,9 +144,9 @@ rd.hd:
 	movw	$dap,%si
 	movb	$0x42,%ah
 	movb	drive,%dl
-	int	$0x13
-	//jc	read.fail	/* Fail (%cf=1) */
-	jc	rd.floppy
+	//int	$0x13
+	////jc	read.fail	/* Fail (%cf=1) */
+	//jc	rd.floppy
 	//ljmp	$(KERNEL_SEG),$entry16
 	jmp	entry16
 

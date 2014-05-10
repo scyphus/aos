@@ -227,16 +227,18 @@ static void
 port_rebase(hba_port *port, int portno)
 {
     int i;
+    u8 *x;
+    hba_cmd_header *hdr;
 
     /* Stop the command engine */
     stop_cmd(port);
 
-    // Command list offset: 1K*portno
-    // Command list entry size = 32
-    // Command list entry maxim count = 32
-    // Command list maxim size = 32*32 = 1K per port
-    u8 *x;
-
+    /*
+     * Command list offset: 1K*portno
+     * Command list entry size = 32
+     * Command list entry maxim count = 32
+     * Command list maxim size = 32*32 = 1K per port
+     */
     x = bmalloc(4096);
     port->clb = (u32)(u64)x;
     port->clbu = (u32)(((u64)x) >> 32);
@@ -244,8 +246,10 @@ port_rebase(hba_port *port, int portno)
         x[i] = 0;
     }
 
-    // FIS offset: 32K+256*portno
-    // FIS entry size = 256 bytes per port
+    /*
+     * FIS offset: 32K+256*portno
+     * FIS entry size = 256 bytes per port
+     */
     x = bmalloc(4096);
     port->fb = (u32)(u64)x;
     port->fbu = (u32)(((u64)x) >> 32);
@@ -253,13 +257,18 @@ port_rebase(hba_port *port, int portno)
         x[i] = 0;
     }
 
-    // Command table offset: 40K + 8K*portno
-    // Command table size = 256*32 = 8K per port
-    hba_cmd_header *hdr = (hba_cmd_header *)((u64)port->clb);
+    /*
+     * Command table offset: 40K + 8K*portno
+     * Command table size = 256*32 = 8K per port
+     */
+    hdr = (hba_cmd_header *)((u64)port->clb);
     for ( i = 0; i < 32; i++ ) {
-        hdr[i].prdtl = 8;       // 8 prdt entries per command table
-                                // 256 bytes per command table, 64+16+48+16*8
-        // Command table offset: 40K + 8K*portno + cmdheader_index*256
+        /*
+         * 8 prdt entries per command table
+         * 256 bytes per command table, 64+16+48+16*8
+         */
+        hdr[i].prdtl = 8;
+        /* Command table offset: 40K + 8K*portno + cmdheader_index*256 */
         x = bmalloc(4096);
         hdr[i].ctba = (u32)(u64)x;
         hdr[i].ctbau = (u32)(((u64)x) >> 32);
@@ -268,7 +277,8 @@ port_rebase(hba_port *port, int portno)
         }
     }
 
-    start_cmd(port);    // Start command engine
+    /* Start the command engine */
+    start_cmd(port);
 }
 
 /*
@@ -295,20 +305,27 @@ _find_cmdslot(hba_port *port)
  * Read
  */
 static int
-_read(struct blkdev *blkdev, u64 start, u32 count, u8 *buf)
+_read(struct blkdev *blkdev, u64 start, u32 size, u8 *buf)
 {
     hba_port *port;
     hba_cmd_header *hdr;
+    hba_cmd_tbl *tbl;
     int slot;
     int i;
     int spin;
+    struct ahci_port *aport;
+    u32 count;
 
     /* Obtain port structure */
-    port = (hba_port *)blkdev->parent;
+    aport = (struct ahci_port *)blkdev->parent;
+    port = &((hba_mem *)aport->ahci->abar)->ports[aport->port];
 
     /* # of retries */
     spin = 0;
 
+    count = size;
+
+    /* Clear interrupt status */
     port->is = (u32)-1;
 
     /* Find an available command slot */
@@ -324,25 +341,27 @@ _read(struct blkdev *blkdev, u64 start, u32 count, u8 *buf)
     hdr->w = 0; // Read from device
     hdr->prdtl = ((count-1) >> 4) + 1; // PRDT entries count
 
-    hba_cmd_tbl *tbl = (hba_cmd_tbl *)(u64)hdr->ctba;
+    tbl = (hba_cmd_tbl *)LH32_TO_PTR(hdr->ctba, hdr->ctbau);
     for ( i = 0; i < sizeof(hba_cmd_tbl)
-              + (hdr->prdtl-1) * sizeof(hba_prdt_entry); i ++ ) {
+              + (hdr->prdtl - 1) * sizeof(hba_prdt_entry); i++ ) {
         *(((u8 *)tbl) + i) = 0;
     }
 
     // 8K bytes (16 sectors) per PRDT
     for ( i = 0; i < hdr->prdtl - 1; i++ ) {
         tbl->prdt_entry[i].dba = (u32)(u64)buf;
-        tbl->prdt_entry[i].dbc = 8 * 1024; // 8K bytes
-        tbl->prdt_entry[i].i = 1;
-        buf += 4 * 1024; // 4K words
+        tbl->prdt_entry[i].dbau = (u32)(((u64)buf) >> 32);
+        tbl->prdt_entry[i].dbc = 8 * 1024 - 1; // 8K bytes
+        tbl->prdt_entry[i].i = 0;//1;
+        buf += 8 * 1024; // 8K bytes
         count -= 16; // 16 sectors
     }
 
     // Last entry
     tbl->prdt_entry[i].dba = (u32)(u64)buf;
+    tbl->prdt_entry[i].dbau = (u32)(((u64)buf) >> 32);
     tbl->prdt_entry[i].dbc = count << 9; // 512 bytes per sector
-    tbl->prdt_entry[i].i = 1;
+    tbl->prdt_entry[i].i = 0;//1;
 
     // Setup command
     fis_reg_h2d *fis = (fis_reg_h2d *)(&tbl->cfis);
@@ -360,8 +379,8 @@ _read(struct blkdev *blkdev, u64 start, u32 count, u8 *buf)
     fis->lba4 = (u8)(start>>32);
     fis->lba5 = (u8)(start>>40);
 
-    fis->countl = count & 0xff;
-    fis->counth = (count >> 8) & 0xff;
+    fis->countl = size & 0xff;
+    fis->counth = (size >> 8) & 0xff;
 
     // The below loop waits until the port is no longer busy before issuing a new command
     while ( (port->tfd & (ATA_DEV_BUSY | ATA_DEV_DRQ)) && spin < 1000000 ) {
@@ -382,7 +401,6 @@ _read(struct blkdev *blkdev, u64 start, u32 count, u8 *buf)
             break;
         }
         if ( port->is & HBA_PxIS_TFES ) { // Task file error
-            //kprintf("Read disk error\r\n");
             return -1;
         }
     }
@@ -392,7 +410,7 @@ _read(struct blkdev *blkdev, u64 start, u32 count, u8 *buf)
         return -1;
     }
 
-    return 0;
+    return size;
 }
 
 /* Write */
@@ -406,7 +424,9 @@ _write(struct blkdev *blkdev, u64 start, u32 count, u8 *buf)
 
     spin = 0;
 
-    port = blkdev->parent;
+    /* Obtain port structure */
+    struct ahci_port *aport = (struct ahci_port *)blkdev->parent;
+    port = &((hba_mem *)aport->ahci->abar)->ports[aport->port];
 
     port->is = (u32)-1;
 
@@ -432,9 +452,9 @@ _write(struct blkdev *blkdev, u64 start, u32 count, u8 *buf)
     for ( i = 0; i < hdr->prdtl - 1; i++ ) {
         tbl->prdt_entry[i].dba = (u32)(u64)buf;
         tbl->prdt_entry[i].dbau = (u32)(((u64)buf) >> 32);
-        tbl->prdt_entry[i].dbc = 8 * 1024; // 8K bytes
+        tbl->prdt_entry[i].dbc = 8 * 1024 - 1; // 8K bytes
         tbl->prdt_entry[i].i = 1;
-        buf += 4 * 1024; // 4K words
+        buf += 8 * 1024; // 4K bytes
         count -= 16; // 16 sectors
     }
 
@@ -504,21 +524,21 @@ struct ahci_device *
 ahci_init_hw(struct pci_device *pcidev)
 {
     struct ahci_device *dev;
+    struct ahci_port *port;
     hba_mem *mem;
     u32 pi;
     u32 ssts;
     u32 sig;
     int i;
 
-    /* Allocate for an AHCI device */
-    dev = bmalloc(sizeof(struct ahci_device));
-    if ( NULL == dev ) {
+    /* Assert */
+    if ( 0x8086 != pcidev->vendor_id ) {
         return NULL;
     }
 
-    /* Assert */
-    if ( 0x8086 != pcidev->vendor_id ) {
-        bfree(dev);
+    /* Allocate for an AHCI device */
+    dev = bmalloc(sizeof(struct ahci_device));
+    if ( NULL == dev ) {
         return NULL;
     }
 
@@ -562,12 +582,43 @@ ahci_init_hw(struct pci_device *pcidev)
              * SEMB: 0xC33C0101 (Enclosure management bridge)
              * PM: 0x96690101 (Port multiplier
              */
-            mem = (hba_mem *)dev->abar;
             if ( (ssts & 0xf) == 3 && ((ssts >> 8) & 0xf) == 1
                  && sig == 0x101 ) {
 
                 /* Rebase each port port */
+                mem = (hba_mem *)dev->abar;
                 port_rebase(&(mem->ports[i]), i);
+
+                /* Allocate */
+                port = bmalloc(sizeof(struct ahci_port));
+                if ( NULL == port ) {
+                    /* FIXME: Handle this error */
+                    continue;
+                }
+                port->ahci = dev;
+                port->port = i;
+
+                struct blkdev *blkdev;
+                struct blkdev_list *blkdev_list;
+                blkdev = bmalloc(sizeof(struct blkdev));
+                if ( NULL == blkdev ){
+                    bfree(port);
+                    continue;
+                }
+                blkdev->read = _read;
+                blkdev->write = _write;
+                blkdev->parent = port;
+
+                blkdev_list = bmalloc(sizeof(struct blkdev_list));
+                if ( NULL == blkdev_list ) {
+                    bfree(port);
+                    bfree(blkdev);
+                    continue;
+                }
+                blkdev_list->blkdev = blkdev;
+                /* Prepend */
+                blkdev_list->next =  blkdev_head;
+                blkdev_head = blkdev_list;
             }
         }
         pi >>= 1;
@@ -584,7 +635,6 @@ ahci_update_hw(void)
 {
     struct pci *pci;
     struct ahci_device *dev;
-    struct blkdev *blkdev;
 
     /* Search AHCI controller from PCI */
     pci = pci_list();
@@ -594,12 +644,6 @@ ahci_update_hw(void)
             case 0x2829:
                 /* 82801HBM AHCI Controller */
                 dev = ahci_init_hw(pci->device);
-                if ( NULL != dev ) {
-                    blkdev = bmalloc(sizeof(struct blkdev));
-                    blkdev->read = _read;
-                    blkdev->write = _write;
-                    blkdev->parent = dev;
-                }
                 break;
             default:
                 ;

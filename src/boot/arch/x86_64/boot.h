@@ -80,6 +80,12 @@ extern "C" {
     u64 pci_read_mmio(u8, u8, u8);
     struct pci * pci_list(void);
 
+    /* Defined in ahci.c */
+    void ahci_init(void);
+
+    /* Defined in fat.c */
+    int fat_load_kernel(struct blkdev *, u64);
+
 
 #ifdef __cplusplus
 }

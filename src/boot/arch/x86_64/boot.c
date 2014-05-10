@@ -21,12 +21,15 @@ cboot(void)
     blkdev_head = NULL;
 
     /* Initialize PCI */
-    memory_init(0x00008000);
+    memory_init((struct bootinfo *)0x00008000);
     pci_init();
     ahci_init();
 
+    fat_load_kernel(blkdev_head->blkdev, 0x10000);
+
     /* Long jump */
     ljmp64((void *)0x10000);
+    //halt64();
 }
 
 /*
