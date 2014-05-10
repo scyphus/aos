@@ -11,7 +11,7 @@
 #include <aos/const.h>
 
 #define PAGESIZE                4096
-#define PHYS_MEM_FREE_ADDR      0x100000
+#define PHYS_MEM_FREE_ADDR      0x2000000
 
 /* Boot information */
 struct bootinfo {

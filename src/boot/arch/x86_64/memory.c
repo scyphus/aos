@@ -134,6 +134,10 @@ memory_init(struct bootinfo *bi)
     phys_mem->nr = nr;
     phys_mem->pages = (struct phys_mem_page *)addr;
 
+    //unsigned short *x = (unsigned short *)0x000b8000;
+    //*x = (0x07 << 8) | 'x';
+//FIX below
+
     /* Reset flags */
     for ( i = 0; i < phys_mem->nr; i++ ) {
         /* Mark as unavailable */

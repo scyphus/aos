@@ -15,9 +15,6 @@ struct blkdev_list *blkdev_head;
 void
 cboot(void)
 {
-    //unsigned short *x = (unsigned short *)0x000b8000;
-    //*x = (0x07 << 8) | 'x';
-
     blkdev_head = NULL;
 
     /* Initialize PCI */

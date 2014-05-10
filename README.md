@@ -17,12 +17,9 @@ Hirochika Asai
 ## ToDo
 - Somehow convert local APIC ID to CPU ID (using ACPI table)
 - Implement callout queue
-### Future work
-- Design and implement glue between the boot monitor and the kernel.
-- Implement a simple disk driver in the boot monitor to load the
-  kernel (to higher address space).  Note that it's now implemented
-  with BIOS function in boot/arch/x86_64/bootmon.s.
-- Fix ACPI bugs (for 32bit ACPI)
+- Support FAT16/32 in boot monittor
+- Setup BSP in kernel (not reuse the boot monitor's one)
+
 
 ## Checkpoints
 - boot_cp0.1: Simple boot example (just printing a welcome message
@@ -48,9 +45,12 @@ Hirochika Asai
     00079000 0007ffff  page table (at least 24KiB = 6 * 4KiB)
     00080000 000fffff  free or reserved (We don't use here)
     ----------------------------------------------------------
+    00100000 00ffffff  reserved for kernel
+    01000000 01ffffff  for processor flags, tss, stack
+    ----------------------------------------------------------
     * managed by the memory allocator below *
     ----------------------------------------------------------
-    00100000 --------  free
+    02000000 --------  free
 
 ### Kernel
     Start    End       Description

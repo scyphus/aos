@@ -64,6 +64,17 @@ gpt:
 	movw	$34,%ax
 
 
+//	pushw	%ds
+//	pushw	%es
+//	movw	%ax,%ds
+//	movw	$dap,%si
+//	movb	$0x42,%ah
+//	movb	drive,%dl
+//	int	$0x13
+//	popw	%es
+//	popw	%ds
+//	ljmp	$BOOTMON_SEG,$BOOTMON_OFF
+
 /* Read the boot monitor */
 load_bootmon:
 /* Load 0x8 sectors (4KiB) from the sector next to MBR */
@@ -228,6 +239,15 @@ hex8.1:
 /* Saved boot drive */
 drive:
 	.byte	0
+
+/* DAP: Disk Address Packet */
+dap:
+	.byte	0x1
+	.byte	0
+	.word	0x7f
+	.word	0x0,0x0900	/* offset:segment */
+	.quad	0x20
+
 
 /* State and set of characters for twiddle function */
 twiddle_index:
