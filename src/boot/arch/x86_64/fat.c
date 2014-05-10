@@ -234,7 +234,7 @@ fat_load_kernel(struct blkdev *blkdev, u64 addr)
                                       * bpb->common.bpb_bytes_per_sec) / 512,
                              (bpb->common.bpb_sec_per_clus
                               * bpb->common.bpb_bytes_per_sec) / 512,
-                             (u8 *)(0x10000 + start
+                             (u8 *)(addr + start
                                     * bpb->common.bpb_sec_per_clus
                                     * bpb->common.bpb_bytes_per_sec));
                 start++;
