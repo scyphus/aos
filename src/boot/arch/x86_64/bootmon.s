@@ -144,7 +144,7 @@ rd.hd:
 	movw	$dap,%si
 	movb	$0x42,%ah
 	movb	drive,%dl
-	//int	$0x13
+	int	$0x13
 	////jc	read.fail	/* Fail (%cf=1) */
 	//jc	rd.floppy
 	//ljmp	$(KERNEL_SEG),$entry16
@@ -640,7 +640,7 @@ dap:
 	.byte	0
 	.word	0x7f
 	.word	0x0,0x1000	/* offset:segment */
-	.quad	0x21
+	.quad	0xb1
 
 
 /* Messages */

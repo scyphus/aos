@@ -33,21 +33,30 @@ struct netdev_list *netdev2_head;
 #define IXGBE_REG_FCTRL         0x5080
 #define IXGBE_REG_TXDCTL(n)     (0x6028 + 0x40 * (n))
 #define IXGBE_REG_RDBAL(n)       ((n) < 64) \
-    ? (0x1000 + 0x40 * (n)) : (0xd000 + 0x40 * n)
+    ? (0x1000 + 0x40 * (n)) : (0xd000 + 0x40 * ((n) - 64))
 #define IXGBE_REG_RDBAH(n)       ((n) < 64) \
-    ? (0x1004 + 0x40 * (n)) : (0xd004 + 0x40 * n)
+    ? (0x1004 + 0x40 * (n)) : (0xd004 + 0x40 * ((n) - 64))
 #define IXGBE_REG_RDLEN(n)       ((n) < 64) \
-    ? (0x1008 + 0x40 * (n)) : (0xd008 + 0x40 * n)
+    ? (0x1008 + 0x40 * (n)) : (0xd008 + 0x40 * ((n) - 64))
 #define IXGBE_REG_RDH(n)        ((n) < 64) \
-    ? (0x1010 + 0x40 * (n)) : (0xd010 + 0x40 * n)
+    ? (0x1010 + 0x40 * (n)) : (0xd010 + 0x40 * ((n) - 64))
 #define IXGBE_REG_RDT(n)        ((n) < 64) \
-    ? (0x1018 + 0x40 * (n)) : (0xd018 + 0x40 * n)
+    ? (0x1018 + 0x40 * (n)) : (0xd018 + 0x40 * ((n) - 64))
 #define IXGBE_REG_TDH(n)        (0x6010 + 0x40 * (n))
 #define IXGBE_REG_TDT(n)        (0x6018 + 0x40 * (n))
 #define IXGBE_REG_TDBAL(n)      (0x6000 + 0x40 * (n))
 #define IXGBE_REG_TDBAH(n)      (0x6004 + 0x40 * (n))
 #define IXGBE_REG_TDLEN(n)      (0x6008 + 0x40 * (n))
+#define IXGBE_REG_TDWBAL(n)     (0x6038 + 0x40 * (n))
+#define IXGBE_REG_TDWBAH(n)     (0x603c + 0x40 * (n))
 #define IXGBE_REG_DMATXCTL      0x4a80
+
+/* DCA registers */
+#define IXGBE_REG_DCA_RXCTRL(n) ((n) < 64) \
+    ? (0x100c + 0x40 * (n)) : (0xd00c + 0x40 * ((n) - 64))
+#define IXGBE_REG_DCA_TXCTRL(n) (0x600c + 0x40 * (n))
+#define IXGBE_REG_DCA_ID        0x11070
+#define IXGBE_REG_DCA_CTRL      0x11074
 
 #define IXGBE_CTRL_LRST (1<<3)  /* Link reset */
 #define IXGBE_CTRL_PCIE_MASTER_DISABLE  (u32)(1<<2)
@@ -89,6 +98,13 @@ struct ixgbe_rx_desc {
     u16 special;
 } __attribute__ ((packed));
 
+
+struct ixgbe_adv_tx_desc_ctx {
+    u32 vlan_maclen_iplen;
+    u32 fcoef_ipsec_sa_idx;
+    u64 other;
+} __attribute__ ((packed));
+
 struct ixgbe_adv_tx_desc_read {
     u64 pkt_addr;
     u16 length;
@@ -126,6 +142,7 @@ struct ixgbe_device {
 
     struct ixgbe_adv_rx_desc_read *rx_read[1];
 
+    u32 *tx_head;
 
     /* Cache */
     u32 rx_head_cache;
@@ -146,7 +163,9 @@ int ixgbe_recvpkt(u8 *, u32, struct netdev *);
 int ixgbe_routing_test(struct netdev *);
 
 
-
+/*
+ * Initialize this driver
+ */
 void
 ixgbe_init(void)
 {
@@ -192,6 +211,9 @@ netdev_add_device(const char *name, const u8 *macaddr, void *vendor)
     return 0;
 }
 
+/*
+ * Update hardware
+ */
 void
 ixgbe_update_hw(void)
 {
@@ -233,6 +255,9 @@ mmio_write32(u64 base, u64 offset, u32 value)
     *(u32 *)(base + offset) = value;
 }
 
+/*
+ * Initialize hardware
+ */
 struct ixgbe_device *
 ixgbe_init_hw(struct pci_device *pcidev)
 {
@@ -431,14 +456,26 @@ ixgbe_init_hw(struct pci_device *pcidev)
     mmio_write32(netdev->mmio, IXGBE_REG_TDH(1), 0);
     mmio_write32(netdev->mmio, IXGBE_REG_TDT(1), 0);
 
+
+    /* Write-back */
+    u32 *tdwba = kmalloc(4096);
+    mmio_write32(netdev->mmio, IXGBE_REG_TDWBAL(0),
+                 ((u64)tdwba & 0xfffffffc) | 1);
+    mmio_write32(netdev->mmio, IXGBE_REG_TDWBAH(0), ((u64)tdwba) >> 32);
+    netdev->tx_head = tdwba;
+
+
     /* Enable */
     mmio_write32(netdev->mmio, IXGBE_REG_DMATXCTL,
                  IXGBE_DMATXCTL_TE | IXGBE_DMATXCTL_VT);
 
     /* First */
+    mmio_write32(netdev->mmio, IXGBE_REG_TXDCTL(0), IXGBE_TXDCTL_ENABLE);
+#if 0
     mmio_write32(netdev->mmio, IXGBE_REG_TXDCTL(0), IXGBE_TXDCTL_ENABLE
                  | (64<<16) /* WTHRESH */
                  | (16<<8) /* HTHRESH */| (16) /* PTHRESH */);
+#endif
     for ( i = 0; i < 10; i++ ) {
         arch_busy_usleep(1);
         m32 = mmio_read32(netdev->mmio, IXGBE_REG_TXDCTL(0));
@@ -778,12 +815,6 @@ ixgbe_routing(struct netdev *netdev, router_rx_cb_t cb)
     /* Retrieve data structure of ixgbe driver */
     ixgbedev = (struct ixgbe_device *)netdev->vendor;
 
-#if 0
-    kprintf("[%x : %x]\r\n",
-            mmio_read32(ixgbedev->mmio, IXGBE_REG_RDH(0)),
-            mmio_read32(ixgbedev->mmio, IXGBE_REG_RDT(0)));
-#endif
-
     for ( ;; ) {
         /* Get the head pointers of RX/TX ring buffers */
         rdh = mmio_read32(ixgbedev->mmio, IXGBE_REG_RDH(0));
@@ -875,7 +906,8 @@ ixgbe_tx_test(struct netdev *netdev, u8 *pkt, int len, int blksize)
     ixgbedev = (struct ixgbe_device *)netdev->vendor;
 
     for ( ;; ) {
-        tdh = mmio_read32(ixgbedev->mmio, IXGBE_REG_TDH(0));
+        //tdh = mmio_read32(ixgbedev->mmio, IXGBE_REG_TDH(0));
+        tdh = *(ixgbedev->tx_head);
         next_tail = (ixgbedev->tx_tail[0] + blksize) % ixgbedev->tx_bufsz[0];
 
         if ( ixgbedev->tx_bufsz[0] -

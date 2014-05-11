@@ -643,6 +643,12 @@ ahci_update_hw(void)
             switch ( pci->device->device_id ) {
             case 0x2829:
                 /* 82801HBM AHCI Controller */
+            case 0x1e02:
+                /* Intel Corporation 7 Series/C210 Series Chipset Family 6-port
+                   SATA Controller */
+            case 0x8c02:
+                /* Intel Corporation 8 Series/C220 Series Chipset Family 6-port
+                   SATA Controller */
                 dev = ahci_init_hw(pci->device);
                 break;
             default:
