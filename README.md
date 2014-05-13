@@ -165,3 +165,23 @@ Hirochika Asai
 ### Tips
 - `movl data,%regl' clears most significant 32 bits of %regl
 - PCI database: http://www.pcidatabase.com
+
+## Supported devices
+### Ethernet
+8086:100e Intel Pro 1000/MT
+8086:100f Intel 82545EM
+8086:107c Intel 82541PI
+8086:109a Intel 82573L
+8086:10f5 Intel 82567LM
+8086:10ea Intel 82577LM
+8086:1502 Intel 82579LM
+8086:153b Intel I217-V
+8086:1559 Intel I218-V
+8086:10fb Intel X520
+
+### AHCI
+8086:2829 Intel 82801HBM
+8086:1e02 Intel Corporation 7 Series/C210 Series Chipset Family 6-port SATA Controller
+8086:8c02 Intel Corporation 8 Series/C220 Series Chipset Family 6-port SATA Controller
+
+

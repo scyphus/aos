@@ -22,9 +22,12 @@ cboot(void)
     pci_init();
     ahci_init();
 
+    ohci_init();
+
     if ( NULL != blkdev_head ) {
         fat_load_kernel(blkdev_head->blkdev, 0x10000);
     }
+    //halt64();
 
     /* Long jump */
     ljmp64((void *)0x10000);

@@ -89,6 +89,8 @@ pci_check_function(u8 bus, u8 slot, u8 func)
     u16 vendor;
     u16 device;
     u16 reg;
+    u16 class;
+    u16 prog;
     struct pci_device *pci_dev;
     struct pci *pci;
     struct pci **tail;
@@ -112,6 +114,12 @@ pci_check_function(u8 bus, u8 slot, u8 func)
     /* Read interrupt pin and line */
     reg = pci_read_config(bus, slot, func, 0x3c);
 
+    /* Read class and subclass */
+    class = pci_read_config(bus, slot, func, 0x0a);
+
+    /* Read program interface and revision ID */
+    prog = pci_read_config(bus, slot, func, 0x08);
+
     pci_dev->bus = bus;
     pci_dev->slot = slot;
     pci_dev->func = func;
@@ -119,6 +127,9 @@ pci_check_function(u8 bus, u8 slot, u8 func)
     pci_dev->device_id = device;
     pci_dev->intr_pin = (u8)(reg >> 8);
     pci_dev->intr_line = (u8)(reg & 0xff);
+    pci_dev->class = (u8)(class >> 8);
+    pci_dev->subclass = (u8)(class & 0xff);
+    pci_dev->progif = (u8)(prog >> 8);
     pci->device = pci_dev;
     pci->next = NULL;
 

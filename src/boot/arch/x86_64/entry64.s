@@ -15,6 +15,7 @@
 	.globl	_ljmp64
 	.globl	_halt64
 	.globl	_inl
+	.globl	_outw
 	.globl	_outl
 	.globl	_spin_lock
 	.globl	_spin_unlock
@@ -66,6 +67,13 @@ _inl:
 	movw	%di,%dx
 	xorq	%rax,%rax
 	inl	%dx,%eax
+	ret
+
+/* void outw(int port, int value); */
+_outw:
+	movw	%di,%dx
+	movw	%si,%ax
+	outw	%ax,%dx
 	ret
 
 /* void outl(int port, int value); */

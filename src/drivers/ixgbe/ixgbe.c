@@ -105,7 +105,7 @@ struct ixgbe_adv_tx_desc_ctx {
     u64 other;
 } __attribute__ ((packed));
 
-struct ixgbe_adv_tx_desc_read {
+struct ixgbe_adv_tx_desc_data {
     u64 pkt_addr;
     u16 length;
     u8 dtyp_mac;
@@ -336,7 +336,8 @@ ixgbe_init_hw(struct pci_device *pcidev)
 
     /* Start TX/RX */
     union ixgbe_adv_rx_desc *rxdesc;
-    struct ixgbe_tx_desc *txdesc;
+    //struct ixgbe_tx_desc *txdesc;
+    struct ixgbe_adv_tx_desc_data *txdesc;
 
     netdev->rx_tail = 0;
     netdev->tx_tail[0] = 0;
@@ -420,14 +421,22 @@ ixgbe_init_hw(struct pci_device *pcidev)
     netdev->tx_base[0] = (u64)kmalloc(netdev->tx_bufsz[0]
                                    * sizeof(struct ixgbe_tx_desc) + 16);
     for ( i = 0; i < netdev->tx_bufsz[0]; i++ ) {
-        txdesc = (struct ixgbe_tx_desc *)(netdev->tx_base[0]
-                                          + i * sizeof(struct ixgbe_tx_desc));
+        txdesc = (struct ixgbe_adv_tx_desc_data *)(netdev->tx_base[0]
+                                                   + i * sizeof(struct ixgbe_tx_desc));
+#if 0
         txdesc->address = (u64)kmalloc(8192 * 2);
         txdesc->cmd = 0;
         txdesc->sta = 0;
         txdesc->cso = 0;
         txdesc->css = 0;
         txdesc->special = 0;
+#else
+        txdesc->pkt_addr = 0;
+        txdesc->length = 0;
+        txdesc->dtyp_mac = (3 << 4);
+        txdesc->dcmd = 0;
+        txdesc->paylen_ports_cc_idx_sta = 0;
+#endif
     }
     mmio_write32(netdev->mmio, IXGBE_REG_TDBAH(0), netdev->tx_base[0] >> 32);
     mmio_write32(netdev->mmio, IXGBE_REG_TDBAL(0), netdev->tx_base[0] & 0xffffffff);
@@ -442,12 +451,20 @@ ixgbe_init_hw(struct pci_device *pcidev)
     for ( i = 0; i < netdev->tx_bufsz[1]; i++ ) {
         txdesc = (struct ixgbe_tx_desc *)(netdev->tx_base[1]
                                           + i * sizeof(struct ixgbe_tx_desc));
+#if 0
         txdesc->address = (u64)kmalloc(8192 * 2);
         txdesc->cmd = 0;
         txdesc->sta = 0;
         txdesc->cso = 0;
         txdesc->css = 0;
         txdesc->special = 0;
+#else
+        txdesc->pkt_addr = 0;
+        txdesc->length = 0;
+        txdesc->dtyp_mac = (3 << 4);
+        txdesc->dcmd = 0;
+        txdesc->paylen_ports_cc_idx_sta = 0;
+#endif
     }
     mmio_write32(netdev->mmio, IXGBE_REG_TDBAH(1), netdev->tx_base[1] >> 32);
     mmio_write32(netdev->mmio, IXGBE_REG_TDBAL(1), netdev->tx_base[1] & 0xffffffff);
@@ -458,11 +475,13 @@ ixgbe_init_hw(struct pci_device *pcidev)
 
 
     /* Write-back */
+#if 0
     u32 *tdwba = kmalloc(4096);
     mmio_write32(netdev->mmio, IXGBE_REG_TDWBAL(0),
                  ((u64)tdwba & 0xfffffffc) | 1);
     mmio_write32(netdev->mmio, IXGBE_REG_TDWBAH(0), ((u64)tdwba) >> 32);
     netdev->tx_head = tdwba;
+#endif
 
 
     /* Enable */
@@ -471,7 +490,7 @@ ixgbe_init_hw(struct pci_device *pcidev)
 
     /* First */
     mmio_write32(netdev->mmio, IXGBE_REG_TXDCTL(0), IXGBE_TXDCTL_ENABLE);
-#if 0
+#if 1
     mmio_write32(netdev->mmio, IXGBE_REG_TXDCTL(0), IXGBE_TXDCTL_ENABLE
                  | (64<<16) /* WTHRESH */
                  | (16<<8) /* HTHRESH */| (16) /* PTHRESH */);
@@ -897,7 +916,8 @@ int
 ixgbe_tx_test(struct netdev *netdev, u8 *pkt, int len, int blksize)
 {
     struct ixgbe_device *ixgbedev;
-    struct ixgbe_tx_desc *txdesc;
+    //struct ixgbe_tx_desc *txdesc;
+    struct ixgbe_adv_tx_desc_data *txdesc;
     u32 tdh;
     u32 next_tail;
     //int blksize = 32;
@@ -906,8 +926,8 @@ ixgbe_tx_test(struct netdev *netdev, u8 *pkt, int len, int blksize)
     ixgbedev = (struct ixgbe_device *)netdev->vendor;
 
     for ( ;; ) {
-        //tdh = mmio_read32(ixgbedev->mmio, IXGBE_REG_TDH(0));
-        tdh = *(ixgbedev->tx_head);
+        tdh = mmio_read32(ixgbedev->mmio, IXGBE_REG_TDH(0));
+        //tdh = *(ixgbedev->tx_head);
         next_tail = (ixgbedev->tx_tail[0] + blksize) % ixgbedev->tx_bufsz[0];
 
         if ( ixgbedev->tx_bufsz[0] -
@@ -915,12 +935,13 @@ ixgbe_tx_test(struct netdev *netdev, u8 *pkt, int len, int blksize)
              > blksize ) {
             /* Not full */
             for ( i = 0; i < blksize; i++ ) {
-                txdesc = (struct ixgbe_tx_desc *)(ixgbedev->tx_base[0]
+                txdesc = (struct ixgbe_adv_tx_desc_data *)(ixgbedev->tx_base[0]
                                                   + (ixgbedev->tx_tail[0] + i)
                                                   * sizeof(struct ixgbe_tx_desc));
                 //for ( j = 0; j < len; j++ ) {
                 //    ((u8 *)(txdesc->address))[j] = pkt[j];
                 //}
+#if 0
                 txdesc->address = (u64)pkt;
                 txdesc->length = len;
                 txdesc->sta = 0;
@@ -929,6 +950,14 @@ ixgbe_tx_test(struct netdev *netdev, u8 *pkt, int len, int blksize)
                 txdesc->cso = 0;
                 //txdesc->cmd = (1<<3) | (1<<1) | 1;
                 txdesc->cmd = (1<<1) | 1;
+                //txdesc->cmd = (1<<1) | 1 | (1<<3);
+#else
+                txdesc->pkt_addr = (u64)pkt;
+                txdesc->length = len;
+                txdesc->dtyp_mac = (3 << 4);
+                txdesc->dcmd = (1<<1) | 1;
+                txdesc->paylen_ports_cc_idx_sta = (len << 14);
+#endif
             }
 
             ixgbedev->tx_tail[0] = next_tail;

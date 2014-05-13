@@ -13,6 +13,13 @@
 #define PAGESIZE                4096
 #define PHYS_MEM_FREE_ADDR      0x2000000
 
+typedef __builtin_va_list va_list;
+#define va_start(ap, last)      __builtin_va_start((ap), (last))
+#define va_arg                  __builtin_va_arg
+#define va_end(ap)              __builtin_va_end(ap)
+#define va_copy(dest, src)      __builtin_va_copy((dest), (src))
+#define alloca(size)            __builtin_alloca((size))
+
 /* Boot information */
 struct bootinfo {
     struct sysaddrmap {
@@ -36,6 +43,9 @@ struct pci_device {
     u16 device_id;
     u8 intr_pin;        /* 0x01: INTA#, 0x02: INTB#, 0x03: INTC#: 0x04: INTD# */
     u8 intr_line;       /* 0xff: no connection */
+    u8 class;
+    u8 subclass;
+    u8 progif;
 };
 struct pci {
     struct pci_device *device;
@@ -65,6 +75,7 @@ extern "C" {
     /* Defined in entry64.s */
     void ljmp64(void *);
     u32 inl(u16);
+    void outw(u16, u16);
     void outl(u16, u32);
     void spin_lock(int *);
     void spin_unlock(int *);
@@ -83,8 +94,15 @@ extern "C" {
     /* Defined in ahci.c */
     void ahci_init(void);
 
+    /* Defined in ohci.c */
+    void ohci_init(void);
+
     /* Defined in fat.c */
     int fat_load_kernel(struct blkdev *, u64);
+
+    /* vga.c */
+    void vga_init(void);
+    int kprintf(const char *, ...);
 
 #ifdef __cplusplus
 }
