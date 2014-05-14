@@ -9,6 +9,7 @@
 
 #include <aos/const.h>
 #include "../pci/pci.h"
+#include "../net/netdev.h"
 #include "../../kernel/kernel.h"
 
 #define PCI_VENDOR_INTEL        0x8086
@@ -147,7 +148,7 @@ e1000e_update_hw(void)
                 name[0] = 'e';
                 name[1] = '0' + idx;
                 name[2] = '\0';
-                //netdev_add_device(name, e1000dev->macaddr, e1000dev);
+                netdev_add_device(name, dev->macaddr, dev);
                 idx++;
                 break;
             default:

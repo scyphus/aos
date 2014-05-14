@@ -28,10 +28,13 @@ netdev_add_device(const char *name, const u8 *macaddr, void *vendor)
     struct netdev_list **list;
     int i;
 
+    /* Search the tail of the list */
     list = &netdev_head;
     while ( NULL != *list ) {
         list = &(*list)->next;
     }
+
+    /* Allocate memory for the tail of the list */
     *list = kmalloc(sizeof(struct netdev_list));
     if ( NULL == *list ) {
         return -1;

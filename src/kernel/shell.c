@@ -7,6 +7,7 @@
 
 #include <aos/const.h>
 #include "kernel.h"
+#include "../drivers/pci/pci.h"
 
 #define CMDBUF_SIZE 4096
 #define ARGS_MAX 128
@@ -83,9 +84,8 @@ int ixgbe_check_buffer(struct netdev *);
 int
 _builtin_show(char *const argv[])
 {
-    struct netdev_list *list;
-
     if ( 0 == kstrcmp("interfaces", argv[1]) ) {
+        struct netdev_list *list;
         list = netdev_head;
         while ( list ) {
             kprintf(" %s\r\n", list->netdev->name);
@@ -97,6 +97,15 @@ _builtin_show(char *const argv[])
                     list->netdev->macaddr[4],
                     list->netdev->macaddr[5]);
             ixgbe_check_buffer(list->netdev);
+            list = list->next;
+        }
+    } else if ( 0 == kstrcmp("pci", argv[1]) ) {
+        struct pci *list;
+        list = pci_list();
+        while ( list ) {
+            kprintf("%x.%x.%x %.4x:%.4x\r\n", list->device->bus,
+                    list->device->slot, list->device->func,
+                    list->device->vendor_id, list->device->device_id);
             list = list->next;
         }
     }
