@@ -81,6 +81,11 @@ _builtin_uptime(char *const argv[])
  * show
  */
 int ixgbe_check_buffer(struct netdev *);
+#define MAX_PROCESSORS  256
+struct p_data {
+    u32 flags;          /* bit 0: enabled (working); bit 1 reserved */
+} __attribute__ ((packed));
+
 int
 _builtin_show(char *const argv[])
 {
@@ -108,6 +113,18 @@ _builtin_show(char *const argv[])
                     list->device->vendor_id, list->device->device_id);
             list = list->next;
         }
+    } else if ( 0 == kstrcmp("processors", argv[1]) ) {
+#define	P_DATA_SIZE             0x10000
+#define P_DATA_BASE             (u64)0x01000000
+        struct p_data *pdata;
+        int i;
+        for ( i = 0; i < MAX_PROCESSORS; i++ ) {
+            pdata = (struct p_data *)((u64)P_DATA_BASE + i * P_DATA_SIZE);
+            if ( pdata->flags ) {
+                kprintf("Processor #%d is active.\r\n", i);
+            }
+        }
+
     }
 
     return 0;
