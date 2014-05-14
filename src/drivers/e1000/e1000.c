@@ -84,11 +84,6 @@ struct netdev_list *netdev_head;
 #define E1000_82577LM           0x10ea
 #define E1000_82579LM           0x1502
 
-#define IXGBE_X520              0x10fb
-
-#define IXGBE_REG_RAL0  0xa200 + 8 * 0
-#define IXGBE_REG_RAH0  0xa204 + 8 * 0
-
 struct e1000_tx_desc {
     u64 address;
     u16 length;
@@ -237,7 +232,6 @@ e1000_update_hw(void)
             case E1000_82567LM:
             case E1000_82577LM:
             case E1000_82579LM:
-            case IXGBE_X520:
                 e1000dev = e1000_init_hw(pci->device);
                 name[0] = 'e';
                 name[1] = '0' + idx;
@@ -346,17 +340,6 @@ e1000_init_hw(struct pci_device *pcidev)
         netdev->macaddr[2] = (m32 >> 16) & 0xff;
         netdev->macaddr[3] = (m32 >> 24) & 0xff;
         m32 = mmio_read32(netdev->mmio, E1000_REG_RAH);
-        netdev->macaddr[4] = m32 & 0xff;
-        netdev->macaddr[5] = (m32 >> 8) & 0xff;
-        break;
-    case IXGBE_X520:
-        /* Read MAC address */
-        m32 = mmio_read32(netdev->mmio, IXGBE_REG_RAL0);
-        netdev->macaddr[0] = m32 & 0xff;
-        netdev->macaddr[1] = (m32 >> 8) & 0xff;
-        netdev->macaddr[2] = (m32 >> 16) & 0xff;
-        netdev->macaddr[3] = (m32 >> 24) & 0xff;
-        m32 = mmio_read32(netdev->mmio, IXGBE_REG_RAH0);
         netdev->macaddr[4] = m32 & 0xff;
         netdev->macaddr[5] = (m32 >> 8) & 0xff;
         break;

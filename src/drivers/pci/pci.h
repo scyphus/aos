@@ -18,6 +18,9 @@ struct pci_device {
     u16 device_id;
     u8 intr_pin;        /* 0x01: INTA#, 0x02: INTB#, 0x03: INTC#: 0x04: INTD# */
     u8 intr_line;       /* 0xff: no connection */
+    u8 class;
+    u8 subclass;
+    u8 progif;
 };
 struct pci {
     struct pci_device *device;

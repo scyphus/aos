@@ -69,6 +69,7 @@ kpack: kernel/arch/$(ARCH)/asm.o \
 	drivers/rng/rng.o \
 	drivers/net/net.o \
 	drivers/e1000/e1000.o \
+	drivers/e1000e/e1000e.o \
 	drivers/ixgbe/ixgbe.o \
 	drivers/ahci/ahci.o \
 	drivers/pci/pci.o
