@@ -13,8 +13,7 @@
 
 void pause(void);
 
-struct netdev_list *netdev2_head;
-
+extern struct netdev_list *netdev_head;
 
 #define IXGBE_X520              0x10fb
 
@@ -169,46 +168,8 @@ int ixgbe_routing_test(struct netdev *);
 void
 ixgbe_init(void)
 {
-    netdev2_head = NULL;
     /* Initialize the driver */
     ixgbe_update_hw();
-}
-
-static int
-netdev_add_device(const char *name, const u8 *macaddr, void *vendor)
-{
-    struct netdev_list **list;
-    int i;
-
-    list = &netdev2_head;
-    while ( NULL != *list ) {
-        list = &(*list)->next;
-    }
-    *list = kmalloc(sizeof(struct netdev_list));
-    if ( NULL == *list ) {
-        return -1;
-    }
-    (*list)->next = NULL;
-    (*list)->netdev = kmalloc(sizeof(struct netdev));
-    if ( NULL == (*list)->netdev ) {
-        kfree(*list);
-        return -1;
-    }
-    for ( i = 0; i < NETDEV_MAX_NAME - 1 && 0 != name[i]; i++ ) {
-        (*list)->netdev->name[i] = name[i];
-    }
-    (*list)->netdev->name[i] = 0;
-
-    for ( i = 0; i < 6; i++ ) {
-        (*list)->netdev->macaddr[i] = macaddr[i];
-    }
-
-    (*list)->netdev->vendor = vendor;
-    (*list)->netdev->sendpkt = ixgbe_sendpkt;
-    (*list)->netdev->recvpkt = ixgbe_recvpkt;
-    (*list)->netdev->routing_test = ixgbe_routing_test;
-
-    return 0;
 }
 
 /*

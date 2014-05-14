@@ -13,7 +13,7 @@
 
 void pause(void);
 
-struct netdev_list *netdev_head;
+extern struct netdev_list *netdev_head;
 
 
 #define E1000_REG_CTRL  0x00
@@ -170,47 +170,10 @@ e1000_eeprom_read(u64 mmio, u8 addr)
 void
 e1000_init(void)
 {
-    netdev_head = NULL;
     /* Initialize the driver */
     e1000_update_hw();
 }
 
-static int
-netdev_add_device(const char *name, const u8 *macaddr, void *vendor)
-{
-    struct netdev_list **list;
-    int i;
-
-    list = &netdev_head;
-    while ( NULL != *list ) {
-        list = &(*list)->next;
-    }
-    *list = kmalloc(sizeof(struct netdev_list));
-    if ( NULL == *list ) {
-        return -1;
-    }
-    (*list)->next = NULL;
-    (*list)->netdev = kmalloc(sizeof(struct netdev));
-    if ( NULL == (*list)->netdev ) {
-        kfree(*list);
-        return -1;
-    }
-    for ( i = 0; i < NETDEV_MAX_NAME - 1 && 0 != name[i]; i++ ) {
-        (*list)->netdev->name[i] = name[i];
-    }
-    (*list)->netdev->name[i] = 0;
-
-    for ( i = 0; i < 6; i++ ) {
-        (*list)->netdev->macaddr[i] = macaddr[i];
-    }
-
-    (*list)->netdev->vendor = vendor;
-    (*list)->netdev->sendpkt = e1000_sendpkt;
-    (*list)->netdev->recvpkt = e1000_recvpkt;
-    (*list)->netdev->routing_test = e1000_routing_test;
-
-    return 0;
-}
 
 void
 e1000_update_hw(void)

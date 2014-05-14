@@ -35,7 +35,7 @@ panic(const char *s)
 
 int ixgbe_forwarding_test1(struct netdev *, struct netdev *);
 int ixgbe_forwarding_test2(struct netdev *, struct netdev *);
-extern struct netdev_list *netdev2_head;
+extern struct netdev_list *netdev_head;
 
 #define PERFEVTSELx_MSR_BASE 0x186      /* 3B. 18.2.2.2 */
 #define PMCx_MSR_BASE 0x0c1             /* 3B. 18.2.2.2 */

@@ -68,6 +68,7 @@ kpack: kernel/arch/$(ARCH)/asm.o \
 	kernel/arch/$(ARCH)/i8254.o \
 	drivers/rng/rng.o \
 	drivers/net/net.o \
+	drivers/net/netdev.o \
 	drivers/e1000/e1000.o \
 	drivers/e1000e/e1000e.o \
 	drivers/ixgbe/ixgbe.o \

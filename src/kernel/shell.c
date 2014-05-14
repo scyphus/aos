@@ -12,7 +12,6 @@
 #define ARGS_MAX 128
 
 extern struct netdev_list *netdev_head;
-extern struct netdev_list *netdev2_head;
 
 /*
  * Temporary: Keyboard drivers
@@ -87,7 +86,7 @@ _builtin_show(char *const argv[])
     struct netdev_list *list;
 
     if ( 0 == kstrcmp("interfaces", argv[1]) ) {
-        list = netdev2_head;
+        list = netdev_head;
         while ( list ) {
             kprintf(" %s\r\n", list->netdev->name);
             kprintf("   HWADDR: %.2x:%.2x:%.2x:%.2x:%.2x:%.2x\r\n",
@@ -140,7 +139,7 @@ _builtin_test(char *const argv[])
 
     pkt = kmalloc(9200);
 
-    list = netdev2_head;
+    list = netdev_head;
     /* dst (multicast) */
 #if 0
     pkt[0] = 0x01;
@@ -246,7 +245,7 @@ _builtin_test2(char *const argv[])
 {
     struct netdev_list *list;
 
-    list = netdev2_head;
+    list = netdev_head;
     ixgbe_forwarding_test(list->netdev, list->next->netdev);
     return 0;
 }
@@ -413,7 +412,7 @@ _exec_cmd(struct kshell *kshell)
         _builtin_off();
     } else if ( 0 == kstrcmp("show interfaces", kshell->cmdbuf) ) {
         struct netdev_list *list;
-        list = netdev2_head;
+        list = netdev_head;
         while ( list ) {
             kprintf(" %s\r\n", list->netdev->name);
             kprintf("   HWADDR: %.2x:%.2x:%.2x:%.2x:%.2x:%.2x\r\n",
@@ -549,7 +548,7 @@ _exec_cmd(struct kshell *kshell)
         pkt[25] = cs >> 8;
 
         for ( ;; ) {
-            list = netdev2_head;
+            list = netdev_head;
             while ( list ) {
                 //list->netdev->sendpkt(pkt, 1518-4, list->netdev);
                 list->netdev->sendpkt(pkt, pktsz + 18 - 4, list->netdev);
@@ -566,7 +565,7 @@ _exec_cmd(struct kshell *kshell)
     } else if ( 0 == kstrcmp("start routing", kshell->cmdbuf) ) {
         //__asm__ __volatile__ ("sti;");
         struct netdev_list *list;
-        list = netdev2_head;
+        list = netdev_head;
         list->netdev->routing_test(list->netdev);
     } else if ( 0 == kstrcmp("uptime", kshell->cmdbuf) ) {
         u64 x = arch_clock_get();

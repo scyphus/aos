@@ -27,7 +27,10 @@ void apic_test(void);
 void search_clock_sources(void);
 void vga_init(void);
 void pci_init(void);
+void netdev_init(void);
 void e1000_init(void);
+void e1000e_init(void);
+void ixgbe_init(void);
 void ahci_init(void);
 
 extern void trampoline(void);
@@ -159,7 +162,9 @@ arch_bsp_init(void)
     /* Initialize PCI driver */
     arch_dbg_printf("Searching PCI devices.\r\n");
     pci_init();
+    netdev_init();
     e1000_init();
+    e1000e_init();
     ixgbe_init();
     ahci_init();
 
