@@ -149,7 +149,7 @@ int acpi_load(void);
 void acpi_busy_usleep(u64);
 int acpi_poweroff(void);
 
-u32 acpi_get_timer(void);
+volatile u32 acpi_get_timer(void);
 u64 acpi_get_timer_period(void);
 u64 acpi_get_timer_hz(void);
 

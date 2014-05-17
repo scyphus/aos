@@ -15,7 +15,7 @@
 #define PRINTF_MOD_LONGLONG     2
 
 struct kmem_slab_page_hdr *kmem_slab_head;
-static int kmem_lock;
+static volatile int kmem_lock;
 
 /*
  * Put a character to the standard output of the kernel
@@ -365,7 +365,7 @@ void *
 kmalloc(u64 sz)
 {
     struct kmem_slab_page_hdr **slab;
-    u8 *bitmap;
+    volatile u8 *bitmap;
     u64 n;
     u64 i;
     u64 j;
@@ -436,7 +436,7 @@ void
 kfree(void *ptr)
 {
     struct kmem_slab_page_hdr *slab;
-    u8 *bitmap;
+    volatile u8 *bitmap;
     u64 n;
     u64 i;
     u64 off;

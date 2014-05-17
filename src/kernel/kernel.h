@@ -154,8 +154,8 @@ void arch_crash(void);
 
 void arch_poweroff(void);
 
-void arch_spin_lock(int *);
-void arch_spin_unlock(int *);
+void arch_spin_lock(volatile int *);
+void arch_spin_unlock(volatile int *);
 
 /* Clock and timer */
 void arch_clock_update(void);

@@ -16,7 +16,7 @@ bootx64.efi: ASFLAGS=-nostdlib -I./kernel/arch/$(ARCH)/
 bootx64.efi: CFLAGS=-Wall -mno-sse3 -fleading-underscore -nostdlib -m64
 kpack: ASFLAGS=-nostdlib -I./kernel/arch/$(ARCH)/
 kpack: CFLAGS=-I./include \
-	-Wall -mno-sse3 -fleading-underscore -nostdlib -m64
+	-Wall -mno-sse3 -fleading-underscore -O3 -nostdlib -m64
 
 ## MBR
 diskboot: boot/arch/$(ARCH)/diskboot.o
@@ -66,6 +66,7 @@ kpack: kernel/arch/$(ARCH)/asm.o \
 	kernel/arch/$(ARCH)/console.o \
 	kernel/arch/$(ARCH)/cmos.o \
 	kernel/arch/$(ARCH)/i8254.o \
+	kernel/ptcam.o \
 	drivers/rng/rng.o \
 	drivers/net/net.o \
 	drivers/net/netdev.o \

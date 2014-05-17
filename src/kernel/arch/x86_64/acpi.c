@@ -373,7 +373,7 @@ acpi_load(void)
 /*
  * Get the current ACPI timer
  */
-u32
+volatile u32
 acpi_get_timer(void)
 {
     return inl(acpi_pm_tmr_port);
@@ -400,9 +400,9 @@ void
 acpi_busy_usleep(u64 usec)
 {
     u64 clk;
-    u64 acc;
-    u64 cur;
-    u64 prev;
+    volatile u64 acc;
+    volatile u64 cur;
+    volatile u64 prev;
 
     /* usec to count */
     clk = (ACPI_TMR_HZ * usec) / 1000000;

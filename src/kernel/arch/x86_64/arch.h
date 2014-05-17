@@ -216,8 +216,8 @@ void intr_crash(void);
 void intr_apic_spurious(void);
 
 /* spinlock.s */
-void spin_lock(int *);
-void spin_unlock(int *);
+void spin_lock(volatile int *);
+void spin_unlock(volatile int *);
 
 extern u64 acpi_ioapic_base;
 extern u64 acpi_pm_tmr_port;

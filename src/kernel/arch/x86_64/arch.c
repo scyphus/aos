@@ -347,7 +347,7 @@ arch_busy_usleep(u64 usec)
  * Lock with spinlock
  */
 void
-arch_spin_lock(int *lock)
+arch_spin_lock(volatile int *lock)
 {
     spin_lock(lock);
 }
@@ -356,7 +356,7 @@ arch_spin_lock(int *lock)
  * Unlock with spinlock
  */
 void
-arch_spin_unlock(int *lock)
+arch_spin_unlock(volatile int *lock)
 {
     spin_unlock(lock);
 }

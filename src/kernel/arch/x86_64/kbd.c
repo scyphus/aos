@@ -27,7 +27,7 @@ static unsigned char buf[256];
 static u8 rpos;
 static u8 wpos;
 
-static int lock;
+static volatile int lock;
 
 /*
  * Initialize the keyboard driver
@@ -139,7 +139,7 @@ kbd_event(void)
 /*
  * Read one character from the buffer
  */
-int
+volatile int
 kbd_read(void)
 {
     int c;
