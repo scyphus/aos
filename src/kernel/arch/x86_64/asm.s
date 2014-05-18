@@ -432,6 +432,7 @@ _intr_apic_int36:
 
 _intr_apic_loc_tmr:
 	intr_lapic_isr 0x50
+	jmp	_task_restart
 	intr_lapic_isr_done
 	iretq
 
@@ -453,7 +454,49 @@ lapic_isr_thread_restart:
 	intr_lapic_isr_done
 	iretq
 
+	.set	P_DATA_SIZE,0x10000
+	.set	P_DATA_BASE,0x1000000
+	.set	IDT_NR,256
+	.set	P_TSS_OFFSET,(0x20 + IDT_NR * 8)
+	.set	P_TSS_SIZE,104
+	.set	P_CUR_TASK_OFFSET,(P_TSS_OFFSET + P_TSS_SIZE)
+	.set	P_NEXT_TASK_OFFSET,(P_CUR_TASK_OFFSET + 8)
 
+	.set	SYSCALL_MAX_NR,10
+	.set	STACKFRAME_SIZE,164
+	.set	TASK_RP,0
+	.set	TASK_SP0,8
+	.set	TSS_SP0,4
+_task_restart:
+	/* Obtain current CPU ID */
+	call	_this_cpu
+	movq	%rax,%rcx
+	/* Calculate the base address */
+	movq	%rcx,%rax
+	movq	$P_DATA_SIZE,%rbx
+	mulq	%rbx	/* [rdx:rax] <= rax * rbx */
+	addq	$P_DATA_BASE,%rax
+	movq	%rax,%rbp
+	/* If the next task is not scheduled, immediately restart this */
+	cmpq	$0,P_NEXT_TASK_OFFSET(%rbp)
+	jz	1f
+	/* Save stack pointer */
+	movq	P_CUR_TASK_OFFSET(%rbp),%rax
+	movq	%rsp,TASK_RP(%rax)
+	/* Task switch (set the stack frame of the new task) */
+	movq	P_NEXT_TASK_OFFSET(%rbp),%rax
+	movq	TASK_RP(%rax),%rsp
+	movq	$0,P_NEXT_TASK_OFFSET(%rbp)
+	/* ToDo: Load LDT if necessary */
+	/* Setup sp0 in TSS */
+	//leaq	STACKFRAME_SIZE(%rsp),%rdx
+	movq	P_CUR_TASK_OFFSET(%rbp),%rax
+	movq	TASK_SP0(%rax),%rdx
+	movq	P_TSS_OFFSET(%rbp),%rax
+	movq	%rdx,TSS_SP0(%rax)
+1:
+	intr_lapic_isr_done
+	iretq
 
 
 

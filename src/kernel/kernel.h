@@ -1,11 +1,11 @@
 /*_
- * Copyright 2013 Scyphus Solutions Co. Ltd.  All rights reserved.
+ * Copyright (c) 2013 Scyphus Solutions Co. Ltd.
+ * Copyright (c) 2014 Hirochika Asai
+ * All rights reserved.
  *
  * Authors:
- *      Hirochika Asai  <asai@scyphus.co.jp>
+ *      Hirochika Asai  <asai@jar.jp>
  */
-
-/* $Id$ */
 
 #ifndef _KERNEL_H
 #define _KERNEL_H
@@ -64,16 +64,11 @@ void rng_stir(void);
 u32 rng_random(void);
 
 
-
+/*
+ * Process
+ */
 struct proc {
-    /* Stack frame */
-    void *rp;
-
-    /* Stack */
-    void *kstack;
-    void *ustack;
-
-    /* Process information */
+    /* Task ID */
     u64 id;
     const char *name;
 
@@ -86,7 +81,11 @@ struct proc {
 
     /* State */
     int state;
-} __attribute__ ((packed));
+
+    void *arch;
+};
+
+
 
 /*
  * Kernel memory management

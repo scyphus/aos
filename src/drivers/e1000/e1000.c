@@ -104,9 +104,11 @@ struct e1000_rx_desc {
 struct e1000_device {
     u64 mmio;
 
+    void *rx_mem_base;
     u64 rx_base;
     u32 rx_tail;
     u32 rx_bufsz;
+    void *tx_mem_base;
     u64 tx_base;
     u32 tx_tail;
     u32 tx_bufsz;
@@ -338,12 +340,12 @@ e1000_setup_rx_desc(struct e1000_device *dev)
     dev->tx_head_cache = 0;
 
     /* ToDo: 16 bytes for alignment */
-    dev->rx_base = (u64)kmalloc(dev->rx_bufsz
-                                   * sizeof(struct e1000_rx_desc) + 16);
-    if ( 0 == dev->rx_base ) {
+    dev->rx_mem_base = kmalloc(dev->rx_bufsz * sizeof(struct e1000_rx_desc) + 16);
+    if ( 0 == dev->rx_mem_base ) {
         kfree(dev);
         return NULL;
     }
+    dev->rx_base = ((u64)dev->rx_mem_base + 0xf) & ~(u64)0xf;
     for ( i = 0; i < dev->rx_bufsz; i++ ) {
         rxdesc = (struct e1000_rx_desc *)(dev->rx_base
                                           + i * sizeof(struct e1000_rx_desc));

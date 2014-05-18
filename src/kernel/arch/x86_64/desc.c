@@ -172,12 +172,14 @@ gdt_load(void)
 void
 tss_init(void)
 {
+    struct p_data *pdata;
     struct tss *tss;
     u64 i;
 
     for ( i = 0; i < MAX_PROCESSORS; i++ ) {
         /* Initialize the TSS for each processor (Local APIC) */
-        tss = (struct tss *)(P_DATA_BASE + i * P_DATA_SIZE);
+        pdata = (struct p_data *)(P_DATA_BASE + i * P_DATA_SIZE);
+        tss = &pdata->tss;
         tss->reserved1 = 0;
         tss->rsp0l = 0;
         tss->rsp0h = 0;
@@ -205,6 +207,9 @@ tss_init(void)
         tss->reserved5 = 0;
         tss->reserved6 = 0;
         tss->iomap = 0;
+
+        pdata->cur_task = 0;
+        pdata->next_task = 0;
     }
 }
 

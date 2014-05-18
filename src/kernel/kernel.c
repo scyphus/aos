@@ -85,12 +85,6 @@ kmain(void)
     kprintf("\r\nStarting a shell.  Press Esc to power off the machine:\r\n");
 
 #if 0
-    struct netdev_list *list;
-    list = netdev2_head;
-    ixgbe_forwarding_test1(list->netdev, list->next->netdev);
-#endif
-
-#if 0
     u64 val;
     __asm__ __volatile__ ("wrmsr" :: "a"(0), "d"(0), "c"(PERFEVTSELx_MSR_BASE));
     __asm__ __volatile__ ("wrmsr" :: "a"(0), "d"(0), "c"(PERFEVTSELx_MSR_BASE+1));

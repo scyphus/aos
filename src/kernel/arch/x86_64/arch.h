@@ -142,16 +142,33 @@ struct tss {
 } __attribute__ ((packed));
 
 /*
+ * Task
+ */
+struct task {
+    /* Do not change the first two.  These must be on the top.  See asm.s. */
+    /* Restart point */
+    struct stackframe *rp;
+    /* SP0 for tss (fixed value?) */
+    reg_t sp0;
+    /* Stack (kernel and user) */
+    void *kstack;
+    void *ustack;
+} __attribute__ ((packed));
+
+/*
  * Data space for each processor
  */
 struct p_data {
-    u32 flags;          /* bit 0: enabled (working); bit 1 reserved */
+    u32 flags;          /* bit 0: enabled (working); bit 1- reserved */
     u32 cpu_id;
     u64 freq;           /* Frequency */
     u32 reserved[4];
     u64 stats[IDT_NR];  /* Interrupt counter */
     /* P_TSS_OFFSET */
     struct tss tss;
+    /* Tasks */
+    u64 cur_task;
+    u64 next_task;
     /* Stack and stack guard follow */
 } __attribute__ ((packed));
 
