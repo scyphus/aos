@@ -123,13 +123,8 @@ struct e1000_device {
 /* Prototype declarations */
 void e1000_update_hw(void);
 struct e1000_device * e1000_init_hw(struct pci_device *);
-
-
-int e1000_sendpkt(u8 *, u32, struct netdev *);
-int e1000_recvpkt(u8 *, u32, struct netdev *);
-int e1000_routing_test(struct netdev *);
-
-
+int e1000_setup_rx_desc(struct e1000_device *);
+int e1000_setup_tx_desc(struct e1000_device *);
 
 u16
 e1000_eeprom_read_8254x(u64 mmio, u8 addr)
@@ -219,40 +214,40 @@ mmio_write32(u64 base, u64 offset, volatile u32 value)
 struct e1000_device *
 e1000_init_hw(struct pci_device *pcidev)
 {
-    struct e1000_device *netdev;
+    struct e1000_device *dev;
     u16 m16;
     u32 m32;
     int i;
 
-    netdev = kmalloc(sizeof(struct e1000_device));
+    dev = kmalloc(sizeof(struct e1000_device));
 
     /* Assert */
     if ( 0x8086 != pcidev->vendor_id ) {
-        kfree(netdev);
+        kfree(dev);
         return NULL;
     }
 
     /* Read MMIO */
-    netdev->mmio = pci_read_mmio(pcidev->bus, pcidev->slot, pcidev->func);
-    if ( 0 == netdev->mmio ) {
-        kfree(netdev);
+    dev->mmio = pci_read_mmio(pcidev->bus, pcidev->slot, pcidev->func);
+    if ( 0 == dev->mmio ) {
+        kfree(dev);
         return NULL;
     }
 
     /* Initialize */
-    mmio_write32(netdev->mmio, E1000_REG_IMC, 0);
-    mmio_write32(netdev->mmio, E1000_REG_CTRL,
-                 mmio_read32(netdev->mmio, E1000_REG_CTRL)
+    mmio_write32(dev->mmio, E1000_REG_IMC, 0);
+    mmio_write32(dev->mmio, E1000_REG_CTRL,
+                 mmio_read32(dev->mmio, E1000_REG_CTRL)
                  | E1000_CTRL_RST);
     arch_busy_usleep(100);
-    mmio_write32(netdev->mmio, E1000_REG_CTRL,
-                 mmio_read32(netdev->mmio, E1000_REG_CTRL)
+    mmio_write32(dev->mmio, E1000_REG_CTRL,
+                 mmio_read32(dev->mmio, E1000_REG_CTRL)
                  | E1000_CTRL_SLU);
-    mmio_write32(netdev->mmio, E1000_REG_CTRL_EXT,
-                 mmio_read32(netdev->mmio, E1000_REG_CTRL_EXT)
+    mmio_write32(dev->mmio, E1000_REG_CTRL_EXT,
+                 mmio_read32(dev->mmio, E1000_REG_CTRL_EXT)
                  & ~E1000_CTRL_EXT_LINK_MODE_MASK);
 #if 0
-    mmio_write32(netdev->mmio, E1000_REG_TXDCTL,
+    mmio_write32(dev->mmio, E1000_REG_TXDCTL,
                  E1000_TXDCTL_GRAN_DESC
                  | (128 << E1000_TXDCTL_HTHRESH_SHIFT)
                  | (8 << E1000_TXDCTL_PTHRESH_SHIFT));
@@ -262,82 +257,95 @@ e1000_init_hw(struct pci_device *pcidev)
     case E1000_PRO1000MT:
     case E1000_82545EM:
         /* Read MAC address */
-        m16 = e1000_eeprom_read_8254x(netdev->mmio, 0);
-        netdev->macaddr[0] = m16 & 0xff;
-        netdev->macaddr[1] = (m16 >> 8) & 0xff;
-        m16 = e1000_eeprom_read_8254x(netdev->mmio, 1);
-        netdev->macaddr[2] = m16 & 0xff;
-        netdev->macaddr[3] = (m16 >> 8) & 0xff;
-        m16 = e1000_eeprom_read_8254x(netdev->mmio, 2);
-        netdev->macaddr[4] = m16 & 0xff;
-        netdev->macaddr[5] = (m16 >> 8) & 0xff;
+        m16 = e1000_eeprom_read_8254x(dev->mmio, 0);
+        dev->macaddr[0] = m16 & 0xff;
+        dev->macaddr[1] = (m16 >> 8) & 0xff;
+        m16 = e1000_eeprom_read_8254x(dev->mmio, 1);
+        dev->macaddr[2] = m16 & 0xff;
+        dev->macaddr[3] = (m16 >> 8) & 0xff;
+        m16 = e1000_eeprom_read_8254x(dev->mmio, 2);
+        dev->macaddr[4] = m16 & 0xff;
+        dev->macaddr[5] = (m16 >> 8) & 0xff;
         break;
 
     case E1000_82541PI:
     case E1000_82573L:
         /* Read MAC address */
-        m16 = e1000_eeprom_read(netdev->mmio, 0);
-        netdev->macaddr[0] = m16 & 0xff;
-        netdev->macaddr[1] = (m16 >> 8) & 0xff;
-        m16 = e1000_eeprom_read(netdev->mmio, 1);
-        netdev->macaddr[2] = m16 & 0xff;
-        netdev->macaddr[3] = (m16 >> 8) & 0xff;
-        m16 = e1000_eeprom_read(netdev->mmio, 2);
-        netdev->macaddr[4] = m16 & 0xff;
-        netdev->macaddr[5] = (m16 >> 8) & 0xff;
+        m16 = e1000_eeprom_read(dev->mmio, 0);
+        dev->macaddr[0] = m16 & 0xff;
+        dev->macaddr[1] = (m16 >> 8) & 0xff;
+        m16 = e1000_eeprom_read(dev->mmio, 1);
+        dev->macaddr[2] = m16 & 0xff;
+        dev->macaddr[3] = (m16 >> 8) & 0xff;
+        m16 = e1000_eeprom_read(dev->mmio, 2);
+        dev->macaddr[4] = m16 & 0xff;
+        dev->macaddr[5] = (m16 >> 8) & 0xff;
         break;
 
     case E1000_82567LM:
     case E1000_82577LM:
     case E1000_82579LM:
         /* Read MAC address */
-        m32 = mmio_read32(netdev->mmio, E1000_REG_RAL);
-        netdev->macaddr[0] = m32 & 0xff;
-        netdev->macaddr[1] = (m32 >> 8) & 0xff;
-        netdev->macaddr[2] = (m32 >> 16) & 0xff;
-        netdev->macaddr[3] = (m32 >> 24) & 0xff;
-        m32 = mmio_read32(netdev->mmio, E1000_REG_RAH);
-        netdev->macaddr[4] = m32 & 0xff;
-        netdev->macaddr[5] = (m32 >> 8) & 0xff;
+        m32 = mmio_read32(dev->mmio, E1000_REG_RAL);
+        dev->macaddr[0] = m32 & 0xff;
+        dev->macaddr[1] = (m32 >> 8) & 0xff;
+        dev->macaddr[2] = (m32 >> 16) & 0xff;
+        dev->macaddr[3] = (m32 >> 24) & 0xff;
+        m32 = mmio_read32(dev->mmio, E1000_REG_RAH);
+        dev->macaddr[4] = m32 & 0xff;
+        dev->macaddr[5] = (m32 >> 8) & 0xff;
         break;
     }
 
     /* Link up */
-    mmio_write32(netdev->mmio, E1000_REG_CTRL,
-                 mmio_read32(netdev->mmio, E1000_REG_CTRL)
+    mmio_write32(dev->mmio, E1000_REG_CTRL,
+                 mmio_read32(dev->mmio, E1000_REG_CTRL)
                  | E1000_CTRL_SLU | E1000_CTRL_VME);
 
     /* Multicast array table */
     for ( i = 0; i < 128; i++ ) {
-        mmio_write32(netdev->mmio, E1000_REG_MTA + i * 4, 0);
+        mmio_write32(dev->mmio, E1000_REG_MTA + i * 4, 0);
     }
 
     /* Enable interrupt (REG_IMS <- 0x1F6DC, then read REG_ICR ) */
-    //mmio_write32(netdev->mmio, E1000_REG_IMS, 0x1f6dc);
-    //mmio_read32(netdev->mmio, 0xc0);
+    //mmio_write32(dev->mmio, E1000_REG_IMS, 0x1f6dc);
+    //mmio_read32(dev->mmio, 0xc0);
 
     /* Start TX/RX */
-    struct e1000_rx_desc *rxdesc;
-    struct e1000_tx_desc *txdesc;
+    e1000_setup_rx_desc(dev);
+    e1000_setup_tx_desc(dev);
 
-    netdev->rx_tail = 0;
-    netdev->tx_tail = 0;
-    netdev->rx_bufsz = 768;
-    netdev->tx_bufsz = 768;
+    /* Store the parent device information */
+    dev->pci_device = pcidev;
+
+    return dev;
+}
+
+/*
+ * Setup RX descriptor
+ */
+int
+e1000_setup_rx_desc(struct e1000_device *dev)
+{
+    struct e1000_rx_desc *rxdesc;
+    int i;
+
+    dev->rx_tail = 0;
+    dev->rx_bufsz = 768;
 
     /* Cache */
-    netdev->rx_head_cache = 0;
-    netdev->tx_head_cache = 0;
+    dev->rx_head_cache = 0;
+    dev->tx_head_cache = 0;
 
     /* ToDo: 16 bytes for alignment */
-    netdev->rx_base = (u64)kmalloc(netdev->rx_bufsz
+    dev->rx_base = (u64)kmalloc(dev->rx_bufsz
                                    * sizeof(struct e1000_rx_desc) + 16);
-    if ( 0 == netdev->rx_base ) {
-        kfree(netdev);
+    if ( 0 == dev->rx_base ) {
+        kfree(dev);
         return NULL;
     }
-    for ( i = 0; i < netdev->rx_bufsz; i++ ) {
-        rxdesc = (struct e1000_rx_desc *)(netdev->rx_base
+    for ( i = 0; i < dev->rx_bufsz; i++ ) {
+        rxdesc = (struct e1000_rx_desc *)(dev->rx_base
                                           + i * sizeof(struct e1000_rx_desc));
         rxdesc->address = (u64)kmalloc(8192 + 16);
         /* FIXME: Memory check */
@@ -346,27 +354,42 @@ e1000_init_hw(struct pci_device *pcidev)
         rxdesc->errors = 0;
         rxdesc->special = 0;
     }
-    mmio_write32(netdev->mmio, E1000_REG_RDBAH, netdev->rx_base >> 32);
-    mmio_write32(netdev->mmio, E1000_REG_RDBAL, netdev->rx_base & 0xffffffff);
-    mmio_write32(netdev->mmio, E1000_REG_RDLEN,
-                 netdev->rx_bufsz * sizeof(struct e1000_rx_desc));
-    mmio_write32(netdev->mmio, E1000_REG_RDH, 0);
+    mmio_write32(dev->mmio, E1000_REG_RDBAH, dev->rx_base >> 32);
+    mmio_write32(dev->mmio, E1000_REG_RDBAL, dev->rx_base & 0xffffffff);
+    mmio_write32(dev->mmio, E1000_REG_RDLEN,
+                 dev->rx_bufsz * sizeof(struct e1000_rx_desc));
+    mmio_write32(dev->mmio, E1000_REG_RDH, 0);
     /* RDT must be larger than 0 for the initial value to receive the first
        packet but I don't know why */
-    mmio_write32(netdev->mmio, E1000_REG_RDT, netdev->rx_bufsz - 1);
-    mmio_write32(netdev->mmio, E1000_REG_RCTL,
+    mmio_write32(dev->mmio, E1000_REG_RDT, dev->rx_bufsz - 1);
+    mmio_write32(dev->mmio, E1000_REG_RCTL,
                  E1000_RCTL_SBP | E1000_RCTL_UPE
                  | E1000_RCTL_MPE | E1000_RCTL_LPE | E1000_RCTL_BAM
                  | E1000_RCTL_BSIZE_8192 | E1000_RCTL_SECRC);
     /* Enable */
-    mmio_write32(netdev->mmio, E1000_REG_RCTL,
-                 mmio_read32(netdev->mmio, E1000_REG_RCTL) | E1000_RCTL_EN);
+    mmio_write32(dev->mmio, E1000_REG_RCTL,
+                 mmio_read32(dev->mmio, E1000_REG_RCTL) | E1000_RCTL_EN);
+
+    return 0;
+}
+
+/*
+ * Setup TX descriptor
+ */
+int
+e1000_setup_tx_desc(struct e1000_device *dev)
+{
+    struct e1000_tx_desc *txdesc;
+    int i;
+
+    dev->tx_tail = 0;
+    dev->tx_bufsz = 768;
 
     /* ToDo: 16 bytes for alignment */
-    netdev->tx_base = (u64)kmalloc(netdev->tx_bufsz
+    dev->tx_base = (u64)kmalloc(dev->tx_bufsz
                                    * sizeof(struct e1000_tx_desc) + 16);
-    for ( i = 0; i < netdev->tx_bufsz; i++ ) {
-        txdesc = (struct e1000_tx_desc *)(netdev->tx_base
+    for ( i = 0; i < dev->tx_bufsz; i++ ) {
+        txdesc = (struct e1000_tx_desc *)(dev->tx_base
                                           + i * sizeof(struct e1000_tx_desc));
         txdesc->address = (u64)kmalloc(8192 + 16);
         txdesc->cmd = 0;
@@ -375,189 +398,22 @@ e1000_init_hw(struct pci_device *pcidev)
         txdesc->css = 0;
         txdesc->special = 0;
     }
-    mmio_write32(netdev->mmio, E1000_REG_TDBAH, netdev->tx_base >> 32);
-    mmio_write32(netdev->mmio, E1000_REG_TDBAL, netdev->tx_base & 0xffffffff);
-    mmio_write32(netdev->mmio, E1000_REG_TDLEN,
-                 netdev->tx_bufsz * sizeof(struct e1000_tx_desc));
-    mmio_write32(netdev->mmio, E1000_REG_TDH, 0);
-    mmio_write32(netdev->mmio, E1000_REG_TDT, 0);
-    mmio_write32(netdev->mmio, E1000_REG_TCTL,
+    mmio_write32(dev->mmio, E1000_REG_TDBAH, dev->tx_base >> 32);
+    mmio_write32(dev->mmio, E1000_REG_TDBAL, dev->tx_base & 0xffffffff);
+    mmio_write32(dev->mmio, E1000_REG_TDLEN,
+                 dev->tx_bufsz * sizeof(struct e1000_tx_desc));
+    mmio_write32(dev->mmio, E1000_REG_TDH, 0);
+    mmio_write32(dev->mmio, E1000_REG_TDT, 0);
+    mmio_write32(dev->mmio, E1000_REG_TCTL,
                  E1000_TCTL_EN | E1000_TCTL_PSP | E1000_TCTL_MULR);
 
-    netdev->pci_device = pcidev;
-
-    return netdev;
-}
-
-
-int
-e1000_sendpkt(u8 *pkt, u32 len, struct netdev *netdev)
-{
-    struct e1000_device *e1000dev;
-    struct e1000_tx_desc *txdesc;
-    u32 tdh;
-    u32 next_tail;
-
-    e1000dev = (struct e1000_device *)netdev->vendor;
-    tdh = mmio_read32(e1000dev->mmio, E1000_REG_TDH);
-
-    next_tail = (e1000dev->tx_tail + 1) % e1000dev->tx_bufsz;
-#if 0
-    if ( tdh == next_tail ) {
-    }
-#endif
-    if ( e1000dev->tx_bufsz -
-         ((e1000dev->tx_bufsz - tdh + e1000dev->tx_tail) % e1000dev->tx_bufsz)
-         <= 1 ) {
-        /* Full */
-        return -1;
-    }
-
-    int i;
-    int j;
-    for ( i = 0; i < 1; i++ ) {
-        txdesc = (struct e1000_tx_desc *)(e1000dev->tx_base + (e1000dev->tx_tail + i)
-                                          * sizeof(struct e1000_tx_desc));
-        for ( j = 0; j < len; j++ ) {
-            ((u8 *)(txdesc->address))[j] = pkt[j];
-        }
-        txdesc->length = len;
-        txdesc->sta = 0;
-        txdesc->special = 0;
-        txdesc->css = 0;
-        txdesc->cso = 0;
-        txdesc->cmd = (1<<3) | (1<<1) | 1;
-    }
-
-    e1000dev->tx_tail = next_tail;
-    mmio_write32(e1000dev->mmio, E1000_REG_TDT, e1000dev->tx_tail);
-
     return 0;
 }
-int
-e1000_recvpkt(u8 *pkt, u32 len, struct netdev *netdev)
-{
-    struct e1000_device *e1000dev;
-    struct e1000_rx_desc *rxdesc;
-    u32 rdh;
 
-    e1000dev = (struct e1000_device *)netdev->vendor;
-    rdh = mmio_read32(e1000dev->mmio, E1000_REG_RDH);
-    if ( rdh == e1000dev->rx_tail ) {
-        return 0;
-    }
 
-    rxdesc = (struct e1000_rx_desc *)(e1000dev->rx_base + e1000dev->rx_tail
-                                      * sizeof(struct e1000_rx_desc));
-
-    e1000dev->rx_tail = (e1000dev->rx_tail + 1) % e1000dev->rx_bufsz;
-    mmio_write32(e1000dev->mmio, E1000_REG_RDT, e1000dev->rx_tail);
-
-    return rxdesc->length;
-}
-
-int
-e1000_routing_test(struct netdev *netdev)
-{
-    struct e1000_device *e1000dev;
-    struct e1000_rx_desc *rxdesc;
-    struct e1000_tx_desc *txdesc;
-    u32 rdh;
-    u32 tdh;
-    int rx_que;
-    int tx_avl;
-    int nrp;
-    int i;
-    int j;
-    u8 *rxpkt;
-    u8 *txpkt;
-
-    e1000dev = (struct e1000_device *)netdev->vendor;
-    for ( ;; ) {
-        rdh = mmio_read32(e1000dev->mmio, E1000_REG_RDH);
-        tdh = mmio_read32(e1000dev->mmio, E1000_REG_TDH);
-
-        rx_que = (e1000dev->rx_bufsz - e1000dev->rx_tail + rdh)
-            % e1000dev->rx_bufsz;
-
-        tx_avl = e1000dev->tx_bufsz
-            - ((e1000dev->tx_bufsz - tdh + e1000dev->tx_tail)
-               % e1000dev->tx_bufsz);
-
-        if ( rx_que > tx_avl ) {
-            nrp = tx_avl;
-        } else {
-            nrp = rx_que;
-        }
-        /* Routing */
-        for ( i = 0; i < nrp; i++ ) {
-            rxdesc = (struct e1000_rx_desc *)
-                (e1000dev->rx_base
-                 + ((e1000dev->rx_tail + i) % e1000dev->rx_bufsz)
-                 * sizeof(struct e1000_rx_desc));
-            txdesc = (struct e1000_tx_desc *)
-                (e1000dev->tx_base
-                 + ((e1000dev->tx_tail + i) % e1000dev->tx_bufsz)
-                 * sizeof(struct e1000_tx_desc));
-
-            rxpkt = (u8 *)rxdesc->address;
-            txpkt = (u8 *)txdesc->address;
-
-            /* Check */
-#if 0
-            kprintf("XX: %x %x %d.%d.%d.%d\r\n", rxdesc->special,
-                    rxdesc->length, rxpkt[30], rxpkt[31], rxpkt[32], rxpkt[33]);
-#endif
-            if ( rxdesc->special != 100
-                 || rxpkt[30] != 192 || rxpkt[31] != 168
-                 || rxpkt[32] != 200 || rxpkt[33] != 2 ) {
-                txdesc->length = 0;
-                txdesc->sta = 0;
-                txdesc->special = 0;
-                txdesc->css = 0;
-                txdesc->cso = 0;
-                txdesc->cmd = 0;
-                continue;
-            }
-
-            /* dst (MBP) */
-            txpkt[0] = 0x40;
-            txpkt[1] = 0x6c;
-            txpkt[2] = 0x8f;
-            txpkt[3] = 0x5b;
-            txpkt[4] = 0x8d;
-            txpkt[5] = 0x02;
-            /* src (thinkpad T410) */
-            txpkt[6] = 0xf0;
-            txpkt[7] = 0xde;
-            txpkt[8] = 0xf1;
-            txpkt[9] = 0x37;
-            txpkt[10] = 0xea;
-            txpkt[11] = 0xf6;
-            for ( j = 12; j < rxdesc->length; j++ ) {
-                txpkt[j] = rxpkt[j];
-            }
-            txdesc->length = rxdesc->length;
-            txdesc->sta = 0;
-            txdesc->css = 0;
-            txdesc->cso = 0;
-            txdesc->special = 200;
-            txdesc->cmd = (1<<3) | (1<<1) | 1 | (1<<6);
-        }
-
-        e1000dev->rx_tail = (e1000dev->rx_tail + nrp) % e1000dev->rx_bufsz;
-        e1000dev->tx_tail = (e1000dev->tx_tail + nrp) % e1000dev->tx_bufsz;
-        mmio_write32(e1000dev->mmio, E1000_REG_RDT, e1000dev->rx_tail);
-        mmio_write32(e1000dev->mmio, E1000_REG_TDT, e1000dev->tx_tail);
-    }
-
-    return 0;
-}
 
 
 typedef int (*router_rx_cb_t)(const u8 *, u32, int);
-int arch_dbg_printf(const char *fmt, ...);
-
 
 /*
  * Get a valid TX buffer
