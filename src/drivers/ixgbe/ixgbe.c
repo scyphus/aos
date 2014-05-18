@@ -14,6 +14,8 @@
 
 void pause(void);
 
+#define PCI_VENDOR_INTEL        0x8086
+
 
 #define IXGBE_X520              0x10fb
 
@@ -153,12 +155,31 @@ struct ixgbe_device {
 /* Prototype declarations */
 void ixgbe_update_hw(void);
 struct ixgbe_device * ixgbe_init_hw(struct pci_device *);
+int ixgbe_setup_rx_desc(struct ixgbe_device *);
+int ixgbe_setup_tx_desc(struct ixgbe_device *);
 
 
-int ixgbe_sendpkt(u8 *, u32, struct netdev *);
-int ixgbe_recvpkt(u8 *, u32, struct netdev *);
 int ixgbe_routing_test(struct netdev *);
 
+
+
+/*
+ * Read data from a PCI register by MMIO
+ */
+static __inline__ volatile u32
+mmio_read32(u64 base, u64 offset)
+{
+    return *(volatile u32 *)(base + offset);
+}
+
+/*
+ * Write data to a PCI register by MMIO
+ */
+static __inline__ void
+mmio_write32(u64 base, u64 offset, volatile u32 value)
+{
+    *(volatile u32 *)(base + offset) = value;
+}
 
 /*
  * Initialize this driver
@@ -180,10 +201,13 @@ ixgbe_update_hw(void)
     struct ixgbe_device *ixgbedev;
     int idx;
 
-    idx = 0;
+    /* Get the list of PCI devices */
     pci = pci_list();
+
+    /* Search NICs requiring this ixgbe driver */
+    idx = 0;
     while ( NULL != pci ) {
-        if ( 0x8086 == pci->device->vendor_id ) {
+        if ( PCI_VENDOR_INTEL == pci->device->vendor_id ) {
             switch ( pci->device->device_id ) {
             case IXGBE_X520:
                 ixgbedev = ixgbe_init_hw(pci->device);
@@ -198,75 +222,63 @@ ixgbe_update_hw(void)
     }
 }
 
-static __inline__ volatile u32
-mmio_read32(u64 base, u64 offset)
-{
-    return *(volatile u32 *)(base + offset);
-}
-
-static __inline__ void
-mmio_write32(u64 base, u64 offset, volatile u32 value)
-{
-    *(volatile u32 *)(base + offset) = value;
-}
-
 /*
  * Initialize hardware
  */
 struct ixgbe_device *
 ixgbe_init_hw(struct pci_device *pcidev)
 {
-    struct ixgbe_device *netdev;
+    struct ixgbe_device *dev;
     u32 m32;
     int i;
 
-    netdev = kmalloc(sizeof(struct ixgbe_device));
+    dev = kmalloc(sizeof(struct ixgbe_device));
 
     /* Assert */
-    if ( 0x8086 != pcidev->vendor_id ) {
-        kfree(netdev);
+    if ( PCI_VENDOR_INTEL != pcidev->vendor_id ) {
+        kfree(dev);
         return NULL;
     }
 
     /* Read MMIO */
-    netdev->mmio = pci_read_mmio(pcidev->bus, pcidev->slot, pcidev->func);
-    if ( 0 == netdev->mmio ) {
-        kfree(netdev);
+    dev->mmio = pci_read_mmio(pcidev->bus, pcidev->slot, pcidev->func);
+    if ( 0 == dev->mmio ) {
+        kfree(dev);
         return NULL;
     }
 
     /* Reset PCIe master */
-    mmio_write32(netdev->mmio, IXGBE_REG_CTRL,
-                 mmio_read32(netdev->mmio, IXGBE_REG_CTRL)
+    mmio_write32(dev->mmio, IXGBE_REG_CTRL,
+                 mmio_read32(dev->mmio, IXGBE_REG_CTRL)
                  | IXGBE_CTRL_PCIE_MASTER_DISABLE);
     arch_busy_usleep(50);
-    mmio_write32(netdev->mmio, IXGBE_REG_CTRL,
-                 mmio_read32(netdev->mmio, IXGBE_REG_CTRL)
+    mmio_write32(dev->mmio, IXGBE_REG_CTRL,
+                 mmio_read32(dev->mmio, IXGBE_REG_CTRL)
                  & (~IXGBE_CTRL_PCIE_MASTER_DISABLE));
     arch_busy_usleep(50);
 
     /* Read MAC address */
     switch ( pcidev->device_id ) {
     case IXGBE_X520:
-        m32 = mmio_read32(netdev->mmio, IXGBE_REG_RAL(0));
-        netdev->macaddr[0] = m32 & 0xff;
-        netdev->macaddr[1] = (m32 >> 8) & 0xff;
-        netdev->macaddr[2] = (m32 >> 16) & 0xff;
-        netdev->macaddr[3] = (m32 >> 24) & 0xff;
-        m32 = mmio_read32(netdev->mmio, IXGBE_REG_RAH(0));
-        netdev->macaddr[4] = m32 & 0xff;
-        netdev->macaddr[5] = (m32 >> 8) & 0xff;
+        m32 = mmio_read32(dev->mmio, IXGBE_REG_RAL(0));
+        dev->macaddr[0] = m32 & 0xff;
+        dev->macaddr[1] = (m32 >> 8) & 0xff;
+        dev->macaddr[2] = (m32 >> 16) & 0xff;
+        dev->macaddr[3] = (m32 >> 24) & 0xff;
+        m32 = mmio_read32(dev->mmio, IXGBE_REG_RAH(0));
+        dev->macaddr[4] = m32 & 0xff;
+        dev->macaddr[5] = (m32 >> 8) & 0xff;
         break;
     }
 
     /* Initialize */
-    mmio_write32(netdev->mmio, IXGBE_REG_EIMC, 0x7fffffff);
-    mmio_write32(netdev->mmio, IXGBE_REG_CTRL,
-                 mmio_read32(netdev->mmio, IXGBE_REG_CTRL)
+    mmio_write32(dev->mmio, IXGBE_REG_EIMC, 0x7fffffff);
+    mmio_write32(dev->mmio, IXGBE_REG_CTRL,
+                 mmio_read32(dev->mmio, IXGBE_REG_CTRL)
                  | IXGBE_CTRL_RST);
     for ( i = 0; i < 10; i++ ) {
         arch_busy_usleep(1);
-        m32 = mmio_read32(netdev->mmio, IXGBE_REG_CTRL);
+        m32 = mmio_read32(dev->mmio, IXGBE_REG_CTRL);
         if ( !(m32 & IXGBE_CTRL_RST) ) {
             break;
         }
@@ -274,89 +286,93 @@ ixgbe_init_hw(struct pci_device *pcidev)
     if ( m32 & IXGBE_CTRL_RST ) {
         kprintf("Error on reset\r\n");
     }
-    //kprintf("Test: %x\r\n", mmio_read32(netdev->mmio, 8));
     arch_busy_usleep(50);
 
-    mmio_write32(netdev->mmio, IXGBE_REG_FCTRL,
+    mmio_write32(dev->mmio, IXGBE_REG_FCTRL,
                  IXGBE_FCTRL_MPE | IXGBE_FCTRL_UPE | IXGBE_FCTRL_BAM);
 
     /* Multicast array table */
     for ( i = 0; i < 128; i++ ) {
-        mmio_write32(netdev->mmio, IXGBE_REG_MTA + i * 4, 0);
+        mmio_write32(dev->mmio, IXGBE_REG_MTA + i * 4, 0);
     }
 
     /* Enable interrupt (REG_IMS <- 0x1F6DC, then read REG_ICR ) */
-    //mmio_write32(netdev->mmio, IXGBE_REG_IMS, 0x1f6dc);
-    //mmio_read32(netdev->mmio, 0xc0);
+    //mmio_write32(dev->mmio, IXGBE_REG_IMS, 0x1f6dc);
+    //mmio_read32(dev->mmio, 0xc0);
 
-    /* Start TX/RX */
+    /* Setup TX/RX descriptor */
+    ixgbe_setup_rx_desc(dev);
+    ixgbe_setup_tx_desc(dev);
+
+    dev->pci_device = pcidev;
+
+    return dev;
+}
+
+/*
+ * Setup RX descriptor
+ */
+int
+ixgbe_setup_rx_desc(struct ixgbe_device *dev)
+{
     union ixgbe_adv_rx_desc *rxdesc;
-    //struct ixgbe_tx_desc *txdesc;
-    struct ixgbe_adv_tx_desc_data *txdesc;
+    int i;
+    u32 m32;
 
-    netdev->rx_tail = 0;
-    netdev->tx_tail[0] = 0;
-    netdev->tx_tail[1] = 0;
+    /* Previous tail */
+    dev->rx_tail = 0;
     /* up to 64 K minus 8 */
-    netdev->rx_bufsz = 2048 * 4;
-    netdev->tx_bufsz[0] = 2048 * 4;
-    netdev->tx_bufsz[1] = 768;
-
+    dev->rx_bufsz = 2048 * 4;
     /* Cache */
-    netdev->rx_head_cache = 0;
-    netdev->tx_head_cache[0] = 0;
-    netdev->tx_head_cache[1] = 0;
+    dev->rx_head_cache = 0;
 
-    netdev->rx_read[0] = kmalloc(netdev->rx_bufsz
-                                 * sizeof(struct ixgbe_adv_rx_desc_read) + 16);
-
-    /* ToDo: 16 bytes for alignment */
-    netdev->rx_base = (u64)kmalloc(netdev->rx_bufsz
-                                   * sizeof(union ixgbe_adv_rx_desc) + 16);
-    if ( 0 == netdev->rx_base ) {
-        kfree(netdev);
+    /* Allocate memory for RX descriptors */
+    dev->rx_read[0] = kmalloc(dev->rx_bufsz
+                              * sizeof(struct ixgbe_adv_rx_desc_read));
+    if ( 0 == dev->rx_read[0] ) {
+        kfree(dev);
         return NULL;
     }
-    for ( i = 0; i < netdev->rx_bufsz; i++ ) {
-        rxdesc = (union ixgbe_adv_rx_desc *)(netdev->rx_base
+
+    /* ToDo: 16 bytes for alignment */
+    dev->rx_base = (u64)kmalloc(dev->rx_bufsz
+                                * sizeof(union ixgbe_adv_rx_desc));
+    if ( 0 == dev->rx_base ) {
+        kfree(dev);
+        return NULL;
+    }
+    for ( i = 0; i < dev->rx_bufsz; i++ ) {
+        rxdesc = (union ixgbe_adv_rx_desc *)(dev->rx_base
                                              + i * sizeof(union ixgbe_adv_rx_desc));
         rxdesc->read.pkt_addr = (u64)kmalloc(8192 * 2);
         rxdesc->read.hdr_addr = (u64)kmalloc(4096);
 
-        netdev->rx_read[0][i].pkt_addr = rxdesc->read.pkt_addr;
-        netdev->rx_read[0][i].hdr_addr = rxdesc->read.hdr_addr;
-#if 0
-        rxdesc->address = (u64)kmalloc(8192 * 2);
-        /* FIXME: Memory check */
-        rxdesc->checksum = 0;
-        rxdesc->status = 0;
-        rxdesc->errors = 0;
-        rxdesc->special = 0;
-#endif
+        dev->rx_read[0][i].pkt_addr = rxdesc->read.pkt_addr;
+        dev->rx_read[0][i].hdr_addr = rxdesc->read.hdr_addr;
     }
 
-    mmio_write32(netdev->mmio, IXGBE_REG_RDBAH(0), netdev->rx_base >> 32);
-    mmio_write32(netdev->mmio, IXGBE_REG_RDBAL(0), netdev->rx_base & 0xffffffff);
-    mmio_write32(netdev->mmio, IXGBE_REG_RDLEN(0),
-                 netdev->rx_bufsz * sizeof(union ixgbe_adv_rx_desc));
+    mmio_write32(dev->mmio, IXGBE_REG_RDBAH(0), dev->rx_base >> 32);
+    mmio_write32(dev->mmio, IXGBE_REG_RDBAL(0), dev->rx_base & 0xffffffff);
+    mmio_write32(dev->mmio, IXGBE_REG_RDLEN(0),
+                 dev->rx_bufsz * sizeof(union ixgbe_adv_rx_desc));
 
-    mmio_write32(netdev->mmio, IXGBE_REG_SRRCTL0,
+    mmio_write32(dev->mmio, IXGBE_REG_SRRCTL0,
                  IXGBE_SRRCTL_BSIZE_PKT16K | IXGBE_SRRCTL_BSIZE_HDR256
                  | /*IXGBE_SRRCTL_DESCTYPE_LEGACY*/(1<<25));
 
-    /* Jumbo frame */
+    /* Support jumbo frame */
 #if 1
-    mmio_write32(netdev->mmio, /*IXGBE_REG_MAXFRS*/0x04268, 0x23f0<<16);
-    mmio_write32(netdev->mmio, /*HLREG*/0x04240,
-                 mmio_read32(netdev->mmio, 0x04240) | (1<<2));
+    mmio_write32(dev->mmio, /*IXGBE_REG_MAXFRS*/0x04268, 0x23f0<<16);
+    mmio_write32(dev->mmio, /*HLREG*/0x04240,
+                 mmio_read32(dev->mmio, 0x04240) | (1<<2));
 #endif
 
     //RSCCTL
-    mmio_write32(netdev->mmio, IXGBE_REG_RXDCTL0,
+    mmio_write32(dev->mmio, IXGBE_REG_RXDCTL0,
                  IXGBE_RXDCTL_ENABLE | IXGBE_RXDCTL_VME);
     for ( i = 0; i < 10; i++ ) {
         arch_busy_usleep(1);
-        m32 = mmio_read32(netdev->mmio, IXGBE_REG_RXDCTL0);
+        m32 = mmio_read32(dev->mmio, IXGBE_REG_RXDCTL0);
         if ( m32 & IXGBE_RXDCTL_ENABLE ) {
             break;
         }
@@ -365,46 +381,59 @@ ixgbe_init_hw(struct pci_device *pcidev)
         kprintf("Error on enable an RX queue\r\n");
     }
 
-    mmio_write32(netdev->mmio, IXGBE_REG_RDH(0), 0);
+    mmio_write32(dev->mmio, IXGBE_REG_RDH(0), 0);
     /* RDT must be larger than 0 for the initial value to receive the first
        packet but I don't know why */
-    mmio_write32(netdev->mmio, IXGBE_REG_RDT(0), netdev->rx_bufsz - 1);
-    mmio_write32(netdev->mmio, IXGBE_REG_RXCTL, IXGBE_RXCTL_RXEN);
+    mmio_write32(dev->mmio, IXGBE_REG_RDT(0), dev->rx_bufsz - 1);
+    mmio_write32(dev->mmio, IXGBE_REG_RXCTL, IXGBE_RXCTL_RXEN);
 
+    return 0;
+}
+
+/*
+ * Setup TX descriptor
+ */
+int
+ixgbe_setup_tx_desc(struct ixgbe_device *dev)
+{
+    struct ixgbe_adv_tx_desc_data *txdesc;
+    int i;
+    u32 m32;
+
+    dev->tx_tail[0] = 0;
+    dev->tx_tail[1] = 0;
+    /* up to 64 K minus 8 */
+    dev->tx_bufsz[0] = 2048 * 4;
+    dev->tx_bufsz[1] = 768;
+    /* Cache */
+    dev->tx_head_cache[0] = 0;
+    dev->tx_head_cache[1] = 0;
 
     /* ToDo: 16 bytes for alignment */
-    netdev->tx_base[0] = (u64)kmalloc(netdev->tx_bufsz[0]
-                                   * sizeof(struct ixgbe_tx_desc) + 16);
-    for ( i = 0; i < netdev->tx_bufsz[0]; i++ ) {
-        txdesc = (struct ixgbe_adv_tx_desc_data *)(netdev->tx_base[0]
-                                                   + i * sizeof(struct ixgbe_tx_desc));
-#if 0
-        txdesc->address = (u64)kmalloc(8192 * 2);
-        txdesc->cmd = 0;
-        txdesc->sta = 0;
-        txdesc->cso = 0;
-        txdesc->css = 0;
-        txdesc->special = 0;
-#else
+    dev->tx_base[0] = (u64)kmalloc(dev->tx_bufsz[0]
+                                   * sizeof(struct ixgbe_adv_tx_desc_data));
+    for ( i = 0; i < dev->tx_bufsz[0]; i++ ) {
+        txdesc = (struct ixgbe_adv_tx_desc_data *)(dev->tx_base[0] + i
+               * sizeof(struct ixgbe_adv_tx_desc_data));
         txdesc->pkt_addr = 0;
         txdesc->length = 0;
         txdesc->dtyp_mac = (3 << 4);
         txdesc->dcmd = 0;
         txdesc->paylen_ports_cc_idx_sta = 0;
-#endif
     }
-    mmio_write32(netdev->mmio, IXGBE_REG_TDBAH(0), netdev->tx_base[0] >> 32);
-    mmio_write32(netdev->mmio, IXGBE_REG_TDBAL(0), netdev->tx_base[0] & 0xffffffff);
-    mmio_write32(netdev->mmio, IXGBE_REG_TDLEN(0),
-                 netdev->tx_bufsz[0] * sizeof(struct ixgbe_tx_desc));
-    mmio_write32(netdev->mmio, IXGBE_REG_TDH(0), 0);
-    mmio_write32(netdev->mmio, IXGBE_REG_TDT(0), 0);
+    mmio_write32(dev->mmio, IXGBE_REG_TDBAH(0), dev->tx_base[0] >> 32);
+    mmio_write32(dev->mmio, IXGBE_REG_TDBAL(0), dev->tx_base[0] & 0xffffffff);
+    mmio_write32(dev->mmio, IXGBE_REG_TDLEN(0),
+                 dev->tx_bufsz[0] * sizeof(struct ixgbe_tx_desc));
+    mmio_write32(dev->mmio, IXGBE_REG_TDH(0), 0);
+    mmio_write32(dev->mmio, IXGBE_REG_TDT(0), 0);
 
+#if 0
     /* Second */
-    netdev->tx_base[1] = (u64)kmalloc(netdev->tx_bufsz[1]
+    dev->tx_base[1] = (u64)kmalloc(dev->tx_bufsz[1]
                                    * sizeof(struct ixgbe_tx_desc) + 16);
-    for ( i = 0; i < netdev->tx_bufsz[1]; i++ ) {
-        txdesc = (struct ixgbe_tx_desc *)(netdev->tx_base[1]
+    for ( i = 0; i < dev->tx_bufsz[1]; i++ ) {
+        txdesc = (struct ixgbe_tx_desc *)(dev->tx_base[1]
                                           + i * sizeof(struct ixgbe_tx_desc));
 #if 0
         txdesc->address = (u64)kmalloc(8192 * 2);
@@ -421,38 +450,38 @@ ixgbe_init_hw(struct pci_device *pcidev)
         txdesc->paylen_ports_cc_idx_sta = 0;
 #endif
     }
-    mmio_write32(netdev->mmio, IXGBE_REG_TDBAH(1), netdev->tx_base[1] >> 32);
-    mmio_write32(netdev->mmio, IXGBE_REG_TDBAL(1), netdev->tx_base[1] & 0xffffffff);
-    mmio_write32(netdev->mmio, IXGBE_REG_TDLEN(1),
-                 netdev->tx_bufsz[1] * sizeof(struct ixgbe_tx_desc));
-    mmio_write32(netdev->mmio, IXGBE_REG_TDH(1), 0);
-    mmio_write32(netdev->mmio, IXGBE_REG_TDT(1), 0);
-
+    mmio_write32(dev->mmio, IXGBE_REG_TDBAH(1), dev->tx_base[1] >> 32);
+    mmio_write32(dev->mmio, IXGBE_REG_TDBAL(1), dev->tx_base[1] & 0xffffffff);
+    mmio_write32(dev->mmio, IXGBE_REG_TDLEN(1),
+                 dev->tx_bufsz[1] * sizeof(struct ixgbe_tx_desc));
+    mmio_write32(dev->mmio, IXGBE_REG_TDH(1), 0);
+    mmio_write32(dev->mmio, IXGBE_REG_TDT(1), 0);
+#endif
 
     /* Write-back */
 #if 0
     u32 *tdwba = kmalloc(4096);
-    mmio_write32(netdev->mmio, IXGBE_REG_TDWBAL(0),
+    mmio_write32(dev->mmio, IXGBE_REG_TDWBAL(0),
                  ((u64)tdwba & 0xfffffffc) | 1);
-    mmio_write32(netdev->mmio, IXGBE_REG_TDWBAH(0), ((u64)tdwba) >> 32);
-    netdev->tx_head = tdwba;
+    mmio_write32(dev->mmio, IXGBE_REG_TDWBAH(0), ((u64)tdwba) >> 32);
+    dev->tx_head = tdwba;
 #endif
 
 
     /* Enable */
-    mmio_write32(netdev->mmio, IXGBE_REG_DMATXCTL,
+    mmio_write32(dev->mmio, IXGBE_REG_DMATXCTL,
                  IXGBE_DMATXCTL_TE | IXGBE_DMATXCTL_VT);
 
     /* First */
-    mmio_write32(netdev->mmio, IXGBE_REG_TXDCTL(0), IXGBE_TXDCTL_ENABLE);
+    mmio_write32(dev->mmio, IXGBE_REG_TXDCTL(0), IXGBE_TXDCTL_ENABLE);
 #if 1
-    mmio_write32(netdev->mmio, IXGBE_REG_TXDCTL(0), IXGBE_TXDCTL_ENABLE
+    mmio_write32(dev->mmio, IXGBE_REG_TXDCTL(0), IXGBE_TXDCTL_ENABLE
                  | (64<<16) /* WTHRESH */
                  | (16<<8) /* HTHRESH */| (16) /* PTHRESH */);
 #endif
     for ( i = 0; i < 10; i++ ) {
         arch_busy_usleep(1);
-        m32 = mmio_read32(netdev->mmio, IXGBE_REG_TXDCTL(0));
+        m32 = mmio_read32(dev->mmio, IXGBE_REG_TXDCTL(0));
         if ( m32 & IXGBE_TXDCTL_ENABLE ) {
             break;
         }
@@ -463,10 +492,10 @@ ixgbe_init_hw(struct pci_device *pcidev)
 
 #if 0
     /* Second */
-    mmio_write32(netdev->mmio, IXGBE_REG_TXDCTL(1), IXGBE_TXDCTL_ENABLE);
+    mmio_write32(dev->mmio, IXGBE_REG_TXDCTL(1), IXGBE_TXDCTL_ENABLE);
     for ( i = 0; i < 10; i++ ) {
         arch_busy_usleep(1);
-        m32 = mmio_read32(netdev->mmio, IXGBE_REG_TXDCTL(1));
+        m32 = mmio_read32(dev->mmio, IXGBE_REG_TXDCTL(1));
         if ( m32 & IXGBE_TXDCTL_ENABLE ) {
             break;
         }
@@ -476,10 +505,13 @@ ixgbe_init_hw(struct pci_device *pcidev)
     }
 #endif
 
-    netdev->pci_device = pcidev;
-
-    return netdev;
+    return 0;
 }
+
+
+
+
+
 
 int
 ixgbe_check_buffer(struct netdev *netdev)
@@ -495,72 +527,7 @@ ixgbe_check_buffer(struct netdev *netdev)
     return 0;
 }
 
-int
-ixgbe_sendpkt(u8 *pkt, u32 len, struct netdev *netdev)
-{
-    struct ixgbe_device *ixgbedev;
-    struct ixgbe_tx_desc *txdesc;
-    u32 tdh;
-    u32 next_tail;
 
-    ixgbedev = (struct ixgbe_device *)netdev->vendor;
-    tdh = mmio_read32(ixgbedev->mmio, IXGBE_REG_TDH(0));
-
-    next_tail = (ixgbedev->tx_tail[0] + 1) % ixgbedev->tx_bufsz[0];
-#if 0
-    if ( tdh == next_tail ) {
-    }
-#endif
-    if ( ixgbedev->tx_bufsz[0] -
-         ((ixgbedev->tx_bufsz[0] - tdh + ixgbedev->tx_tail[0]) % ixgbedev->tx_bufsz[0])
-         <= 1 ) {
-        /* Full */
-        return -1;
-    }
-
-    int i;
-    int j;
-    for ( i = 0; i < 1; i++ ) {
-        txdesc = (struct ixgbe_tx_desc *)(ixgbedev->tx_base[0]
-                                          + (ixgbedev->tx_tail[0] + i)
-                                          * sizeof(struct ixgbe_tx_desc));
-        for ( j = 0; j < len; j++ ) {
-            ((u8 *)(txdesc->address))[j] = pkt[j];
-        }
-        txdesc->length = len;
-        txdesc->sta = 0;
-        txdesc->special = 0;
-        txdesc->css = 0;
-        txdesc->cso = 0;
-        txdesc->cmd = (1<<3) | (1<<1) | 1;
-    }
-
-    ixgbedev->tx_tail[0] = next_tail;
-    mmio_write32(ixgbedev->mmio, IXGBE_REG_TDT(0), ixgbedev->tx_tail[0]);
-
-    return 0;
-}
-int
-ixgbe_recvpkt(u8 *pkt, u32 len, struct netdev *netdev)
-{
-    struct ixgbe_device *ixgbedev;
-    struct ixgbe_rx_desc *rxdesc;
-    u32 rdh;
-
-    ixgbedev = (struct ixgbe_device *)netdev->vendor;
-    rdh = mmio_read32(ixgbedev->mmio, IXGBE_REG_RDH(0));
-    if ( rdh == ixgbedev->rx_tail ) {
-        return 0;
-    }
-
-    rxdesc = (struct ixgbe_rx_desc *)(ixgbedev->rx_base + ixgbedev->rx_tail
-                                      * sizeof(struct ixgbe_rx_desc));
-
-    ixgbedev->rx_tail = (ixgbedev->rx_tail + 1) % ixgbedev->rx_bufsz;
-    mmio_write32(ixgbedev->mmio, IXGBE_REG_RDT(0), ixgbedev->rx_tail);
-
-    return rxdesc->length;
-}
 
 int
 ixgbe_routing_test(struct netdev *netdev)
@@ -767,102 +734,6 @@ ixgbe_tx_commit(struct netdev *netdev)
     u32 tdh;
     tdh = mmio_read32(ixgbedev->mmio, IXGBE_REG_TDH(0));
     ixgbedev->tx_head_cache[0] = tdh;
-
-    return 0;
-}
-
-
-/*
- * Routing process (RX poll)
- */
-int
-ixgbe_routing(struct netdev *netdev, router_rx_cb_t cb)
-{
-    struct ixgbe_device *ixgbedev;
-    struct ixgbe_rx_desc *rxdesc;
-    u32 rdh;
-    u32 tdh;
-    int rx_que;
-    int i;
-    u8 *rxpkt;
-
-    /* Retrieve data structure of ixgbe driver */
-    ixgbedev = (struct ixgbe_device *)netdev->vendor;
-
-    for ( ;; ) {
-        /* Get the head pointers of RX/TX ring buffers */
-        rdh = mmio_read32(ixgbedev->mmio, IXGBE_REG_RDH(0));
-        tdh = mmio_read32(ixgbedev->mmio, IXGBE_REG_TDH(0));
-
-        /* Update the cache */
-        ixgbedev->rx_head_cache = rdh;
-        ixgbedev->tx_head_cache[0] = tdh;
-
-        /* Get RX queue length */
-        rx_que = (ixgbedev->rx_bufsz - ixgbedev->rx_tail + rdh)
-            % ixgbedev->rx_bufsz;
-
-#if 0
-        rxdesc = (struct ixgbe_rx_desc *)
-            (ixgbedev->rx_base + ixgbedev->rx_tail * sizeof(struct ixgbe_rx_desc));
-        kprintf("[%d : %d / %d /// %x | %d]\r\n", rdh, ixgbedev->rx_tail, rx_que,
-                rxdesc->status, mmio_read32(ixgbedev->mmio, IXGBE_REG_RDH(0)));
-#endif
-
-#if 0
-        /* Device status */
-        kprintf("[%x : %x]\r\n",
-                mmio_read32(ixgbedev->mmio, IXGBE_REG_RDH(0)),
-                mmio_read32(ixgbedev->mmio, IXGBE_REG_RDT(0)));
-#endif
-
-        if ( rx_que <= 0 ) {
-            continue;
-        }
-#if 0
-        kprintf("[%x : %x]\r\n",
-                mmio_read32(ixgbedev->mmio, IXGBE_REG_RDH(0)),
-                mmio_read32(ixgbedev->mmio, IXGBE_REG_RDT(0)));
-#endif
-
-        /* Routing */
-        for ( i = 0; i < rx_que; i++ ) {
-            rxdesc = (struct ixgbe_rx_desc *)
-                (ixgbedev->rx_base
-                 + ((ixgbedev->rx_tail + i) % ixgbedev->rx_bufsz)
-                 * sizeof(struct ixgbe_rx_desc));
-
-#if 0
-            kprintf("[%x %x %x]\r\n",
-                    rxdesc->checksum, rxdesc->status, rxdesc->errors);
-#endif
-            rxpkt = (u8 *)rxdesc->address;
-
-            if ( rxdesc->status & (1<<3) ) {
-                /* VLAN packet (VP) */
-                cb(rxpkt, rxdesc->length, rxdesc->special & 0xfff);
-            } else {
-                cb(rxpkt, rxdesc->length, 0);
-            }
-
-            rxdesc->status = 0;
-        }
-
-        /* Sync RX */
-        ixgbedev->rx_tail = (ixgbedev->rx_tail + rx_que - 1) % ixgbedev->rx_bufsz;
-        mmio_write32(ixgbedev->mmio, IXGBE_REG_RDT(0), ixgbedev->rx_tail);
-        ixgbedev->rx_tail = (ixgbedev->rx_tail + 1) % ixgbedev->rx_bufsz;
-
-        /* Commit TX queue */
-        ixgbe_tx_commit(netdev);
-
-#if 0
-        kprintf("C0 : %x %x %x \r\n",
-                mmio_read32(ixgbedev->mmio, 0xc0),
-                mmio_read32(ixgbedev->mmio, 0xc0),
-                mmio_read32(ixgbedev->mmio, 0xc0));
-#endif
-    }
 
     return 0;
 }
