@@ -101,7 +101,6 @@ _builtin_show(char *const argv[])
                     list->netdev->macaddr[3],
                     list->netdev->macaddr[4],
                     list->netdev->macaddr[5]);
-            ixgbe_check_buffer(list->netdev);
             list = list->next;
         }
     } else if ( 0 == kstrcmp("pci", argv[1]) ) {
@@ -375,12 +374,9 @@ _parse_cmd(const char *cmd)
 }
 
 
-
 /*
- * show
+ * Execute command
  */
-
-
 static void
 _exec_cmd(struct kshell *kshell)
 {

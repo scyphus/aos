@@ -104,16 +104,16 @@ struct e1000e_device * e1000e_init_hw(struct pci_device *);
 int e1000e_setup_rx_desc(struct e1000e_device *);
 int e1000e_setup_tx_desc(struct e1000e_device *);
 
-static __inline__ u32
+static __inline__ volatile u32
 mmio_read32(u64 base, u64 offset)
 {
-    return *(u32 *)(base + offset);
+    return *(volatile u32 *)(base + offset);
 }
 
 static __inline__ void
-mmio_write32(u64 base, u64 offset, u32 value)
+mmio_write32(u64 base, u64 offset, volatile u32 value)
 {
-    *(u32 *)(base + offset) = value;
+    *(volatile u32 *)(base + offset) = value;
 }
 
 /*
@@ -134,7 +134,6 @@ e1000e_update_hw(void)
 {
     struct pci *pci;
     struct e1000e_device *dev;
-    char name[NETDEV_MAX_NAME];
     int idx;
 
     idx = 0;
@@ -145,10 +144,7 @@ e1000e_update_hw(void)
             case E1000E_I217V:
             case E1000E_I218V:
                 dev = e1000e_init_hw(pci->device);
-                name[0] = 'e';
-                name[1] = '0' + idx;
-                name[2] = '\0';
-                netdev_add_device(name, dev->macaddr, dev);
+                netdev_add_device(dev->macaddr, dev);
                 idx++;
                 break;
             default:

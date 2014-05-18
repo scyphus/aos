@@ -23,15 +23,18 @@ netdev_init(void)
  * Add one device
  */
 int
-netdev_add_device(const char *name, const u8 *macaddr, void *vendor)
+netdev_add_device(const u8 *macaddr, void *vendor)
 {
     struct netdev_list **list;
     int i;
+    int num;
 
     /* Search the tail of the list */
     list = &netdev_head;
+    num = 0;
     while ( NULL != *list ) {
         list = &(*list)->next;
+        num++;
     }
 
     /* Allocate memory for the tail of the list */
@@ -45,10 +48,9 @@ netdev_add_device(const char *name, const u8 *macaddr, void *vendor)
         kfree(*list);
         return -1;
     }
-    for ( i = 0; i < NETDEV_MAX_NAME - 1 && 0 != name[i]; i++ ) {
-        (*list)->netdev->name[i] = name[i];
-    }
-    (*list)->netdev->name[i] = 0;
+    (*list)->netdev->name[0] = 'e';
+    (*list)->netdev->name[1] = '0' + num;
+    (*list)->netdev->name[2] = '\0';
 
     for ( i = 0; i < 6; i++ ) {
         (*list)->netdev->macaddr[i] = macaddr[i];

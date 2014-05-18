@@ -206,6 +206,7 @@ int this_cpu(void);
 void halt(void);
 
 u64 bswap64(u64);
+void movsb(void *, const void *, u64);
 void set_cr3(u64);
 u64 rdtsc(void);
 

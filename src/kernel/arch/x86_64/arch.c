@@ -162,10 +162,12 @@ arch_bsp_init(void)
     /* Initialize PCI driver */
     arch_dbg_printf("Searching PCI devices.\r\n");
     pci_init();
+    arch_dbg_printf("Initializing network devices.\r\n");
     netdev_init();
     e1000_init();
     e1000e_init();
     ixgbe_init();
+    arch_dbg_printf("Initializing AHCI.\r\n");
     ahci_init();
 
     /* Check and copy trampoline */
@@ -253,7 +255,15 @@ arch_ap_init(void)
 
 
 
-
+/*
+ * Memory copy
+ */
+void *
+arch_memcpy(void *dst, const void *src, u64 sz)
+{
+    movsb(dst, src, sz);
+    return dst;
+}
 
 
 /*

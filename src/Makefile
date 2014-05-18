@@ -1,9 +1,10 @@
 #
-# $Id$
+# Copyright (c) 2013 Scyphus Solutions Co. Ltd.
+# Copyright (c) 2014 Hirochika Asai
+# All rights reserved.
 #
-# Copyright (c) 2013-2014 Scyphus Solutions. All rights reserved.
 # Authors:
-#      Hirochika Asai  <asai@scyphus.co.jp>
+#      Hirochika Asai  <asai@jar.jp>
 #
 
 ARCH=x86_64

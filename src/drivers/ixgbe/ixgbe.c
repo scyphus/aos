@@ -9,18 +9,16 @@
 
 #include <aos/const.h>
 #include "../pci/pci.h"
+#include "../net/netdev.h"
 #include "../../kernel/kernel.h"
 
 void pause(void);
 
-extern struct netdev_list *netdev_head;
 
 #define IXGBE_X520              0x10fb
 
 #define IXGBE_REG_RAL(n)        0xa200 + 8 * (n)
 #define IXGBE_REG_RAH(n)        0xa204 + 8 * (n)
-//#define IXGBE_REG_RAL0          0x5400
-//#define IXGBE_REG_RAH0          0x5404
 #define IXGBE_REG_CTRL          0x0000
 #define IXGBE_REG_CTRL_EXT      0x0018
 #define IXGBE_REG_EIMC          0x0888
@@ -180,7 +178,6 @@ ixgbe_update_hw(void)
 {
     struct pci *pci;
     struct ixgbe_device *ixgbedev;
-    char name[NETDEV_MAX_NAME];
     int idx;
 
     idx = 0;
@@ -190,10 +187,7 @@ ixgbe_update_hw(void)
             switch ( pci->device->device_id ) {
             case IXGBE_X520:
                 ixgbedev = ixgbe_init_hw(pci->device);
-                name[0] = 'e';
-                name[1] = '0' + idx;
-                name[2] = '\0';
-                netdev_add_device(name, ixgbedev->macaddr, ixgbedev);
+                netdev_add_device(ixgbedev->macaddr, ixgbedev);
                 idx++;
                 break;
             default:
@@ -204,16 +198,16 @@ ixgbe_update_hw(void)
     }
 }
 
-static __inline__ u32
+static __inline__ volatile u32
 mmio_read32(u64 base, u64 offset)
 {
-    return *(u32 *)(base + offset);
+    return *(volatile u32 *)(base + offset);
 }
 
 static __inline__ void
-mmio_write32(u64 base, u64 offset, u32 value)
+mmio_write32(u64 base, u64 offset, volatile u32 value)
 {
-    *(u32 *)(base + offset) = value;
+    *(volatile u32 *)(base + offset) = value;
 }
 
 /*

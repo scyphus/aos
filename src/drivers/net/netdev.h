@@ -29,7 +29,7 @@ extern "C" {
 #endif
 
     void netdev_init(void);
-    int netdev_add_device(const char *, const u8 *, void *);
+    int netdev_add_device(const u8 *, void *);
 
 #ifdef __cplusplus
 }

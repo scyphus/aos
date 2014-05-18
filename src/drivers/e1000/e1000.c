@@ -9,12 +9,10 @@
 
 #include <aos/const.h>
 #include "../pci/pci.h"
+#include "../net/netdev.h"
 #include "../../kernel/kernel.h"
 
 void pause(void);
-
-extern struct netdev_list *netdev_head;
-
 
 #define E1000_REG_CTRL  0x00
 #define E1000_REG_STATUS 0x08
@@ -180,7 +178,6 @@ e1000_update_hw(void)
 {
     struct pci *pci;
     struct e1000_device *e1000dev;
-    char name[NETDEV_MAX_NAME];
     int idx;
 
     idx = 0;
@@ -196,10 +193,7 @@ e1000_update_hw(void)
             case E1000_82577LM:
             case E1000_82579LM:
                 e1000dev = e1000_init_hw(pci->device);
-                name[0] = 'e';
-                name[1] = '0' + idx;
-                name[2] = '\0';
-                netdev_add_device(name, e1000dev->macaddr, e1000dev);
+                netdev_add_device(e1000dev->macaddr, e1000dev);
                 idx++;
                 break;
             default:
@@ -210,16 +204,16 @@ e1000_update_hw(void)
     }
 }
 
-static __inline__ u32
+static __inline__ volatile u32
 mmio_read32(u64 base, u64 offset)
 {
-    return *(u32 *)(base + offset);
+    return *(volatile u32 *)(base + offset);
 }
 
 static __inline__ void
-mmio_write32(u64 base, u64 offset, u32 value)
+mmio_write32(u64 base, u64 offset, volatile u32 value)
 {
-    *(u32 *)(base + offset) = value;
+    *(volatile u32 *)(base + offset) = value;
 }
 
 struct e1000_device *

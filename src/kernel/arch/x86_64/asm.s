@@ -26,6 +26,7 @@
 	.globl	_bswap16
 	.globl	_bswap32
 	.globl	_bswap64
+	.globl	_movsb
 	.globl	_set_cr3
 	.globl	_rdtsc
 	.globl	_inb
@@ -219,6 +220,12 @@ _bswap32:
 _bswap64:
 	movq	%rdi,%rax
 	bswapq	%rax
+	ret
+
+/* void movsb(void *, const void *, u64 n) */
+_movsb:
+	movq	%rdx,%rcx
+	rep movsb
 	ret
 
 /* void set_cr3(u64); */

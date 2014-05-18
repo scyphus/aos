@@ -130,7 +130,7 @@ void panic(const char *);
 int kstrcmp(const char *, const char *);
 int kstrncmp(const char *, const char *, int);
 int kmemcmp(const u8 *, const u8 *, int);
-void * kmemcpy(u8 *, const u8 *, int);
+void * kmemcpy(void *, const void *, u64);
 void kmem_init(void);
 void * kmalloc(u64);
 void kfree(void *);
@@ -156,6 +156,8 @@ void arch_poweroff(void);
 
 void arch_spin_lock(volatile int *);
 void arch_spin_unlock(volatile int *);
+
+void * arch_memcpy(void *, const void *, u64);
 
 /* Clock and timer */
 void arch_clock_update(void);

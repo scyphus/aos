@@ -568,18 +568,12 @@ kmemcmp(const u8 *a, const u8 *b, int n)
 }
 
 /*
- * Compare string
+ * Copy string to string
  */
 void *
-kmemcpy(u8 *a, const u8 *b, int sz)
+kmemcpy(void *a, const void *b, u64 sz)
 {
-    int i;
-
-    for ( i = 0; i < sz; i++ ) {
-        a[i] = b[i];
-    }
-
-    return a;
+    return arch_memcpy(a, b, sz);
 }
 
 
