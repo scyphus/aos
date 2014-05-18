@@ -175,7 +175,6 @@ Hirochika Asai
     8086:10f5 Intel 82567LM
     8086:10ea Intel 82577LM
     8086:1502 Intel 82579LM
-    8086:153b Intel I217-V
     8086:1559 Intel I218-V
     8086:10fb Intel X520
 
