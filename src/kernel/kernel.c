@@ -43,6 +43,8 @@ extern struct netdev_list *netdev_head;
 #define PERFEVTSELx_OS (1<<17)
 #define PERFEVTSELx_USR (1<<16)
 
+void ctxtest(void);
+
 /*
  * Entry point to C function for BSP called from asm.s
  */
@@ -111,8 +113,95 @@ kmain(void)
     kprintf("RDPMC %x %x\r\n", a, d);
 #endif
 
-    proc_shell();
+    ctxtest();
+
+    //proc_shell();
 }
+
+
+#include "arch/x86_64/arch.h"
+volatile struct task *task1;
+volatile struct task *task2;
+volatile int xxx;
+
+
+void
+proc1a(void)
+{
+    kprintf("PROC1 %d\r\n", xxx);
+}
+void
+proc1(void)
+{
+    while ( 1 ) {
+        if ( xxx % 10 == 0 ) {
+            proc1a();
+        }
+    }
+    halt();
+}
+
+void
+proc2a(void)
+{
+    kprintf("PROC2 %d\r\n", xxx);
+}
+void
+proc2(void)
+{
+    while ( 1 ) {
+        if ( xxx % 10 == 0 ) {
+            proc2a();
+        }
+    }
+    halt();
+}
+void task_restart(void);
+void halt(void);
+void
+ctxtest(void)
+{
+    struct p_data *pdata;
+    xxx = 0;
+
+    task1 = kmalloc(4096);
+    task1->kstack = kmalloc(4096);
+    task1->ustack = kmalloc(4096*0x10);
+    task1->sp0 = (u64)task1->kstack + 4096 - 16; /* 16=GUARD */
+    task1->rp = (struct stackframe64 *)(task1->sp0 - sizeof(struct stackframe64));
+    task1->rp->gs = 0;
+    task1->rp->fs = 0;
+    task1->rp->ip = (u64)&proc1;
+    task1->rp->cs = GDT_RING1_CODE_SEL + 1;
+    task1->rp->flags = 0x1200;  /* IOPL */
+    task1->rp->sp = (u64)task1->ustack + 4096 * 0x10 - 16;
+    task1->rp->ss = GDT_RING1_DATA_SEL + 1;
+
+    task2 = kmalloc(4096);
+    task2->kstack = kmalloc(4096);
+    task2->ustack = kmalloc(4096*0x10);
+    task2->sp0 = (u64)task2->kstack + 4096 - 16; /* 16=GUARD */
+    task2->rp = (struct stackframe64 *)(task2->sp0 - sizeof(struct stackframe64));
+    task2->rp->gs = 0;
+    task2->rp->fs = 0;
+    task2->rp->ip = (u64)&proc2;
+    task2->rp->cs = GDT_RING1_CODE_SEL + 1;
+    task2->rp->flags = 0x1200;  /* IOPL */
+    task2->rp->sp = (u64)task2->ustack + 4096 * 0x10 - 16;
+    task2->rp->ss = GDT_RING1_DATA_SEL + 1;
+
+    pdata = (struct p_data *)(P_DATA_BASE);
+    pdata->cur_task = 0;
+    pdata->next_task = task1;
+
+    kprintf("%x %d %x\r\n", task1, sizeof(struct tss), task2->sp0);
+    kprintf("TSS: %x\r\n", &pdata->tss);
+    kprintf("XXXX : %x %x\r\n", task1, task2);
+
+    task_restart();
+    halt();
+}
+
 
 /*
  * Entry point to C function for AP called from asm.s
@@ -169,7 +258,16 @@ kintr_int33(void)
 void
 kintr_loc_tmr(void)
 {
+    volatile struct p_data *pdata;
     arch_clock_update();
+
+    xxx++;
+    pdata = (struct p_data *)(P_DATA_BASE);
+    if ( xxx % 200 == 0 ) {
+        pdata->next_task = task1;
+    } else if ( xxx % 200 == 100 ) {
+        pdata->next_task = task2;
+    }
 }
 
 /*

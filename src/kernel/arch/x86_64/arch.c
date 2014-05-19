@@ -144,6 +144,8 @@ arch_bsp_init(void)
     kprintf("DEBUG: %.8x %.8x\r\n", *(u64 *)(ptr), *(u64 *)(ptr + 0x00200000));
 #endif
 
+    lldt(0);
+
     /* Initialize TSS and load it */
     arch_dbg_printf("Initializing TSS.\r\n");
     tss_init();
@@ -230,6 +232,8 @@ arch_ap_init(void)
 
     /* Load interrupt descriptor table */
     idt_load();
+
+    lldt(0);
 
     /* Load task register */
     tr_load(this_cpu());

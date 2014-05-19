@@ -89,9 +89,10 @@ gdt_setup_desc(struct gdt_desc *e, u32 base, u32 limit, u8 type, u8 dpl,
     /* 16bit: l=0, d=0, 32bit: l=0, d=1, 64bit: l=1, d=0 */
     e->w0 = limit & 0xffff;
     e->w1 = base & 0xffff;
-    e->w2 = ((base>>16) & 0xff) | (type<<8) | (1<<12) | (dpl<<13) | (1<<15);
-    e->w3 = ((limit>>16) & 0xf) | (lbit<<5) | (dbit<<6) | (gbit<<7)
-        | ((base>>24) & 0xff);
+    e->w2 = ((base>>16) & 0xff) | ((u64)type<<8) | ((u64)1<<12)
+        | ((u64)dpl<<13) | ((u64)1<<15);
+    e->w3 = ((limit>>16) & 0xf) | ((u64)lbit<<5) | ((u64)dbit<<6)
+        | ((u64)gbit<<7) | (((base>>24) & 0xff)<<8);
 }
 
 /*
@@ -105,10 +106,11 @@ gdt_setup_desc_tss(struct gdt_desc_tss *e, u64 base, u32 limit, u8 type, u8 dpl,
     /* gbit => *4KiB */
     e->w0 = limit & 0xffff;
     e->w1 = base & 0xffff;
-    e->w2 = ((base>>16) & 0xff) | (type<<8) | (dpl<<13) | (1<<15);
-    e->w3 = ((limit>>16) & 0xf) | (gbit<<7) | ((base>>24) & 0xff);
+    e->w2 = ((base>>16) & 0xff) | ((u64)type<<8) | ((u64)dpl<<13)
+        | ((u64)1<<15);
+    e->w3 = ((limit>>16) & 0xf) | ((u64)gbit<<7) | (((base>>24) & 0xff)<<8);
     e->w4 = base>>32;
-    e->w5 = 0;
+    e->w5 = base>>40;
     e->w6 = 0;
     e->w7 = 0;
 }

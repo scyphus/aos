@@ -147,9 +147,9 @@ struct tss {
 struct task {
     /* Do not change the first two.  These must be on the top.  See asm.s. */
     /* Restart point */
-    struct stackframe *rp;
+    struct stackframe64 *rp;
     /* SP0 for tss (fixed value?) */
-    reg_t sp0;
+    u64 sp0;
     /* Stack (kernel and user) */
     void *kstack;
     void *ustack;
@@ -166,8 +166,9 @@ struct p_data {
     u64 stats[IDT_NR];  /* Interrupt counter */
     /* P_TSS_OFFSET */
     struct tss tss;
-    /* Tasks */
+    /* P_CUR_TASK_OFFSET */
     u64 cur_task;
+    /* P_NEXT_TASK_OFFSET */
     u64 next_task;
     /* Stack and stack guard follow */
 } __attribute__ ((packed));
@@ -200,6 +201,7 @@ void mfence(void);
 void lidt(void *);
 void lgdt(void *, u64);
 void ltr(int);
+void lldt(int);
 
 u64 rdtsc(void);
 u64 rdmsr(u64);

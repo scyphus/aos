@@ -41,6 +41,7 @@
 	.globl	_rdmsr
 	.globl	_lidt
 	.globl	_lgdt
+	.globl	_lldt
 	.globl	_ltr
 	.globl	_is_invariant_tsc
 	.globl	_get_cpu_family
@@ -53,6 +54,7 @@
 	.globl	_intr_apic_loc_tmr
 	.globl	_intr_crash
 	.globl	_intr_apic_spurious
+	.globl	_task_restart
 	.globl	_asm_popcnt
 	.globl	_asm_ioapic_map_intr
 	.globl	_asm_lapic_read
@@ -172,7 +174,7 @@ _lldt:
 	ret
 
 _ltr:
-	movw	$0x48,%ax
+	//movw	$0x48,%ax
 	movw	%di,%ax
 	ltr	%ax
 	ret
@@ -461,30 +463,38 @@ lapic_isr_thread_restart:
 	.set	P_TSS_SIZE,104
 	.set	P_CUR_TASK_OFFSET,(P_TSS_OFFSET + P_TSS_SIZE)
 	.set	P_NEXT_TASK_OFFSET,(P_CUR_TASK_OFFSET + 8)
-
-	.set	SYSCALL_MAX_NR,10
 	.set	STACKFRAME_SIZE,164
 	.set	TASK_RP,0
 	.set	TASK_SP0,8
 	.set	TSS_SP0,4
+
 _task_restart:
 	/* Obtain current CPU ID */
 	call	_this_cpu
 	movq	%rax,%rcx
+	//xorq	%rcx,%rcx
 	/* Calculate the base address */
 	movq	%rcx,%rax
 	movq	$P_DATA_SIZE,%rbx
 	mulq	%rbx	/* [rdx:rax] <= rax * rbx */
 	addq	$P_DATA_BASE,%rax
 	movq	%rax,%rbp
+
+	leaq	P_TSS_OFFSET(%rbp),%rax
+	movq	TSS_SP0(%rax),%rax
+	movq	%rax,%dr0
 	/* If the next task is not scheduled, immediately restart this */
 	cmpq	$0,P_NEXT_TASK_OFFSET(%rbp)
 	jz	1f
+	cmpq	$0,P_CUR_TASK_OFFSET(%rbp)
+	jz	0f
 	/* Save stack pointer */
 	movq	P_CUR_TASK_OFFSET(%rbp),%rax
 	movq	%rsp,TASK_RP(%rax)
+0:
 	/* Task switch (set the stack frame of the new task) */
 	movq	P_NEXT_TASK_OFFSET(%rbp),%rax
+	movq	%rax,P_CUR_TASK_OFFSET(%rbp)
 	movq	TASK_RP(%rax),%rsp
 	movq	$0,P_NEXT_TASK_OFFSET(%rbp)
 	/* ToDo: Load LDT if necessary */
@@ -492,8 +502,11 @@ _task_restart:
 	//leaq	STACKFRAME_SIZE(%rsp),%rdx
 	movq	P_CUR_TASK_OFFSET(%rbp),%rax
 	movq	TASK_SP0(%rax),%rdx
-	movq	P_TSS_OFFSET(%rbp),%rax
+	leaq	P_TSS_OFFSET(%rbp),%rax
 	movq	%rdx,TSS_SP0(%rax)
+
+	movq	%rdx,%dr1
+	//clts
 1:
 	intr_lapic_isr_done
 	iretq
