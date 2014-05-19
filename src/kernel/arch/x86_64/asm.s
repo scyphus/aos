@@ -434,7 +434,7 @@ _intr_apic_int36:
 
 _intr_apic_loc_tmr:
 	intr_lapic_isr 0x50
-	jmp	_task_restart
+	//jmp	_task_restart
 	intr_lapic_isr_done
 	iretq
 
