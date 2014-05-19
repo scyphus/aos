@@ -43,8 +43,6 @@ extern struct netdev_list *netdev_head;
 #define PERFEVTSELx_OS (1<<17)
 #define PERFEVTSELx_USR (1<<16)
 
-void ctxtest(void);
-
 /*
  * Entry point to C function for BSP called from asm.s
  */
@@ -113,51 +111,10 @@ kmain(void)
     kprintf("RDPMC %x %x\r\n", a, d);
 #endif
 
-    ctxtest();
-
-    //proc_shell();
+    proc_shell();
 }
 
-
-#include "arch/x86_64/arch.h"
-volatile struct task *task1;
-volatile struct task *task2;
-volatile int xxx;
-
-
-void
-proc1a(void)
-{
-    kprintf("PROC1 %d\r\n", xxx);
-}
-void
-proc1(void)
-{
-    while ( 1 ) {
-        if ( xxx % 10 == 0 ) {
-            proc1a();
-        }
-    }
-    halt();
-}
-
-void
-proc2a(void)
-{
-    kprintf("PROC2 %d\r\n", xxx);
-}
-void
-proc2(void)
-{
-    while ( 1 ) {
-        if ( xxx % 10 == 0 ) {
-            proc2a();
-        }
-    }
-    halt();
-}
-void task_restart(void);
-void halt(void);
+#if 0
 void
 ctxtest(void)
 {
@@ -194,13 +151,10 @@ ctxtest(void)
     pdata->cur_task = 0;
     pdata->next_task = task1;
 
-    kprintf("%x %d %x\r\n", task1, sizeof(struct tss), task2->sp0);
-    kprintf("TSS: %x\r\n", &pdata->tss);
-    kprintf("XXXX : %x %x\r\n", task1, task2);
-
     task_restart();
     halt();
 }
+#endif
 
 
 /*
@@ -258,16 +212,7 @@ kintr_int33(void)
 void
 kintr_loc_tmr(void)
 {
-    volatile struct p_data *pdata;
     arch_clock_update();
-
-    xxx++;
-    pdata = (struct p_data *)(P_DATA_BASE);
-    if ( xxx % 200 == 0 ) {
-        pdata->next_task = task1;
-    } else if ( xxx % 200 == 100 ) {
-        pdata->next_task = task2;
-    }
 }
 
 /*
