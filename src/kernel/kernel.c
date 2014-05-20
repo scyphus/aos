@@ -202,6 +202,7 @@ ktask_enqueue(struct ktask *t)
     } else {
         ret = ktaskq->tail;
         ktaskq->entries[ktaskq->tail].ktask = t;
+        mfence();
         ktaskq->tail = ntail;
     }
 
