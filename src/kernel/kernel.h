@@ -64,16 +64,28 @@ void rng_stir(void);
 u32 rng_random(void);
 
 
+
+#define TASK_POLICY_KERNEL      0
+#define TASK_POLICY_DRIVER      1
+#define TASK_POLICY_USER        3
+#define TASK_KSTACK_SIZE        4096
+#define TASK_USTACK_SIZE        4096 * 0x10
+#define TASK_STACK_GUARD        16
+void task_restart(void);
+void halt(void);
+
 /*
- * Process
+ * Task
  */
-struct proc {
+struct ktask {
     /* Task ID */
     u64 id;
     const char *name;
 
     /* Main routine */
     int (*main)(int argc, const char *const argv[]);
+    int argc;
+    const char *const *argv;
 
     /* For scheduler */
     int pri;
@@ -82,6 +94,7 @@ struct proc {
     /* State */
     int state;
 
+    /* Archtecture-specific structure */
     void *arch;
 };
 
@@ -123,6 +136,7 @@ typedef __builtin_va_list va_list;
 int kprintf(const char *, ...);
 int kvprintf(const char *, va_list);
 void panic(const char *);
+struct ktask * ktask_alloc(void);
 
 
 /* in util.c */
@@ -137,7 +151,7 @@ int kstrlen(const char *);
 char * kstrdup(const char *);
 
 /* in shell.c */
-void proc_shell(void);
+int proc_shell(int, const char *const []);
 /* in router.c */
 void proc_router(void);
 
@@ -157,6 +171,9 @@ void arch_spin_lock(volatile int *);
 void arch_spin_unlock(volatile int *);
 
 void * arch_memcpy(void *, const void *, u64);
+
+void * arch_alloc_task(struct ktask *, void (*entry)(struct ktask *), int);
+int arch_set_next_task(struct ktask *);
 
 /* Clock and timer */
 void arch_clock_update(void);

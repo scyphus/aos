@@ -22,10 +22,10 @@ struct kbd_status {
 };
 
 /* Hold keyboard stats and buffer */
-static struct kbd_status stat;
-static unsigned char buf[256];
-static u8 rpos;
-static u8 wpos;
+static volatile struct kbd_status stat;
+static volatile unsigned char buf[256];
+static volatile u8 rpos;
+static volatile u8 wpos;
 
 static volatile int lock;
 
@@ -145,7 +145,6 @@ kbd_read(void)
     int c;
 
     arch_spin_lock(&lock);
-
     if ( rpos != wpos ) {
         c = buf[rpos++];
     } else {

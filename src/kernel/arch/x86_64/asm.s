@@ -434,7 +434,7 @@ _intr_apic_int36:
 
 _intr_apic_loc_tmr:
 	intr_lapic_isr 0x50
-	//jmp	_task_restart
+	jmp	_task_restart
 	intr_lapic_isr_done
 	iretq
 
@@ -472,17 +472,12 @@ _task_restart:
 	/* Obtain current CPU ID */
 	call	_this_cpu
 	movq	%rax,%rcx
-	//xorq	%rcx,%rcx
 	/* Calculate the base address */
 	movq	%rcx,%rax
 	movq	$P_DATA_SIZE,%rbx
 	mulq	%rbx	/* [rdx:rax] <= rax * rbx */
 	addq	$P_DATA_BASE,%rax
 	movq	%rax,%rbp
-
-	leaq	P_TSS_OFFSET(%rbp),%rax
-	movq	TSS_SP0(%rax),%rax
-	movq	%rax,%dr0
 	/* If the next task is not scheduled, immediately restart this */
 	cmpq	$0,P_NEXT_TASK_OFFSET(%rbp)
 	jz	1f
@@ -504,8 +499,6 @@ _task_restart:
 	movq	TASK_SP0(%rax),%rdx
 	leaq	P_TSS_OFFSET(%rbp),%rax
 	movq	%rdx,TSS_SP0(%rax)
-
-	movq	%rdx,%dr1
 	//clts
 1:
 	intr_lapic_isr_done

@@ -15,7 +15,7 @@
 #define VGA_TEXTMODE_Y          25
 #define VGA_TEXTMODE_XY         (VGA_TEXTMODE_X * VGA_TEXTMODE_Y)
 
-static int lock;
+static volatile int lock;
 static int vga_cursor;
 static unsigned char vga_text[VGA_TEXTMODE_XY];
 

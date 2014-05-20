@@ -430,8 +430,8 @@ _exec_cmd(struct kshell *kshell)
 /*
  * Shell process
  */
-void
-proc_shell(void)
+int
+proc_shell(int argc, const char *const argv[])
 {
     struct kshell kshell;
     volatile int c;
@@ -452,6 +452,7 @@ proc_shell(void)
                 /* Exec */
                 kprintf("\r\n");
                 _exec_cmd(&kshell);
+                arch_busy_usleep(1);
             } else {
                 if ( kshell.pos >= CMDBUF_SIZE - 1 ) {
                     kprintf("\r\nError: Command must not exceeds %d bytes.",
@@ -468,7 +469,7 @@ proc_shell(void)
         }
     }
 
-    return;
+    return 0;
 }
 
 

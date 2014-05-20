@@ -78,9 +78,6 @@ kmain(void)
     }
 #endif
 
-    /* Wait for router process init */
-    arch_busy_usleep(100000);
-
     /* Print out a message */
     kprintf("\r\nStarting a shell.  Press Esc to power off the machine:\r\n");
 
@@ -111,14 +108,75 @@ kmain(void)
     kprintf("RDPMC %x %x\r\n", a, d);
 #endif
 
-    proc_shell();
+
+    struct ktask *t;
+
+    t = ktask_alloc();
+    t->main = &proc_shell;
+    t->argc = 0;
+    t->argv = NULL;
+
+    arch_set_next_task(t);
+    task_restart();
+
+    halt();
+}
+
+
+void
+ktask_entry(struct ktask *t)
+{
+    int ret;
+
+    /* Get the arguments from the stack pointer */
+    ret = t->main(t->argc, t->argv);
+
+    /* ToDo: Handle return value */
+
+    /* Avoid returning to wrong point (no returning point in the stack) */
+    halt();
+}
+
+/*
+ * Allocate a task
+ */
+struct ktask *
+ktask_alloc(void)
+{
+    struct ktask *t;
+
+    t = kmalloc(sizeof(struct ktask));
+    if ( NULL == t ) {
+        return NULL;
+    }
+    t->id = 0;
+    t->name = NULL;
+    t->pri = 0;
+    t->cred = 0;
+    t->state = 0;
+    t->arch = arch_alloc_task(t, &ktask_entry, TASK_POLICY_KERNEL);
+
+    t->main = NULL;
+    t->argc = 0;
+    t->argv = NULL;
+
+    return t;
+}
+
+
+/*
+ * Scheduler
+ */
+void
+sched(void)
+{
 }
 
 #if 0
 void
 ctxtest(void)
 {
-    struct p_data *pdata;
+
     xxx = 0;
 
     task1 = kmalloc(4096);
@@ -230,6 +288,8 @@ kintr_isr(u64 vec)
         break;
     case IV_LOC_TMR:
         kintr_loc_tmr();
+        /* Run task scheduler */
+        sched();
         break;
     default:
         ;

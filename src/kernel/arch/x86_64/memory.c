@@ -26,8 +26,8 @@
 
 #define PHYS_MEM_BUDDY_ORDER 64
 
-static int memory_lock;
-static struct phys_mem *phys_mem;
+static volatile int memory_lock;
+static volatile struct phys_mem *phys_mem;
 
 /*
  * Buddy system
@@ -215,6 +215,7 @@ phys_mem_alloc_pages(u64 n)
     spin_lock(&memory_lock);
 
     cnt = 0;
+    f = 0;
     for ( i = 0; i < phys_mem->nr; i++ ) {
         if ( PHYS_MEM_IS_FREE(&phys_mem->pages[i]) ) {
             if ( !cnt ) {

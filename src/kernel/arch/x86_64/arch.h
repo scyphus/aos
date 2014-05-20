@@ -142,9 +142,9 @@ struct tss {
 } __attribute__ ((packed));
 
 /*
- * Task
+ * Task (architecture specific structure)
  */
-struct task {
+struct arch_task {
     /* Do not change the first two.  These must be on the top.  See asm.s. */
     /* Restart point */
     struct stackframe64 *rp;
@@ -153,6 +153,8 @@ struct task {
     /* Stack (kernel and user) */
     void *kstack;
     void *ustack;
+    /* Parent structure */
+    struct ktask *ktask;
 } __attribute__ ((packed));
 
 /*

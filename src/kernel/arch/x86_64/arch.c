@@ -404,6 +404,108 @@ arch_clock_get(void)
 }
 
 
+/*
+ * Set next task
+ */
+int
+arch_set_next_task(struct ktask *ktask)
+{
+    struct p_data *pdata;
+
+    pdata = (struct p_data *)(P_DATA_BASE + this_cpu() * P_DATA_SIZE);
+    pdata->next_task = (u64)ktask->arch;
+
+    return 0;
+}
+
+/*
+ * Get current task
+ */
+struct ktask *
+arch_get_current_task(void)
+{
+    struct p_data *pdata;
+    struct arch_task *t;
+
+    pdata = (struct p_data *)(P_DATA_BASE + this_cpu() * P_DATA_SIZE);
+    t = (struct arch_task *)pdata->cur_task;
+    if ( NULL != t ) {
+        return t->ktask;
+    } else {
+        /* No running task */
+        return NULL;
+    }
+}
+
+/*
+ * Allocate a task
+ */
+void *
+arch_alloc_task(struct ktask *kt, void (*entry)(struct ktask *), int policy)
+{
+    struct arch_task *t;
+    int cs;
+    int ss;
+    int flags;
+
+    switch ( policy ) {
+    case TASK_POLICY_KERNEL:
+        /* Ring 0 for kernel privilege */
+        cs = GDT_RING0_CODE_SEL;
+        ss = GDT_RING0_DATA_SEL;
+        flags = 0x0200;
+        break;
+    case TASK_POLICY_DRIVER:
+        cs = GDT_RING1_CODE_SEL + 1;
+        ss = GDT_RING1_DATA_SEL + 1;
+        flags = 0x1200;
+        break;
+    default:
+        cs = GDT_RING3_CODE_SEL + 3;
+        ss = GDT_RING3_DATA_SEL + 3;
+        flags = 0x3200;
+    }
+
+    t = kmalloc(sizeof(struct arch_task));
+    if ( NULL == t ) {
+        return NULL;
+    }
+    t->kstack = kmalloc(TASK_KSTACK_SIZE);
+    if ( NULL == t->kstack ) {
+        kfree(t);
+        return NULL;
+    }
+    t->ustack = kmalloc(TASK_USTACK_SIZE);
+    if ( NULL == t->ustack ) {
+        kfree(t->kstack);
+        kfree(t);
+        return NULL;
+    }
+    t->sp0 = (u64)t->kstack + TASK_KSTACK_SIZE - TASK_STACK_GUARD;
+
+    t->rp = (struct stackframe64 *)(t->sp0 - sizeof(struct stackframe64));
+    /* First argument */
+    t->rp->di = (u64)kt;
+    /* Other registers */
+    t->rp->gs = 0;
+    t->rp->fs = 0;
+    t->rp->ip = (u64)entry;
+    t->rp->cs = cs;
+    t->rp->flags = flags;  /* IOPL */
+    t->rp->sp = (u64)t->ustack + TASK_USTACK_SIZE - TASK_STACK_GUARD;
+    t->rp->ss = ss;
+    t->ktask = kt;
+
+    return t;
+}
+
+
+
+
+
+
+
+
 u64 asm_popcnt(u64);
 int
 popcnt(u64 x)
