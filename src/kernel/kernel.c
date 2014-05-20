@@ -1,8 +1,10 @@
 /*_
- * Copyright 2013-2014 Scyphus Solutions Co. Ltd.  All rights reserved.
+ * Copyright (c) 2013 Scyphus Solutions Co. Ltd.
+ * Copyright (c) 2014 Hirochika Asai
+ * All rights reserved.
  *
  * Authors:
- *      Hirochika Asai  <asai@scyphus.co.jp>
+ *      Hirochika Asai  <asai@jar.jp>
  */
 
 /* $Id$ */
@@ -182,27 +184,6 @@ apmain(void)
 {
     /* Initialize this AP */
     arch_ap_init();
-
-#if 0
-    arch_spin_lock(&lock);
-    if ( routing_processor < 0 ) {
-        proc_router();
-        routing_processor = 1;
-    }
-    arch_spin_unlock(&lock);
-#endif
-
-#if 0
-    struct netdev_list *list;
-
-    list = netdev2_head;
-    arch_spin_lock(&lock);
-    if ( routing_processor < 0 ) {
-        ixgbe_forwarding_test2(list->netdev, list->next->netdev);
-        routing_processor = 1;
-    }
-    arch_spin_unlock(&lock);
-#endif
 }
 
 /*
