@@ -71,6 +71,7 @@ u32 rng_random(void);
 #define TASK_KSTACK_SIZE        4096
 #define TASK_USTACK_SIZE        4096 * 0x10
 #define TASK_STACK_GUARD        16
+#define TASK_QUEUE_LEN          0x10
 void task_restart(void);
 void halt(void);
 
@@ -98,6 +99,18 @@ struct ktask {
     void *arch;
 };
 
+/*
+ * Task queue for scheduler
+ */
+struct ktask_queue_entry {
+    struct ktask *ktask;
+};
+struct ktask_queue {
+    int nent;
+    struct ktask_queue_entry *entries;
+    volatile int head;
+    volatile int tail;
+};
 
 
 /*
@@ -137,6 +150,8 @@ int kprintf(const char *, ...);
 int kvprintf(const char *, va_list);
 void panic(const char *);
 struct ktask * ktask_alloc(void);
+int ktask_enqueue(struct ktask *);
+struct ktask * ktask_dequeue(void);
 
 
 /* in util.c */
@@ -174,6 +189,7 @@ void * arch_memcpy(void *, const void *, u64);
 
 void * arch_alloc_task(struct ktask *, void (*entry)(struct ktask *), int);
 int arch_set_next_task(struct ktask *);
+struct ktask * arch_get_next_task(void);
 
 /* Clock and timer */
 void arch_clock_update(void);

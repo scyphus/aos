@@ -1,11 +1,11 @@
 /*_
- * Copyright 2013 Scyphus Solutions Co. Ltd.  All rights reserved.
+ * Copyright (c) 2013 Scyphus Solutions Co. Ltd.
+ * Copyright (c) 2014 Hirochika Asai
+ * All rights reserved.
  *
  * Authors:
- *      Hirochika Asai  <asai@scyphus.co.jp>
+ *      Hirochika Asai  <asai@jar.jp>
  */
-
-/* $Id$ */
 
 #include <aos/const.h>
 #include "../../kernel.h"
@@ -416,6 +416,25 @@ arch_set_next_task(struct ktask *ktask)
     pdata->next_task = (u64)ktask->arch;
 
     return 0;
+}
+
+/*
+ * Get next task
+ */
+struct ktask *
+arch_get_next_task(void)
+{
+    struct p_data *pdata;
+    struct arch_task *t;
+
+    pdata = (struct p_data *)(P_DATA_BASE + this_cpu() * P_DATA_SIZE);
+    t = (struct arch_task *)pdata->next_task;
+    if ( NULL != t ) {
+        return t->ktask;
+    } else {
+        /* No running task */
+        return NULL;
+    }
 }
 
 /*

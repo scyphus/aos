@@ -1,11 +1,11 @@
 /*_
- * Copyright (c) 2013 Scyphus Solutions Co. Ltd.
- * Copyright (c) 2014 Hirochika Asai
- * All rights reserved.
+ * Copyright 2013 Scyphus Solutions Co. Ltd.  All rights reserved.
  *
  * Authors:
- *      Hirochika Asai  <asai@jar.jp>
+ *      Hirochika Asai  <asai@scyphus.co.jp>
  */
+
+/* $Id$ */
 
 #include <aos/const.h>
 #include "arch.h"
