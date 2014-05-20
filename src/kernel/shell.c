@@ -452,7 +452,6 @@ proc_shell(int argc, const char *const argv[])
                 /* Exec */
                 kprintf("\r\n");
                 _exec_cmd(&kshell);
-                arch_busy_usleep(1);
             } else {
                 if ( kshell.pos >= CMDBUF_SIZE - 1 ) {
                     kprintf("\r\nError: Command must not exceeds %d bytes.",
