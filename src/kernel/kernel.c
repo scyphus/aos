@@ -11,7 +11,6 @@
 #include "kernel.h"
 
 static volatile int lock;
-static int routing_processor;
 
 static volatile int ktask_lock;
 static struct ktask_queue *ktaskq;
@@ -55,9 +54,6 @@ kmain(void)
     /* Initialize the lock varialbe */
     lock = 0;
     ktask_lock = 0;
-
-    /* Routing processor */
-    routing_processor = -1;
 
     /* Initialize kmem */
     kmem_init();
@@ -317,100 +313,6 @@ kintr_isr(u64 vec)
         ;
     }
 }
-
-
-
-void set_cr3(u64);
-u32 bswap32(u32);
-u64 bswap64(u64);
-u64 popcnt(u64);
-#if 0
-u64
-setup_routing_page_table(void)
-{
-    u64 base;
-    int nr0;
-    int nr1;
-    int nr2;
-    int nr3;
-    int i;
-
-    /* 4GB + 32GB = 36GB */
-    nr0 = 1;
-    nr1 = 1;
-    nr2 = 0x24;
-    nr3 = 0x4000;
-
-    /* Initialize page table */
-    base = kmalloc((nr0 + nr1 + nr2 + nr3) * 4096);
-    for ( i = 0; i < (nr0 + nr1 + nr2 + nr3) * 4096; i++ ) {
-        *(u8 *)(base+i) = 0;
-    }
-
-    /* PML4E */
-    *(u64 *)base = base + 0x1007;
-
-    /* PDPTE */
-    for ( i = 0; i < 0x24; i++ ) {
-        *(u64 *)(base+0x1000+i*8) = base + (u64)0x1000 * i + 0x2007;
-    }
-
-    /* PDE */
-    for ( i = 0; i < 0x4 * 0x200; i++ ) {
-        *(u64 *)(base+0x2000+i*8) = (u64)0x00200000 * i + 0x183;
-    }
-    for ( i = 0; i < 0x20 * 0x200; i++ ) {
-        *(u64 *)(base+0x6000+i*8) = base + (u64)0x1000 * i + 0x26007;
-    }
-
-    rng_init();
-    rng_stir();
-    u64 rt = kmalloc(4096 * 0x1000);
-    for ( i = 0; i < 4096 * 0x1000 / 8; i++ ) {
-        *(u64 *)(rt+i*8) = ((u64)rng_random()<<32) | (u64)rng_random();
-    }
-
-    /* PTE */
-#if 0
-    for ( i = 0; i < 0x4000 * 0x200; i++ ) {
-        *(u64 *)(base+0x26000+i*8) = (u64)0x3 + (rt + (i * 8) % (4096 * 0x1000));
-    }
-#else
-    for ( i = 0; i < 0x20 * 0x200; i++ ) {
-        *(u64 *)(base+0x6000+i*8) = (u64)0x83 + (rt & 0xffffffc00000ULL);
-    }
-#endif
-    kprintf("ROUTING TABLE: %llx %llx\r\n", base, rt);
-    set_cr3(base);
-
-    arch_dbg_printf("Looking up routing table\r\n");
-    u64 x;
-    u64 tmp = 0;
-    for ( x = 0; x < 0x100000000ULL; x++ ) {
-        //tmp ^= *(u64 *)(u64)(0x100000000ULL + (u64)bswap32(x));
-        //tmp ^= *(u64 *)(u64)(0x100000000ULL + (u64)rng_random());
-        //bswap32(x);
-        //tmp ^= *(u64 *)(u64)(0x100000000ULL + (u64)(x^tmp)&0xffffffff);
-        //tmp = *(u64 *)(u64)(0x100000000ULL + ((u64)(tmp&0xffffffffULL) << 3));
-        //tmp ^= *(u64 *)(u64)(0x100000000ULL + ((u64)x << 3));
-        //tmp ^= *(u64 *)(u64)(0x100000000);
-        //kprintf("ROUTING TABLE: %llx\r\n", *(u64 *)(u64)(0x100000000 + x));
-
-        popcnt(x);
-#if 0
-        u64 m;
-        __asm__ __volatile__ ("popcntq %1,%0" : "=r"(m) : "r"(x) );
-        if ( m != popcnt(x) ) {
-            kprintf("%.16llx %.16llx %.16llx\r\n", x, popcnt(x), m);
-        }
-#endif
-    }
-    arch_dbg_printf("done : %llx\r\n", tmp);
-
-
-    return 0;
-}
-#endif
 
 /*
  * Idle process
