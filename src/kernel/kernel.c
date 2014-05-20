@@ -320,6 +320,8 @@ kintr_isr(u64 vec)
 int
 kproc_idle_main(int argc, const char *const argv[])
 {
+    halt();
+
     return 0;
 }
 
