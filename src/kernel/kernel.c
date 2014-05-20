@@ -122,7 +122,9 @@ kmain(void)
     halt();
 }
 
-
+/*
+ * Entry point for kernel task
+ */
 void
 ktask_entry(struct ktask *t)
 {
@@ -171,49 +173,6 @@ void
 sched(void)
 {
 }
-
-#if 0
-void
-ctxtest(void)
-{
-
-    xxx = 0;
-
-    task1 = kmalloc(4096);
-    task1->kstack = kmalloc(4096);
-    task1->ustack = kmalloc(4096*0x10);
-    task1->sp0 = (u64)task1->kstack + 4096 - 16; /* 16=GUARD */
-    task1->rp = (struct stackframe64 *)(task1->sp0 - sizeof(struct stackframe64));
-    task1->rp->gs = 0;
-    task1->rp->fs = 0;
-    task1->rp->ip = (u64)&proc1;
-    task1->rp->cs = GDT_RING1_CODE_SEL + 1;
-    task1->rp->flags = 0x1200;  /* IOPL */
-    task1->rp->sp = (u64)task1->ustack + 4096 * 0x10 - 16;
-    task1->rp->ss = GDT_RING1_DATA_SEL + 1;
-
-    task2 = kmalloc(4096);
-    task2->kstack = kmalloc(4096);
-    task2->ustack = kmalloc(4096*0x10);
-    task2->sp0 = (u64)task2->kstack + 4096 - 16; /* 16=GUARD */
-    task2->rp = (struct stackframe64 *)(task2->sp0 - sizeof(struct stackframe64));
-    task2->rp->gs = 0;
-    task2->rp->fs = 0;
-    task2->rp->ip = (u64)&proc2;
-    task2->rp->cs = GDT_RING1_CODE_SEL + 1;
-    task2->rp->flags = 0x1200;  /* IOPL */
-    task2->rp->sp = (u64)task2->ustack + 4096 * 0x10 - 16;
-    task2->rp->ss = GDT_RING1_DATA_SEL + 1;
-
-    pdata = (struct p_data *)(P_DATA_BASE);
-    pdata->cur_task = 0;
-    pdata->next_task = task1;
-
-    task_restart();
-    halt();
-}
-#endif
-
 
 /*
  * Entry point to C function for AP called from asm.s
