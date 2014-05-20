@@ -137,8 +137,6 @@ kmain(void)
     ktask_enqueue(t);
     sched();
     task_restart();
-
-    halt();
 }
 
 /*
@@ -263,6 +261,18 @@ apmain(void)
 {
     /* Initialize this AP */
     arch_ap_init();
+
+
+    struct ktask *t;
+
+    t = ktask_alloc();
+    t->main = &ktask_idle_main;
+    t->argc = 0;
+    t->argv = NULL;
+
+    arch_set_next_task(t);
+
+    task_restart();
 }
 
 /*
@@ -293,8 +303,18 @@ kintr_loc_tmr(void)
 }
 
 /*
+ * IPI
+ */
+void
+kintr_ipi(void)
+{
+}
+
+/*
  * Interrupt service routine for all vectors
  */
+void lapic_send_fixed_ipi(u8 vector);
+int this_cpu();
 void
 kintr_isr(u64 vec)
 {
@@ -304,11 +324,15 @@ kintr_isr(u64 vec)
         break;
     case IV_KBD:
         kintr_int33();
+        lapic_send_fixed_ipi(0x51);
         break;
     case IV_LOC_TMR:
         kintr_loc_tmr();
         /* Run task scheduler */
         sched();
+        break;
+    case IV_IPI:
+        kintr_ipi();
         break;
     default:
         ;
@@ -319,7 +343,7 @@ kintr_isr(u64 vec)
  * Idle process
  */
 int
-kproc_idle_main(int argc, const char *const argv[])
+ktask_idle_main(int argc, const char *const argv[])
 {
     halt();
 

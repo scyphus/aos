@@ -234,6 +234,7 @@ u64 rdtsc(void);
 void intr_apic_int32(void);
 void intr_apic_int33(void);
 void intr_apic_loc_tmr(void);
+void intr_apic_ipi(void);
 void intr_crash(void);
 void intr_apic_spurious(void);
 

@@ -135,6 +135,7 @@ arch_bsp_init(void)
     idt_setup_intr_gate(IV_TMR, &intr_apic_int32); /* IRQ0 */
     idt_setup_intr_gate(IV_KBD, &intr_apic_int33); /* IRQ1 */
     idt_setup_intr_gate(IV_LOC_TMR, &intr_apic_loc_tmr); /* Local APIC timer */
+    idt_setup_intr_gate(81, &intr_apic_ipi);
     idt_setup_intr_gate(0xfe, &intr_crash); /* crash */
     idt_setup_intr_gate(0xff, &intr_apic_spurious); /* Spurious interrupt */
 

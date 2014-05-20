@@ -52,6 +52,7 @@
 	.globl	_intr_apic_int32
 	.globl	_intr_apic_int33
 	.globl	_intr_apic_loc_tmr
+	.globl	_intr_apic_ipi
 	.globl	_intr_crash
 	.globl	_intr_apic_spurious
 	.globl	_task_restart
@@ -435,6 +436,11 @@ _intr_apic_int36:
 _intr_apic_loc_tmr:
 	intr_lapic_isr 0x50
 	jmp	_task_restart
+	intr_lapic_isr_done
+	iretq
+
+_intr_apic_ipi:
+	intr_lapic_isr 0x51
 	intr_lapic_isr_done
 	iretq
 

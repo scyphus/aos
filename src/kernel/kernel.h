@@ -15,6 +15,7 @@
 #define IV_TMR          0x20
 #define IV_KBD          0x21
 #define IV_LOC_TMR      0x50
+#define IV_IPI          0x51
 
 #define PAGESIZE        4096
 
@@ -152,6 +153,7 @@ void panic(const char *);
 struct ktask * ktask_alloc(void);
 int ktask_enqueue(struct ktask *);
 struct ktask * ktask_dequeue(void);
+int ktask_idle_main(int argc, const char *const argv[]);
 void sched(void);
 
 
