@@ -67,7 +67,7 @@ void
 arch_bsp_init(void)
 {
     struct bootinfo *bi;
-    struct p_data *pdata;
+    volatile struct p_data *pdata;
     u64 tsz;
     u64 i;
 
@@ -115,6 +115,10 @@ arch_bsp_init(void)
         panic("Error! Cannot allocate stack for processors.\r\n");
     }
 #endif
+    for ( i = 0; i < MAX_PROCESSORS; i++ ) {
+        kmemset((u8 *)((u64)P_DATA_BASE + i * P_DATA_SIZE), 0,
+                sizeof(struct p_data));
+    }
 
     arch_dbg_printf("Initializing GDT and IDT.\r\n");
 

@@ -160,6 +160,7 @@ int kstrcmp(const char *, const char *);
 int kstrncmp(const char *, const char *, int);
 int kmemcmp(const u8 *, const u8 *, int);
 void * kmemcpy(void *, const void *, u64);
+void * kmemset(void *, int, u64);
 void kmem_init(void);
 void * kmalloc(u64);
 void kfree(void *);

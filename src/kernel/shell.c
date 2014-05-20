@@ -121,7 +121,7 @@ _builtin_show(char *const argv[])
         int i;
         for ( i = 0; i < MAX_PROCESSORS; i++ ) {
             pdata = (struct p_data *)((u64)P_DATA_BASE + i * P_DATA_SIZE);
-            if ( pdata->flags ) {
+            if ( pdata->flags & 1 ) {
                 kprintf("Processor #%d is active.\r\n", i);
             }
         }

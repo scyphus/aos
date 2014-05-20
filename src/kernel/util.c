@@ -575,6 +575,21 @@ kmemcpy(void *a, const void *b, u64 sz)
     return arch_memcpy(a, b, sz);
 }
 
+/*
+ * Fill a byte string with a byte value
+ */
+void *
+kmemset(void *b, int c, u64 len)
+{
+    int i;
+
+    for ( i = 0; i < len; i++ ) {
+        *((u8 *)b + i) = c;
+    }
+
+    return b;
+}
+
 
 
 
