@@ -89,7 +89,9 @@ struct p_data {
 int
 _builtin_show(char *const argv[])
 {
-    if ( 0 == kstrcmp("interfaces", argv[1]) ) {
+    if ( 0 == kstrcmp("interfaces", argv[1])
+         || 0 == kstrcmp("int", argv[1])
+         || 0 == kstrcmp("if", argv[1]) ) {
         struct netdev_list *list;
         list = netdev_head;
         while ( list ) {
@@ -124,6 +126,8 @@ _builtin_show(char *const argv[])
             }
         }
 
+    } else {
+        kprintf("show <interfaces|pci|processors>\r\n");
     }
 
     return 0;
@@ -404,7 +408,9 @@ _exec_cmd(struct kshell *kshell)
         _builtin_off(argv);
     } else if ( 0 == kstrcmp("uptime", argv[0]) ) {
         _builtin_uptime(argv);
-    } else if ( 0 == kstrcmp("show", argv[0]) ) {
+    } else if ( 0 == kstrcmp("show", argv[0])
+                || 0 == kstrcmp("sh", argv[0])
+                || 0 == kstrcmp("sho", argv[0]) ) {
         _builtin_show(argv);
     } else if ( 0 == kstrcmp("test", argv[0]) ) {
         _builtin_test(argv);
