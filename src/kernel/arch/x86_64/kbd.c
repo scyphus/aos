@@ -1,11 +1,12 @@
 /*_
- * Copyright 2013 Scyphus Solutions Co. Ltd.  All rights reserved.
+ * Copyright (c) 2013 Scyphus Solutions Co. Ltd.
+ * Copyright (c) 2014 Hirochika Asai
+ * All rights reserved.
  *
  * Authors:
- *      Hirochika Asai  <asai@scyphus.co.jp>
+ *      Hirochika Asai  <asai@jar.jp>
  */
 
-/* $Id$ */
 
 #include <aos/const.h>
 #include "arch.h"
@@ -122,7 +123,7 @@ kbd_event(void)
             break;
         case 0xba:
             /* Caps lock */
-            stat.capslock = ~1;
+            stat.capslock ^= 1;
             break;
         case 0xda:
             /* Right ctrl */
