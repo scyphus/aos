@@ -154,7 +154,6 @@ struct ktask * ktask_alloc(void);
 int ktask_enqueue(struct ktask *);
 struct ktask * ktask_dequeue(void);
 int ktask_idle_main(int argc, const char *const argv[]);
-void sched(void);
 
 
 /* in util.c */
@@ -168,6 +167,13 @@ void * kmalloc(u64);
 void kfree(void *);
 int kstrlen(const char *);
 char * kstrdup(const char *);
+
+/* in sched.c */
+int sched_init(void);
+void sched(void);
+int sched_ktask_enqueue(struct ktask *);
+struct ktask * sched_ktask_dequeue(void);
+
 
 /* in shell.c */
 int proc_shell(int, const char *const []);
