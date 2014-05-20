@@ -152,6 +152,7 @@ void panic(const char *);
 struct ktask * ktask_alloc(void);
 int ktask_enqueue(struct ktask *);
 struct ktask * ktask_dequeue(void);
+void sched(void);
 
 
 /* in util.c */
