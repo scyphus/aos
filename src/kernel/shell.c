@@ -17,7 +17,6 @@ extern struct netdev_list *netdev_head;
 /*
  * Temporary: Keyboard drivers
  */
-void kbd_init(void);
 void kbd_event(void);
 volatile int kbd_read(void);
 void hlt1(void);
@@ -280,6 +279,45 @@ _builtin_test2(char *const argv[])
 }
 
 
+void lapic_send_fixed_ipi(u8 vector);
+int this_cpu();
+int
+_builtin_start(char *const argv[])
+{
+    u8 id;
+
+    id = 1;
+
+    /* Start command */
+
+    /* IPI */
+    lapic_send_ns_fixed_ipi(id, IV_IPI);
+}
+int
+_builtin_stop(char *const argv[])
+{
+    u8 id;
+
+    id = 1;
+
+    /* Stop command */
+
+    /* IPI */
+    lapic_send_ns_fixed_ipi(id, IV_IPI);
+}
+
+int
+_builtin_help(char *const argv[])
+{
+    kprintf("Supported commands:\r\n");
+    kprintf("    ?       Display help\r\n");
+    kprintf("    show    Display information\r\n");
+    kprintf("    uptime  Display time since boot in seconds\r\n");
+    kprintf("    off     Power off\r\n");
+    kprintf("    start   Start a daemon\r\n");
+    kprintf("    stop    Stop a daemon\r\n");
+}
+
 
 /*
  * Parse command
@@ -402,7 +440,9 @@ _exec_cmd(struct kshell *kshell)
         return;
     }
 
-    if ( 0 == kstrcmp("upa", argv[0]) ) {
+    if ( 0 == kstrcmp("?", argv[0]) ) {
+        _builtin_help(argv);
+    } else if ( 0 == kstrcmp("upa", argv[0]) ) {
         _builtin_panic(argv);
     } else if ( 0 == kstrcmp("off", argv[0]) ) {
         _builtin_off(argv);
@@ -412,6 +452,10 @@ _exec_cmd(struct kshell *kshell)
                 || 0 == kstrcmp("sh", argv[0])
                 || 0 == kstrcmp("sho", argv[0]) ) {
         _builtin_show(argv);
+    } else if ( 0 == kstrcmp("start", argv[0]) ) {
+        _builtin_start(argv);
+    } else if ( 0 == kstrcmp("stop", argv[0]) ) {
+        _builtin_stop(argv);
     } else if ( 0 == kstrcmp("test", argv[0]) ) {
         _builtin_test(argv);
     } else if ( 0 == kstrcmp("test2", argv[0]) ) {

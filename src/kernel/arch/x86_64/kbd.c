@@ -43,6 +43,7 @@ kbd_init(void)
     stat.capslock = 0;
     rpos = 0;
     wpos = 0;
+    lock = 0;
 }
 
 /*
@@ -70,13 +71,15 @@ kbd_event(void)
 {
     u8 scan_code;
 
-    arch_spin_lock(&lock);
+    //arch_spin_lock(&lock);
 
     scan_code = kbd_enc_read_buf();
     if ( !(0x80 & scan_code) ) {
         if ( scan_code == 1 ) {
             /* Escape key */
+            arch_spin_unlock(&lock);
             arch_poweroff();
+            return;
         }
         /* Pressed */
         switch ( scan_code ) {
@@ -134,7 +137,7 @@ kbd_event(void)
         }
     }
 
-    arch_spin_unlock(&lock);
+    //arch_spin_unlock(&lock);
 }
 
 /*

@@ -10,6 +10,7 @@
 #include <aos/const.h>
 #include "desc.h"
 #include "arch.h"
+#include "../../kernel.h"
 
 #define IDT_PRESENT     0x80
 #define IDT_INTGATE     0x0e

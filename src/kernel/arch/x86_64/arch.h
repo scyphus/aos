@@ -12,7 +12,6 @@
 
 #include <aos/const.h>
 
-#define MAX_PROCESSORS  256
 #define IDT_NR          256
 
 #define BOOTINFO_BASE           (u64)0x8000
@@ -225,6 +224,7 @@ void asm_lapic_write(u64, u32);
 int this_cpu(void);
 
 void halt(void);
+void idle(void);
 
 u64 bswap64(u64);
 void movsb(void *, const void *, u64);

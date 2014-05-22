@@ -44,11 +44,11 @@ arch_dbg_printf(const char *fmt, ...)
     va_list ap;
     u64 clk;
 
+    clock_update();
+
     arch_spin_lock(&dbg_lock);
 
     va_start(ap, fmt);
-
-    clock_update();
     clk = clock_get();
     kprintf("[%4llu.%.6llu]  ", clk/1000000000, (clk / 1000) % 1000000);
     kvprintf(fmt, ap);
@@ -135,8 +135,8 @@ arch_bsp_init(void)
     idt_setup_intr_gate(IV_TMR, &intr_apic_int32); /* IRQ0 */
     idt_setup_intr_gate(IV_KBD, &intr_apic_int33); /* IRQ1 */
     idt_setup_intr_gate(IV_LOC_TMR, &intr_apic_loc_tmr); /* Local APIC timer */
-    idt_setup_intr_gate(81, &intr_apic_ipi);
-    idt_setup_intr_gate(0xfe, &intr_crash); /* crash */
+    idt_setup_intr_gate(IV_IPI, &intr_apic_ipi);
+    idt_setup_intr_gate(IV_CRASH, &intr_crash); /* crash */
     idt_setup_intr_gate(0xff, &intr_apic_spurious); /* Spurious interrupt */
 
     /* Setup interrupt service routine then initialize I/O APIC */
@@ -184,7 +184,8 @@ arch_bsp_init(void)
         panic("Error! Trampoline size exceeds the maximum allowed size.\r\n");
     }
     for ( i = 0; i < tsz; i++ ) {
-        *(u8 *)((u64)TRAMPOLINE_ADDR + i) = *(u8 *)((u64)trampoline + i);
+        *(volatile u8 *)((u64)TRAMPOLINE_ADDR + i)
+            = *(volatile u8 *)((u64)trampoline + i);
     }
 
     /* Send INIT IPI */
@@ -387,8 +388,14 @@ void
 arch_crash(void)
 {
     /* Send IPI and halt self */
-    lapic_send_fixed_ipi(0xfe);
+    lapic_send_fixed_ipi(IV_CRASH);
     halt();
+}
+
+void
+arch_idle(void)
+{
+    idle();
 }
 
 void
@@ -523,9 +530,25 @@ arch_alloc_task(struct ktask *kt, void (*entry)(struct ktask *), int policy)
     return t;
 }
 
+/*
+ * Is active processor
+ */
+int
+arch_cpu_active(u16 id)
+{
+    struct p_data *pdata;
 
+    if ( id >= MAX_PROCESSORS ) {
+        return 0;
+    }
 
-
+    pdata = (struct p_data *)(P_DATA_BASE + id * P_DATA_SIZE);
+    if ( pdata->flags & 1 ) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
 
 
 

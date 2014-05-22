@@ -97,6 +97,26 @@ lapic_send_fixed_ipi(u8 vector)
 }
 
 /*
+ * Broadcast fixed IPI (no shorthand)
+ */
+void
+lapic_send_ns_fixed_ipi(u8 dst, u8 vector)
+{
+    u32 icrl;
+    u32 icrh;
+
+    icrl = asm_lapic_read(APIC_BASE + APIC_ICR_LOW);
+    icrh = asm_lapic_read(APIC_BASE + APIC_ICR_HIGH);
+
+    icrl = (icrl & ~0x000cdfff) | ICR_FIXED | ICR_DEST_NOSHORTHAND | vector;
+    icrh = (icrh & 0x000fffff) | ((u32)dst << 24);
+
+    asm_lapic_write(APIC_BASE + APIC_ICR_LOW, icrl);
+    asm_lapic_write(APIC_BASE + APIC_ICR_HIGH, icrh);
+}
+
+
+/*
  * Start local APIC timer
  */
 void

@@ -14,7 +14,7 @@
 
 static u64 clock_acpi_cnt;
 static u32 clock_acpi_prev;
-static int lock;
+static volatile int lock;
 
 /*
  * Initialize clock

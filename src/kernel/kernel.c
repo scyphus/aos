@@ -11,6 +11,9 @@
 #include "kernel.h"
 
 static volatile int lock;
+static struct processor_table *processors;
+
+static volatile int nnn;
 
 /*
  * Temporary: Keyboard drivers
@@ -38,20 +41,53 @@ panic(const char *s)
 void
 kmain(void)
 {
+    nnn = 0;
+
     /* Initialize the lock varialbe */
     lock = 0;
 
     /* Initialize kmem */
     kmem_init();
 
-    /* Initialize keyboard */
-    kbd_init();
-
     /* Initialize architecture-related devices */
     arch_bsp_init();
 
+    /* Initialize keyboard */
+    kbd_init();
+
     /* Wait for 10ms */
     arch_busy_usleep(10000);
+
+    /* Initialize processor table */
+    int i;
+    int npr;
+    npr = 0;
+    for ( i = 0; i < MAX_PROCESSORS; i++ ) {
+        if ( arch_cpu_active(i) ) {
+            npr++;
+        }
+    }
+    processors = kmalloc(sizeof(struct processor_table));
+    processors->n = npr;
+    processors->prs = kmalloc(sizeof(struct processor) * npr);
+    npr = 0;
+    for ( i = 0; i < MAX_PROCESSORS; i++ ) {
+        if ( arch_cpu_active(i) ) {
+            if ( processors->n <= npr ) {
+                /* Error */
+                kprintf("Error on processor initialization\r\n");
+                return;
+            }
+            processors->prs[npr].id = i;
+            if ( i == 0 ) {
+                processors->prs[npr].type = PROCESSOR_BSP;
+            } else {
+                processors->prs[npr].type = PROCESSOR_AP_TICKLESS;
+            }
+            npr++;
+        }
+    }
+
 
     /* Initialize the scheduler */
     sched_init();
@@ -70,6 +106,8 @@ kmain(void)
     /* Print out a message */
     kprintf("\r\nStarting a shell.  Press Esc to power off the machine:\r\n");
 
+    ktask_init();
+
     struct ktask *t;
 
     t = ktask_alloc();
@@ -83,49 +121,6 @@ kmain(void)
 }
 
 /*
- * Entry point for kernel task
- */
-void
-ktask_entry(struct ktask *t)
-{
-    int ret;
-
-    /* Get the arguments from the stack pointer */
-    ret = t->main(t->argc, t->argv);
-
-    /* ToDo: Handle return value */
-
-    /* Avoid returning to wrong point (no returning point in the stack) */
-    halt();
-}
-
-/*
- * Allocate a task
- */
-struct ktask *
-ktask_alloc(void)
-{
-    struct ktask *t;
-
-    t = kmalloc(sizeof(struct ktask));
-    if ( NULL == t ) {
-        return NULL;
-    }
-    t->id = 0;
-    t->name = NULL;
-    t->pri = 0;
-    t->cred = 0;
-    t->state = 0;
-    t->arch = arch_alloc_task(t, &ktask_entry, TASK_POLICY_KERNEL);
-
-    t->main = NULL;
-    t->argc = 0;
-    t->argv = NULL;
-
-    return t;
-}
-
-/*
  * Entry point to C function for AP called from asm.s
  */
 void
@@ -134,15 +129,7 @@ apmain(void)
     /* Initialize this AP */
     arch_ap_init();
 
-    struct ktask *t;
-
-    t = ktask_alloc();
-    t->main = &ktask_idle_main;
-    t->argc = 0;
-    t->argv = NULL;
-
-    arch_set_next_task(t);
-
+    sched();
     task_restart();
 }
 
@@ -171,6 +158,12 @@ void
 kintr_loc_tmr(void)
 {
     arch_clock_update();
+    nnn++;
+    if ( nnn % 5 == 0 ) {
+        sched();
+        //mfence();
+        //kprintf("aa\r\n");
+    }
 }
 
 /*
@@ -179,13 +172,12 @@ kintr_loc_tmr(void)
 void
 kintr_ipi(void)
 {
+    sched();
 }
 
 /*
  * Interrupt service routine for all vectors
  */
-void lapic_send_fixed_ipi(u8 vector);
-int this_cpu();
 void
 kintr_isr(u64 vec)
 {
@@ -195,12 +187,11 @@ kintr_isr(u64 vec)
         break;
     case IV_KBD:
         kintr_int33();
-        lapic_send_fixed_ipi(0x51);
         break;
     case IV_LOC_TMR:
         kintr_loc_tmr();
         /* Run task scheduler */
-        sched();
+        //sched();
         break;
     case IV_IPI:
         kintr_ipi();
@@ -210,16 +201,8 @@ kintr_isr(u64 vec)
     }
 }
 
-/*
- * Idle process
- */
-int
-ktask_idle_main(int argc, const char *const argv[])
-{
-    halt();
 
-    return 0;
-}
+
 
 /*
  * Local variables:

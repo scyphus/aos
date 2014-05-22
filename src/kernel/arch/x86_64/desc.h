@@ -13,7 +13,6 @@
 #include <aos/const.h>
 
 
-
 /*
  * IDT
  */

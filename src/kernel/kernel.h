@@ -12,10 +12,13 @@
 
 #include <aos/const.h>
 
+#define MAX_PROCESSORS  256
+
 #define IV_TMR          0x20
 #define IV_KBD          0x21
 #define IV_LOC_TMR      0x50
 #define IV_IPI          0x51
+#define IV_CRASH        0xfe
 
 #define PAGESIZE        4096
 
@@ -30,7 +33,6 @@ struct netdev {
 
     int (*sendpkt)(u8 *pkt, u32 len, struct netdev *netdev);
     int (*recvpkt)(u8 *pkt, u32 len, struct netdev *netdev);
-    int (*routing_test)(struct netdev *netdev);
 };
 struct netdev_list {
     struct netdev *netdev;
@@ -51,13 +53,6 @@ struct veth {
     u8 macaddr[6];
     int vlan;
 };
-#if 0
-struct net_ip {
-    struct ipv4_addr **ipv4_addrs;
-    struct ipv6_addr **ipv6_addrs;
-    struct veth **veths;
-};
-#endif
 
 
 void rng_init(void);
@@ -76,6 +71,10 @@ u32 rng_random(void);
 void task_restart(void);
 void halt(void);
 
+
+#define TASK_STATE_RUNNING      1
+
+
 /*
  * Task
  */
@@ -85,9 +84,9 @@ struct ktask {
     const char *name;
 
     /* Main routine */
-    int (*main)(int argc, const char *const argv[]);
+    int (*main)(int argc, char *argv[]);
     int argc;
-    const char *const *argv;
+    char **argv;
 
     /* For scheduler */
     int pri;
@@ -113,6 +112,40 @@ struct ktask_queue {
     volatile int tail;
 };
 
+/*
+ * Task table
+ */
+struct ktask_table {
+    /* Kernel tasks */
+    struct ktask *idle;
+    struct ktask *kernel;
+};
+
+/*
+ * Inter-task message
+ */
+struct kmsg {
+    u8 type;
+    union {
+        u8 msg;
+    } u;
+};
+
+/*
+ * Processor
+ */
+#define PROCESSOR_BSP 1
+#define PROCESSOR_AP_TICKFULL 2
+#define PROCESSOR_AP_TICKLESS 3
+struct processor {
+    /* Processor ID */
+    u8 id;
+    u8 type;
+};
+struct processor_table {
+    int n;
+    struct processor *prs;
+};
 
 /*
  * Kernel memory management
@@ -151,9 +184,8 @@ int kprintf(const char *, ...);
 int kvprintf(const char *, va_list);
 void panic(const char *);
 struct ktask * ktask_alloc(void);
-int ktask_enqueue(struct ktask *);
-struct ktask * ktask_dequeue(void);
-int ktask_idle_main(int argc, const char *const argv[]);
+int ktask_kernel_main(int argc, char *argv[]);
+int ktask_idle_main(int argc, char *argv[]);
 
 
 /* in util.c */
@@ -169,6 +201,7 @@ int kstrlen(const char *);
 char * kstrdup(const char *);
 
 /* in sched.c */
+int ktask_init(void);
 int sched_init(void);
 void sched(void);
 int sched_ktask_enqueue(struct ktask *);
@@ -181,7 +214,7 @@ int proc_shell(int, const char *const []);
 void proc_router(void);
 
 
-/* Architecture-dependent functions */
+/* Architecture-dependent functions in arch.c */
 void arch_init(void);
 void arch_bsp_init(void);
 void arch_ap_init(void);
@@ -195,11 +228,15 @@ void arch_poweroff(void);
 void arch_spin_lock(volatile int *);
 void arch_spin_unlock(volatile int *);
 
+void arch_idle(void);
+
 void * arch_memcpy(void *, const void *, u64);
 
 void * arch_alloc_task(struct ktask *, void (*entry)(struct ktask *), int);
 int arch_set_next_task(struct ktask *);
 struct ktask * arch_get_next_task(void);
+
+int arch_cpu_active(u16);
 
 /* Clock and timer */
 void arch_clock_update(void);

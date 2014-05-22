@@ -16,6 +16,7 @@ void lapic_init(void);
 void lapic_send_init_ipi(void);
 void lapic_send_startup_ipi(u8);
 void lapic_send_fixed_ipi(u8);
+void lapic_send_ns_fixed_ipi(u8, u8);
 void lapic_start_timer(u64, u8);
 u64 lapic_estimate_freq(void);
 

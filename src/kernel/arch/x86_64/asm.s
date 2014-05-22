@@ -61,6 +61,7 @@
 	.globl	_asm_lapic_read
 	.globl	_asm_lapic_write
 	.globl	_halt
+	.globl	_idle
 
 	.code64
 
@@ -69,11 +70,11 @@
  */
 kstart64:
 	call	_kmain
-	jmp	idle
+	jmp	_idle
 
 apstart64:
 	call	_apmain
-	jmp	idle
+	jmp	_idle
 
 _halt:
 	cli
@@ -86,11 +87,11 @@ _crash:
 	jmp	_crash
 
 /* Idle process */
-idle:
+_idle:
 	sti
 	hlt
 	cli
-	jmp	idle
+	jmp	_idle
 
 _hlt1:
 	sti
@@ -325,14 +326,18 @@ checktsc:
 /* Null function for interrupt handler */
 _intr_null:
 	pushq	%rdx
+
 	/* APIC EOI */
 	movq	$0xfee00000,%rdx
 	//addq	$APIC_EOI,%rdx
 	movq	$0,APIC_EOI(%rdx)
+
 	popq	%rdx
 
 	iretq
 
+foo:
+	.quad	0x0
 
 /* Interrupt handler for general protection fault */
 _intr_gpf:
@@ -372,7 +377,7 @@ _intr_gpf:
 	call	_kintr_isr
 
 	/* EOI for APIC */
-	movw	$0x1b,%rcx
+	movq	$0x1b,%rcx
 	rdmsr
 	shlq	$32,%rdx
 	addq	%rax,%rdx
@@ -507,6 +512,15 @@ _task_restart:
 	movq	%rdx,TSS_SP0(%rax)
 	//clts
 1:
+	movq	P_CUR_TASK_OFFSET(%rbp),%rax
+	movq	%rax,%dr0
+	movq	124(%rsp),%rax
+	movq	%rax,%dr1
+	movq	124+24(%rsp),%rax
+	movq	%rax,%dr2
+	movq	124+32(%rsp),%rax
+	movq	%rax,%dr3
+
 	intr_lapic_isr_done
 	iretq
 

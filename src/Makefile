@@ -51,7 +51,7 @@ kpack: kernel/arch/$(ARCH)/asm.o \
 	kernel/router.o \
 	kernel/util.o \
 	kernel/shell.o \
-	kernel/sched.o \
+	kernel/task.o \
 	kernel/arch/$(ARCH)/arch.o \
 	kernel/arch/$(ARCH)/spinlock.o \
 	kernel/arch/$(ARCH)/kbd.o \
