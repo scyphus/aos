@@ -54,7 +54,6 @@ kpack: kernel/arch/$(ARCH)/asm.o \
 	kernel/task.o \
 	kernel/arch/$(ARCH)/arch.o \
 	kernel/arch/$(ARCH)/spinlock.o \
-	kernel/arch/$(ARCH)/kbd.o \
 	kernel/arch/$(ARCH)/vga.o \
 	kernel/arch/$(ARCH)/acpi.o \
 	kernel/arch/$(ARCH)/apic.o \
@@ -68,6 +67,7 @@ kpack: kernel/arch/$(ARCH)/asm.o \
 	kernel/arch/$(ARCH)/cmos.o \
 	kernel/arch/$(ARCH)/i8254.o \
 	kernel/ptcam.o \
+	drivers/kbd/kbd.o \
 	drivers/rng/rng.o \
 	drivers/net/net.o \
 	drivers/net/netdev.o \

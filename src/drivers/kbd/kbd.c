@@ -7,10 +7,8 @@
  *      Hirochika Asai  <asai@jar.jp>
  */
 
-
 #include <aos/const.h>
-#include "arch.h"
-#include "../../kernel.h"
+#include "../../kernel/kernel.h"
 
 #define KBD_ENC_BUF_PORT        0x0060
 
@@ -52,7 +50,7 @@ kbd_init(void)
 u8
 kbd_enc_read_buf(void)
 {
-    return inb(KBD_ENC_BUF_PORT);
+    return arch_inb(KBD_ENC_BUF_PORT);
 }
 
 static unsigned char keymap_base[] =
@@ -71,7 +69,7 @@ kbd_event(void)
 {
     u8 scan_code;
 
-    //arch_spin_lock(&lock);
+    arch_spin_lock(&lock);
 
     scan_code = kbd_enc_read_buf();
     if ( !(0x80 & scan_code) ) {
@@ -137,7 +135,7 @@ kbd_event(void)
         }
     }
 
-    //arch_spin_unlock(&lock);
+    arch_spin_unlock(&lock);
 }
 
 /*
@@ -148,6 +146,8 @@ kbd_read(void)
 {
     int c;
 
+    __asm__ __volatile__ ("cli");
+
     arch_spin_lock(&lock);
     if ( rpos != wpos ) {
         c = buf[rpos++];
@@ -156,7 +156,20 @@ kbd_read(void)
     }
     arch_spin_unlock(&lock);
 
+    __asm__ __volatile__ ("sti");
+
     return c;
+}
+
+
+int
+kbd_driver_main(int argc, char *argv[])
+{
+    while ( 1 ) {
+        hlt1();
+    }
+
+    return 0;
 }
 
 /*

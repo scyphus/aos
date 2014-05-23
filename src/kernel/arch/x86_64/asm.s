@@ -16,6 +16,19 @@
 	.set	APIC_TMRDIV,0x3e0
 	.set	PIT_HZ,1193180
 
+	.set	P_DATA_SIZE,0x10000
+	.set	P_DATA_BASE,0x1000000
+	.set	IDT_NR,256
+	.set	P_TSS_OFFSET,(0x20 + IDT_NR * 8)
+	.set	P_TSS_SIZE,104
+	.set	P_CUR_TASK_OFFSET,(P_TSS_OFFSET + P_TSS_SIZE)
+	.set	P_NEXT_TASK_OFFSET,(P_CUR_TASK_OFFSET + 8)
+	.set	STACKFRAME_SIZE,164
+	.set	TASK_RP,0
+	.set	TASK_SP0,8
+	.set	TSS_SP0,4
+
+
 	.file	"asm.s"
 
 	.text
@@ -457,28 +470,6 @@ _intr_apic_spurious:
 	iretq
 
 
-lapic_isr_thread_restart:
-	//call	knext_thread
-	cmpq	$0,%rax
-	jz	1f
-	/* Save stack pointer */
-	
-1:
-	intr_lapic_isr_done
-	iretq
-
-	.set	P_DATA_SIZE,0x10000
-	.set	P_DATA_BASE,0x1000000
-	.set	IDT_NR,256
-	.set	P_TSS_OFFSET,(0x20 + IDT_NR * 8)
-	.set	P_TSS_SIZE,104
-	.set	P_CUR_TASK_OFFSET,(P_TSS_OFFSET + P_TSS_SIZE)
-	.set	P_NEXT_TASK_OFFSET,(P_CUR_TASK_OFFSET + 8)
-	.set	STACKFRAME_SIZE,164
-	.set	TASK_RP,0
-	.set	TASK_SP0,8
-	.set	TSS_SP0,4
-
 _task_restart:
 	/* Obtain current CPU ID */
 	call	_this_cpu
@@ -583,6 +574,67 @@ lapic_set_timer_one_shot:
 	movq	%rsp,%rbp
 	
 	leaveq
+
+
+
+/* Setup system call*/
+_syscall_setup:
+	/* Write syscall entry point */
+	movq    $0xc0000082,%rcx        /* IA32_LSTAR */
+	//rdmsr
+	movq    $syscall,%rax
+	movq    %rax,%rdx
+	shrq    $32,%rdx
+	wrmsr
+	/* Segment register */
+	movq    $0xc0000081,%rcx
+	movq    $0x0,%rax
+	//movq  $0x6148,%rdx    /* sysret cs/ss, syscall cs/ss */
+	movq    $0x00590048,%rdx/* sysret cs/ss, syscall cs/ss */
+	wrmsr
+	/* Enable syscall */
+	movl    $0xc0000080,%ecx        /* EFER MSR number */
+	rdmsr
+	btsl    $0,%eax                 /* SYSCALL ENABLE bit = 1 */
+	wrmsr
+	ret
+
+/* System call routine */
+syscall:
+	cli
+	// RIP=>RCX, RFLAGS==>R11
+	pushq   %rsp
+	pushq   %rbp
+	pushq   %rcx
+	pushq   %r11
+	/* Check the system call number */
+//	cmpq    $SYSCALL_MAX_NR,%rax
+	jg      1f
+	pushq   %rdx
+	/* Find system call function */
+	shlq    $3,%rax /* Add sizeof(struct syscall) */
+//	movq    (_syscall_table),%rdx
+	addq    %rax,%rdx
+	movq    (%rdx),%rax
+	callq   *%rax
+	popq    %rdx
+1:	popq    %r11
+	popq    %rcx
+	popq    %rbp
+	popq    %rsp
+	sti
+	//sysretq
+	/* Use iretq because sysretq cannot return to ring 1. */
+	movq	$0x61,%rax /* RING 1*/
+	pushq	%rax
+	leaq	8(%rsp),%rax /* SP */
+	pushq	%rax
+	pushq	%r11 /* remove IA32_FMASK; RFLAGS <- (R11 & 3C7FD7H) | 2; */
+	movq    $0x59,%rax /* CS */
+	pushq   %rax
+	pushq   %rcx /* IP */
+        iretq
+
 
 
 	.data

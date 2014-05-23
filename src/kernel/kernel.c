@@ -11,7 +11,7 @@
 #include "kernel.h"
 
 static volatile int lock;
-static struct processor_table *processors;
+struct processor_table *processors;
 
 static volatile int nnn;
 
@@ -21,6 +21,10 @@ static volatile int nnn;
 void kbd_init(void);
 void kbd_event(void);
 int kbd_read(void);
+
+/* FIXME: To be moved to somewhere else */
+int kbd_driver_main(int argc, char *argv[]);
+
 
 /* arch.c */
 void arch_bsp_init(void);
@@ -61,6 +65,7 @@ kmain(void)
     /* Initialize processor table */
     int i;
     int npr;
+    struct ktask *t;
     npr = 0;
     for ( i = 0; i < MAX_PROCESSORS; i++ ) {
         if ( arch_cpu_active(i) ) {
@@ -84,10 +89,11 @@ kmain(void)
             } else {
                 processors->prs[npr].type = PROCESSOR_AP_TICKLESS;
             }
+            processors->map[i] = npr;
+
             npr++;
         }
     }
-
 
     /* Initialize the scheduler */
     sched_init();
@@ -107,15 +113,26 @@ kmain(void)
     kprintf("\r\nStarting a shell.  Press Esc to power off the machine:\r\n");
 
     ktask_init();
-
-    struct ktask *t;
+    for ( i = 0; i < processors->n; i++ ) {
+        t = ktask_alloc();
+        t->main = &ktask_idle_main;
+        t->argc = 0;
+        t->argv = NULL;
+        processors->prs[i].idle = t;
+    }
 
     t = ktask_alloc();
     t->main = &proc_shell;
     t->argc = 0;
     t->argv = NULL;
+    sched_ktask_enqueue(ktask_queue_entry_new(t));
 
-    sched_ktask_enqueue(t);
+    t = ktask_alloc();
+    t->main = &kbd_driver_main;
+    t->argc = 0;
+    t->argv = NULL;
+    sched_ktask_enqueue(ktask_queue_entry_new(t));
+
     sched();
     task_restart();
 }

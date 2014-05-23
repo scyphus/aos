@@ -392,6 +392,13 @@ arch_crash(void)
     halt();
 }
 
+u8
+arch_inb(u16 a)
+{
+    return inb(a);
+}
+
+
 void
 arch_idle(void)
 {

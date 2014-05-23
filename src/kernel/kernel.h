@@ -72,7 +72,9 @@ void task_restart(void);
 void halt(void);
 
 
-#define TASK_STATE_RUNNING      1
+#define TASK_STATE_READY        1
+#define TASK_STATE_RUNNING      2
+#define TASK_STATE_BLOCKED      3
 
 
 /*
@@ -95,8 +97,15 @@ struct ktask {
     /* State */
     int state;
 
+    /* Return code */
+    int ret;
+
     /* Archtecture-specific structure */
     void *arch;
+
+
+    /* Message */
+    struct kmsg_queue *msg_queue;
 };
 
 /*
@@ -104,12 +113,11 @@ struct ktask {
  */
 struct ktask_queue_entry {
     struct ktask *ktask;
+    struct ktask_queue_entry *next;
 };
 struct ktask_queue {
-    int nent;
-    struct ktask_queue_entry *entries;
-    volatile int head;
-    volatile int tail;
+    struct ktask_queue_entry *head;
+    struct ktask_queue_entry *tail;
 };
 
 /*
@@ -117,7 +125,6 @@ struct ktask_queue {
  */
 struct ktask_table {
     /* Kernel tasks */
-    struct ktask *idle;
     struct ktask *kernel;
 };
 
@@ -141,10 +148,12 @@ struct processor {
     /* Processor ID */
     u8 id;
     u8 type;
+    struct ktask *idle;
 };
 struct processor_table {
     int n;
     struct processor *prs;
+    u8 map[MAX_PROCESSORS];
 };
 
 /*
@@ -204,8 +213,8 @@ char * kstrdup(const char *);
 int ktask_init(void);
 int sched_init(void);
 void sched(void);
-int sched_ktask_enqueue(struct ktask *);
-struct ktask * sched_ktask_dequeue(void);
+int sched_ktask_enqueue(struct ktask_queue_entry *);
+struct ktask_queue_entry * sched_ktask_dequeue(void);
 
 
 /* in shell.c */
@@ -227,6 +236,8 @@ void arch_poweroff(void);
 
 void arch_spin_lock(volatile int *);
 void arch_spin_unlock(volatile int *);
+
+u8 arch_inb(u16);
 
 void arch_idle(void);
 
