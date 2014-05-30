@@ -91,6 +91,7 @@
 	.globl	_idle
 
 	.globl	_syscall_setup
+	.globl	_syscall
 
 	.code64
 
@@ -626,6 +627,12 @@ _syscall_setup:
 	wrmsr
 	ret
 
+
+/* void scall(u64); */
+_syscall:
+	syscall
+	ret
+
 /* Syscall entry */
 syscall_entry:
 	movw	%cs,%ax
@@ -636,8 +643,6 @@ syscall_entry:
 	jz	syscall_r2
 	cmpw	$1,%ax
 	jz	syscall_r1
-
-
 
 syscall_r0:
 	// RIP=>RCX, RFLAGS==>R11
