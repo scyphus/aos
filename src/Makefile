@@ -52,6 +52,7 @@ kpack: kernel/arch/$(ARCH)/asm.o \
 	kernel/util.o \
 	kernel/shell.o \
 	kernel/task.o \
+	kernel/system.o \
 	kernel/arch/$(ARCH)/arch.o \
 	kernel/arch/$(ARCH)/spinlock.o \
 	kernel/arch/$(ARCH)/vga.o \
