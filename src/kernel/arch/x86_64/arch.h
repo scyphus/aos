@@ -239,6 +239,8 @@ void intr_apic_ipi(void);
 void intr_crash(void);
 void intr_apic_spurious(void);
 
+void syscall(u64);
+
 /* spinlock.s */
 void spin_lock(volatile int *);
 void spin_unlock(volatile int *);

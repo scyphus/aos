@@ -560,6 +560,11 @@ arch_cpu_active(u16 id)
     }
 }
 
+void
+arch_scall(u64 nr)
+{
+    syscall(nr);
+}
 
 
 

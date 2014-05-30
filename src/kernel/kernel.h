@@ -253,6 +253,8 @@ struct ktask * arch_get_next_task(void);
 
 int arch_cpu_active(u16);
 
+void arch_scall(u64 nr);
+
 /* Clock and timer */
 void arch_clock_update(void);
 u64 arch_clock_get(void);

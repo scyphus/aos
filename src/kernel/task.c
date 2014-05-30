@@ -1,5 +1,5 @@
 /*_
- * Copyright 2013 Scyphus Solutions Co. Ltd.  All rights reserved.
+ * Copyright (c) 2013 Scyphus Solutions Co. Ltd.  All rights reserved.
  * Copyright (c) 2014 Hirochika Asai
  *
  * Authors:
@@ -280,8 +280,7 @@ ktask_kernel_main(int argc, char *argv[])
 
     while ( 1 ) {
         arch_clock_update();
-        //__asm__ ("movq $2,%rdi;syscall");
-        __asm__ ("movq $1,%rdi;syscall");
+        arch_scall(1);
     }
 
     return 0;

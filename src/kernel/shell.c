@@ -514,8 +514,7 @@ proc_shell(int argc, const char *const argv[])
                 }
             }
         } else {
-            //__asm__ ("hlt");
-            //hlt1();
+            arch_scall(1);
         }
     }
 
