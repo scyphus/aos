@@ -1,5 +1,5 @@
 /*_
- * Copyright 2013 Scyphus Solutions Co. Ltd.  All rights reserved.
+ * Copyright (c) 2013 Scyphus Solutions Co. Ltd.  All rights reserved.
  * Copyright (c) 2014 Hirochika Asai
  *
  * Authors:
