@@ -162,6 +162,8 @@ arch_bsp_init(void)
 
     /* Set general protection fault handler */
     idt_setup_intr_gate(13, &intr_gpf);
+    /* Set page fault handler */
+    idt_setup_intr_gate(14, &intr_pf);
 
     /* Initialize local APIC */
     lapic_init();
@@ -486,6 +488,7 @@ arch_alloc_task(struct ktask *kt, void (*entry)(struct ktask *), int policy)
     int ss;
     int flags;
 
+    /* CPL <= IOPL */
     switch ( policy ) {
     case TASK_POLICY_KERNEL:
         /* Ring 0 for kernel privilege */

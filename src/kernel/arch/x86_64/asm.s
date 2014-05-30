@@ -1,8 +1,10 @@
 /*_
- * Copyright 2013 Scyphus Solutions Co. Ltd.  All rights reserved.
+ * Copyright (c) 2013 Scyphus Solutions Co. Ltd.
+ * Copyright (c) 2014 Hirochika Asai
+ * All rights reserved.
  *
  * Authors:
- *      Hirochika Asai  <asai@scyphus.co.jp>
+ *      Hirochika Asai  <asai@jar.jp>
  */
 
 	.set	APIC_EOI,0x0b0
@@ -16,6 +18,8 @@
 	.set	APIC_TMRDIV,0x3e0
 	.set	PIT_HZ,1193180
 
+	.set    SYSCALL_MAX_NR,0x10
+
 	.set	P_DATA_SIZE,0x10000
 	.set	P_DATA_BASE,0x1000000
 	.set	IDT_NR,256
@@ -26,6 +30,7 @@
 	.set	STACKFRAME_SIZE,164
 	.set	TASK_RP,0
 	.set	TASK_SP0,8
+	.set	TASK_KTASK,32
 	.set	TSS_SP0,4
 
 
@@ -62,6 +67,7 @@
 	.globl	_this_cpu
 	.globl	_intr_null
 	.globl	_intr_gpf
+	.globl	_intr_pf
 	.globl	_intr_apic_int32
 	.globl	_intr_apic_int33
 	.globl	_intr_apic_loc_tmr
@@ -75,6 +81,8 @@
 	.globl	_asm_lapic_write
 	.globl	_halt
 	.globl	_idle
+
+	.globl	_syscall_setup
 
 	.code64
 
@@ -101,15 +109,11 @@ _crash:
 
 /* Idle process */
 _idle:
-	sti
 	hlt
-	cli
 	jmp	_idle
 
 _hlt1:
-	sti
 	hlt
-	cli
 	ret
 
 /* void pause(void); */
@@ -366,6 +370,16 @@ _intr_gpf:
 	addq	$0x8,%rsp
 	iretq
 
+/* Interrupt handler for page fault */
+_intr_pf:
+	pushq	%rbp
+	movq	%rsp,%rbp
+	movq	%rsp,%dr0
+	popq	%rbp
+	addq	$0x8,%rsp
+	iretq
+
+
 /* Beginning of interrupt handler */
 	.macro	intr_lapic_isr vec
 	pushq	%rax
@@ -488,6 +502,10 @@ _task_restart:
 	/* Save stack pointer */
 	movq	P_CUR_TASK_OFFSET(%rbp),%rax
 	movq	%rsp,TASK_RP(%rax)
+	/* Set the state */
+	movq	TASK_KTASK(%rax),%rdi
+	/* Notify that the current task is switched*/
+	callq	_ktask_switched
 0:
 	/* Task switch (set the stack frame of the new task) */
 	movq	P_NEXT_TASK_OFFSET(%rbp),%rax
@@ -503,15 +521,14 @@ _task_restart:
 	movq	%rdx,TSS_SP0(%rax)
 	//clts
 1:
-	movq	P_CUR_TASK_OFFSET(%rbp),%rax
-	movq	%rax,%dr0
-	movq	124(%rsp),%rax
-	movq	%rax,%dr1
-	movq	124+24(%rsp),%rax
-	movq	%rax,%dr2
-	movq	124+32(%rsp),%rax
-	movq	%rax,%dr3
-
+//	movq    P_CUR_TASK_OFFSET(%rbp),%rax
+//	movq    %rax,%dr0
+//	movq    124(%rsp),%rax
+//	movq    %rax,%dr1
+//	movq    124+24(%rsp),%rax
+//	movq    %rax,%dr2
+//	movq    124+32(%rsp),%rax
+//	movq    %rax,%dr3
 	intr_lapic_isr_done
 	iretq
 
@@ -582,7 +599,7 @@ _syscall_setup:
 	/* Write syscall entry point */
 	movq    $0xc0000082,%rcx        /* IA32_LSTAR */
 	//rdmsr
-	movq    $syscall,%rax
+	movq    $syscall_routine,%rax
 	movq    %rax,%rdx
 	shrq    $32,%rdx
 	wrmsr
@@ -590,7 +607,8 @@ _syscall_setup:
 	movq    $0xc0000081,%rcx
 	movq    $0x0,%rax
 	//movq  $0x6148,%rdx    /* sysret cs/ss, syscall cs/ss */
-	movq    $0x00590048,%rdx/* sysret cs/ss, syscall cs/ss */
+	//movq    $0x00590048,%rdx/* sysret cs/ss, syscall cs/ss */
+	movq    $0x003b0008,%rdx /* sysret cs/ss, syscall cs/ss */
 	wrmsr
 	/* Enable syscall */
 	movl    $0xc0000080,%ecx        /* EFER MSR number */
@@ -599,21 +617,59 @@ _syscall_setup:
 	wrmsr
 	ret
 
+/* Syscall entry */
+syscall_entry:
+	pushq	%rax
+	movw	%cs,%ax
+	andw	$3,%ax
+	cmpw	$0,%ax
+	jz	syscall_r0
+
+syscall_r0:
+	popq	%rax
+	ret
+syscall_r1:
+	movq	$0x21,%rax /* SS: RING 1 */
+	pushq	%rax
+	leaq	8(%rsp),%rax /* SP */
+	pushq	%rax
+	pushq	%r11 /* remove IA32_FMASK; RFLAGS <- (R11 & 3C7FD7H) | 2; */
+	movq    $0x19,%rax /* CS */
+	pushq   %rax
+	pushq   %rcx /* IP */
+	iretq
+syscall_r2:
+	movq	$0x32,%rax /* SS: RING 1 */
+	pushq	%rax
+	leaq	8(%rsp),%rax /* SP */
+	pushq	%rax
+	pushq	%r11 /* remove IA32_FMASK; RFLAGS <- (R11 & 3C7FD7H) | 2; */
+	movq    $0x2a,%rax /* CS */
+	pushq   %rax
+	pushq   %rcx /* IP */
+	iretq
+syscall_r3:
+	sysretq
+	movq	%rdi,%rax
+	syscall
+	popq	%rax
+	ret
+
 /* System call routine */
-syscall:
-	cli
+syscall_routine:
+	//cli
 	// RIP=>RCX, RFLAGS==>R11
 	pushq   %rsp
 	pushq   %rbp
 	pushq   %rcx
 	pushq   %r11
 	/* Check the system call number */
-//	cmpq    $SYSCALL_MAX_NR,%rax
+	cmpq    $SYSCALL_MAX_NR,%rax
 	jg      1f
 	pushq   %rdx
 	/* Find system call function */
 	shlq    $3,%rax /* Add sizeof(struct syscall) */
-//	movq    (_syscall_table),%rdx
+	movq    (_syscall_table),%rdx
 	addq    %rax,%rdx
 	movq    (%rdx),%rax
 	callq   *%rax
@@ -622,18 +678,18 @@ syscall:
 	popq    %rcx
 	popq    %rbp
 	popq    %rsp
-	sti
+	//sti
 	//sysretq
 	/* Use iretq because sysretq cannot return to ring 1. */
-	movq	$0x61,%rax /* RING 1*/
+	movq	$0x21,%rax /* SS: RING 1 */
 	pushq	%rax
 	leaq	8(%rsp),%rax /* SP */
 	pushq	%rax
 	pushq	%r11 /* remove IA32_FMASK; RFLAGS <- (R11 & 3C7FD7H) | 2; */
-	movq    $0x59,%rax /* CS */
+	movq    $0x19,%rax /* CS */
 	pushq   %rax
 	pushq   %rcx /* IP */
-        iretq
+	iretq
 
 
 

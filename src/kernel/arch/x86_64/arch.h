@@ -188,6 +188,7 @@ struct p_data {
 
 
 void intr_gpf(void);
+void intr_pf(void);
 
 u8 inb(u16);
 u16 inw(u16);

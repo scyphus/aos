@@ -13,7 +13,7 @@
 static volatile int lock;
 struct processor_table *processors;
 
-static volatile int nnn;
+struct syscall *syscall_table;
 
 /*
  * Temporary: Keyboard drivers
@@ -45,8 +45,6 @@ panic(const char *s)
 void
 kmain(void)
 {
-    nnn = 0;
-
     /* Initialize the lock varialbe */
     lock = 0;
 
@@ -112,25 +110,38 @@ kmain(void)
     /* Print out a message */
     kprintf("\r\nStarting a shell.  Press Esc to power off the machine:\r\n");
 
+    syscall_init();
+
     ktask_init();
     for ( i = 0; i < processors->n; i++ ) {
-        t = ktask_alloc();
+        t = ktask_alloc(TASK_POLICY_KERNEL);
         t->main = &ktask_idle_main;
+        t->id = -1;
+        t->name = "[idle]";
         t->argc = 0;
         t->argv = NULL;
+        t->state = TASK_STATE_READY;
         processors->prs[i].idle = t;
     }
 
-    t = ktask_alloc();
+    sched_ktask_enqueue(ktask_queue_entry_new(processors->prs[processors->map[this_cpu()]].idle));
+
+    t = ktask_alloc(TASK_POLICY_KERNEL);
     t->main = &proc_shell;
+    t->id = 1;
+    t->name = "[shell]";
     t->argc = 0;
     t->argv = NULL;
+    t->state = TASK_STATE_READY;
     sched_ktask_enqueue(ktask_queue_entry_new(t));
 
-    t = ktask_alloc();
+    t = ktask_alloc(TASK_POLICY_KERNEL);
     t->main = &kbd_driver_main;
+    t->id = 2;
+    t->name = "[kbd]";
     t->argc = 0;
     t->argv = NULL;
+    t->state = TASK_STATE_READY;
     sched_ktask_enqueue(ktask_queue_entry_new(t));
 
     sched();
@@ -149,6 +160,85 @@ apmain(void)
     sched();
     task_restart();
 }
+
+
+
+#define SYSCALL_MAX_NR  0x10
+#define SYSCALL_HLT     1
+
+/*
+ * System calls
+ */
+struct syscall {
+    void (*func)(void);
+} __attribute__ ((packed));
+
+/*
+ * Dummy function for syscall
+ */
+void
+syscall_dummy(void)
+{
+}
+
+void
+syscall_hlt(void)
+{
+    __asm__ __volatile__ ("hlt");
+}
+
+void
+syscall_test(void)
+{
+    kprintf("XXXX\r\n");
+}
+
+
+/*
+ * Initialize syscall table
+ */
+void
+syscall_init(void)
+{
+    u64 sz = (SYSCALL_MAX_NR + 1) * sizeof(struct syscall);
+    u64 i;
+
+    syscall_table = (struct syscall *)kmalloc(((sz-1)/PAGESIZE + 1) * PAGESIZE);
+    for ( i = 0; i <= SYSCALL_MAX_NR; i++ ) {
+        syscall_table[i].func = &syscall_dummy;
+    }
+    syscall_table[1].func = &syscall_hlt;
+    syscall_table[2].func = &syscall_test;
+
+    /* Setup */
+    syscall_setup();
+}
+
+
+
+
+/*
+ * ktask_switched
+ */
+void
+ktask_switched(struct ktask *t)
+{
+    //kprintf("XXXXXXXX %d\r\n", t->id);
+    t->state = TASK_STATE_READY;
+}
+
+
+/*
+ * Register an interrupt service routine
+ */
+int
+register_isr(int nr, void (*isr)(void))
+{
+    return 0;
+}
+
+
+
 
 /*
  * PIT interrupt
@@ -175,12 +265,8 @@ void
 kintr_loc_tmr(void)
 {
     arch_clock_update();
-    nnn++;
-    if ( nnn % 5 == 0 ) {
-        sched();
-        //mfence();
-        //kprintf("aa\r\n");
-    }
+    sched();
+    //mfence();
 }
 
 /*

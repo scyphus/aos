@@ -137,6 +137,10 @@ struct kmsg {
         u8 msg;
     } u;
 };
+struct kmq {
+    struct kmsq *head;
+    struct kmsq *tail;
+};
 
 /*
  * Processor
@@ -192,7 +196,7 @@ typedef __builtin_va_list va_list;
 int kprintf(const char *, ...);
 int kvprintf(const char *, va_list);
 void panic(const char *);
-struct ktask * ktask_alloc(void);
+struct ktask * ktask_alloc(int);
 int ktask_kernel_main(int argc, char *argv[]);
 int ktask_idle_main(int argc, char *argv[]);
 

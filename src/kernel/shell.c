@@ -514,7 +514,8 @@ proc_shell(int argc, const char *const argv[])
                 }
             }
         } else {
-            hlt1();
+            //__asm__ ("hlt");
+            //hlt1();
         }
     }
 

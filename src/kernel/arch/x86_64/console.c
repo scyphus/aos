@@ -8,8 +8,8 @@
 /* $Id$ */
 
 #include <aos/const.h>
-#include "vga.h"
-#include "kbd.h"
+//#include "vga.h"
+//#include "kbd.h"
 
 /*
  * Local variables:

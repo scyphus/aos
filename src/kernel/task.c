@@ -49,16 +49,29 @@ sched(void)
     struct ktask_queue_entry *e;
     struct ktask *t;
 
+    /* Obtain the current task */
+    t = arch_get_current_task();
+    if ( NULL != t && TASK_STATE_RUNNING == t->state ) {
+        /* Decrement the credit */
+        t->cred--;
+        if ( t->cred > 0 ) {
+            return;
+        }
+    }
+
+    /* Check if the next task is already scheduled */
     t = arch_get_next_task();
     if ( NULL != t ) {
         /* Already scheduled */
         return;
     }
 
+    /* Dequeue a task */
     e = sched_ktask_dequeue();
     if ( NULL == e ) {
         if ( NULL == arch_get_current_task() ) {
             /* No task is running, then schedule idle process */
+            processors->prs[processors->map[this_cpu()]].idle->cred = 16;
             arch_set_next_task(processors->prs[processors->map[this_cpu()]].idle);
             return;
         } else {
@@ -67,17 +80,15 @@ sched(void)
         }
     }
 
+    /* If the task is not ready, enqueue it and dequeue another one. */
     while ( TASK_STATE_READY != e->ktask->state ) {
         /* Schedule it again */
         sched_ktask_enqueue(e);
         e = sched_ktask_dequeue();
     }
 
-    t = arch_get_current_task();
-    if ( NULL != t ) {
-        t->state = TASK_STATE_READY;
-    }
-
+    /* Set the next task */
+    e->ktask->cred = 16;
     arch_set_next_task(e->ktask);
     e->ktask->state = TASK_STATE_RUNNING;
     sched_ktask_enqueue(e);
@@ -93,6 +104,7 @@ sched_ktask_enqueue(struct ktask_queue_entry *e)
 
     arch_spin_lock(&ktask_lock);
 
+    e->next = NULL;
     if ( NULL == ktaskq->tail ) {
         /* Empty */
         ktaskq->head = e;
@@ -177,11 +189,13 @@ ktask_init(void)
         return -1;
     }
     /* Kernel task */
-    ktasks->kernel = ktask_alloc();
+    ktasks->kernel = ktask_alloc(TASK_POLICY_KERNEL);
     ktasks->kernel->main = &ktask_kernel_main;
     ktasks->kernel->argc = 1;
     ktasks->kernel->argv = argv;
     ktasks->kernel->id = 0;
+    ktasks->kernel->name = "[kernel]";
+    ktasks->kernel->state = TASK_STATE_READY;
 
     sched_ktask_enqueue(ktask_queue_entry_new(ktasks->kernel));
 
@@ -214,7 +228,7 @@ ktask_entry(struct ktask *t)
  * Allocate a task
  */
 struct ktask *
-ktask_alloc(void)
+ktask_alloc(int policy)
 {
     struct ktask *t;
 
@@ -227,7 +241,7 @@ ktask_alloc(void)
     t->pri = 0;
     t->cred = 0;
     t->state = TASK_STATE_READY;
-    t->arch = arch_alloc_task(t, &ktask_entry, TASK_POLICY_KERNEL);
+    t->arch = arch_alloc_task(t, &ktask_entry, policy);
 
     t->main = NULL;
     t->argc = 0;
@@ -262,8 +276,10 @@ ktask_destroy(struct ktask *t)
 int
 ktask_kernel_main(int argc, char *argv[])
 {
+    u64 x;
+
     while ( 1 ) {
-        //arch_clock_update();
+        arch_clock_update();
         hlt1();
     }
 
