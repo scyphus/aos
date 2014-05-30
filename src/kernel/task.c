@@ -6,8 +6,6 @@
  *      Hirochika Asai  <asai@jar.jp>
  */
 
-/* $Id$ */
-
 #include <aos/const.h>
 #include "kernel.h"
 

@@ -1,8 +1,9 @@
 /*_
- * Copyright 2014 Scyphus Solutions Co. Ltd.  All rights reserved.
+ * Copyright (c) 2013 Scyphus Solutions Co. Ltd.  All rights reserved.
+ * Copyright (c) 2014 Hirochika Asai
  *
  * Authors:
- *      Hirochika Asai  <asai@scyphus.co.jp>
+ *      Hirochika Asai  <asai@jar.jp>
  */
 
 #include <aos/const.h>
