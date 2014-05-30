@@ -280,7 +280,8 @@ ktask_kernel_main(int argc, char *argv[])
 
     while ( 1 ) {
         arch_clock_update();
-        hlt1();
+        //__asm__ ("movq $2,%rdi;syscall");
+        __asm__ ("movq $1,%rdi;syscall");
     }
 
     return 0;

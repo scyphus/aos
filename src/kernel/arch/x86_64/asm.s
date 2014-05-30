@@ -32,6 +32,14 @@
 	.set	TASK_SP0,8
 	.set	TASK_KTASK,32
 	.set	TSS_SP0,4
+	.set	GDT_RING0_CODE_SEL,0x08
+	.set	GDT_RING0_DATA_SEL,0x10
+	.set	GDT_RING1_CODE_SEL,0x19
+	.set	GDT_RING1_DATA_SEL,0x21
+	.set	GDT_RING2_CODE_SEL,0x2a
+	.set	GDT_RING2_DATA_SEL,0x31
+	.set	GDT_RING3_CODE_SEL,0x3b
+	.set	GDT_RING3_DATA_SEL,0x43
 
 
 	.file	"asm.s"
@@ -599,7 +607,7 @@ _syscall_setup:
 	/* Write syscall entry point */
 	movq    $0xc0000082,%rcx        /* IA32_LSTAR */
 	//rdmsr
-	movq    $syscall_routine,%rax
+	movq    $syscall_entry,%rax
 	movq    %rax,%rdx
 	shrq    $32,%rdx
 	wrmsr
@@ -608,7 +616,8 @@ _syscall_setup:
 	movq    $0x0,%rax
 	//movq  $0x6148,%rdx    /* sysret cs/ss, syscall cs/ss */
 	//movq    $0x00590048,%rdx/* sysret cs/ss, syscall cs/ss */
-	movq    $0x003b0008,%rdx /* sysret cs/ss, syscall cs/ss */
+	//movq    $0x003b0008,%rdx /* sysret cs/ss, syscall cs/ss */
+	movq	$(GDT_RING0_CODE_SEL | (GDT_RING3_CODE_SEL<<16)),%rdx
 	wrmsr
 	/* Enable syscall */
 	movl    $0xc0000080,%ecx        /* EFER MSR number */
@@ -619,41 +628,141 @@ _syscall_setup:
 
 /* Syscall entry */
 syscall_entry:
-	pushq	%rax
 	movw	%cs,%ax
 	andw	$3,%ax
-	cmpw	$0,%ax
-	jz	syscall_r0
+	cmpw	$3,%ax
+	jz	syscall_r3
+	cmpw	$2,%ax
+	jz	syscall_r2
+	cmpw	$1,%ax
+	jz	syscall_r1
+
+
 
 syscall_r0:
-	popq	%rax
-	ret
+	// RIP=>RCX, RFLAGS==>R11
+	pushq   %rsp
+	pushq   %rbp
+	pushq   %rcx
+	pushq   %r11
+
+	/* Check the system call number */
+	cmpq    $SYSCALL_MAX_NR,%rdi
+	jg      1f
+	/* Find the corresponding system call function */
+	shlq    $3,%rdi /* Add sizeof(struct syscall) */
+	movq    (_syscall_table),%rdx
+	addq    %rdi,%rdx
+	movq    (%rdx),%rax
+	/* Call it */
+	callq   *%rax
+1:
+	popq	%r11
+	popq	%rcx
+	popq	%rbp
+	popq	%rsp
+	/* Use iretq because sysretq cannot return to ring 0. */
+	movq	$GDT_RING0_DATA_SEL,%rax /* SS: RING 0 */
+	pushq	%rax
+	leaq	8(%rsp),%rax /* SP */
+	pushq	%rax
+	pushq	%r11 /* remove IA32_FMASK; RFLAGS <- (R11 & 3C7FD7H) | 2; */
+	movq    $GDT_RING0_CODE_SEL,%rax /* CS */
+	pushq   %rax
+	pushq   %rcx /* IP */
+	iretq
+
 syscall_r1:
-	movq	$0x21,%rax /* SS: RING 1 */
+	// RIP=>RCX, RFLAGS==>R11
+	pushq   %rsp
+	pushq   %rbp
+	pushq   %rcx
+	pushq   %r11
+
+	/* Check the system call number */
+	cmpq    $SYSCALL_MAX_NR,%rdi
+	jg      1f
+	/* Find the corresponding system call function */
+	shlq    $3,%rdi /* Add sizeof(struct syscall) */
+	movq    (_syscall_table),%rdx
+	addq    %rdi,%rdx
+	movq    (%rdx),%rax
+	/* Call it */
+	callq   *%rax
+1:
+	popq	%r11
+	popq	%rcx
+	popq	%rbp
+	popq	%rsp
+	/* Use iretq because sysretq cannot return to ring 1. */
+	movq	$GDT_RING1_DATA_SEL,%rax /* SS: RING 1 */
 	pushq	%rax
 	leaq	8(%rsp),%rax /* SP */
 	pushq	%rax
 	pushq	%r11 /* remove IA32_FMASK; RFLAGS <- (R11 & 3C7FD7H) | 2; */
-	movq    $0x19,%rax /* CS */
+	movq    $GDT_RING1_CODE_SEL,%rax /* CS */
 	pushq   %rax
 	pushq   %rcx /* IP */
 	iretq
+
 syscall_r2:
-	movq	$0x32,%rax /* SS: RING 1 */
+	// RIP=>RCX, RFLAGS==>R11
+	pushq   %rsp
+	pushq   %rbp
+	pushq   %rcx
+	pushq   %r11
+
+	/* Check the system call number */
+	cmpq    $SYSCALL_MAX_NR,%rdi
+	jg      1f
+	/* Find the corresponding system call function */
+	shlq    $3,%rdi /* Add sizeof(struct syscall) */
+	movq    (_syscall_table),%rdx
+	addq    %rdi,%rdx
+	movq    (%rdx),%rax
+	/* Call it */
+	callq   *%rax
+1:
+	popq	%r11
+	popq	%rcx
+	popq	%rbp
+	popq	%rsp
+	/* Use iretq because sysretq cannot return to ring 2. */
+	movq	$GDT_RING2_DATA_SEL,%rax /* SS: RING 2 */
 	pushq	%rax
 	leaq	8(%rsp),%rax /* SP */
 	pushq	%rax
 	pushq	%r11 /* remove IA32_FMASK; RFLAGS <- (R11 & 3C7FD7H) | 2; */
-	movq    $0x2a,%rax /* CS */
+	movq    $GDT_RING2_CODE_SEL,%rax /* CS */
 	pushq   %rax
 	pushq   %rcx /* IP */
 	iretq
+
+
 syscall_r3:
+	// RIP=>RCX, RFLAGS==>R11
+	pushq   %rsp
+	pushq   %rbp
+	pushq   %rcx
+	pushq   %r11
+	/* Check the system call number */
+	cmpq    $SYSCALL_MAX_NR,%rdi
+	jg      1f
+	/* Find the corresponding system call function */
+	shlq    $3,%rdi /* Add sizeof(struct syscall) */
+	movq    (_syscall_table),%rdx
+	addq    %rdi,%rdx
+	movq    (%rdx),%rax
+	/* Call it */
+	callq   *%rax
+1:
+	popq	%r11
+	popq	%rcx
+	popq	%rbp
+	popq	%rsp
 	sysretq
-	movq	%rdi,%rax
-	syscall
-	popq	%rax
-	ret
+
+
 
 /* System call routine */
 syscall_routine:
