@@ -87,19 +87,27 @@ void task_restart(void);
 void halt(void);
 
 
-#define TASK_STATE_READY        1
-#define TASK_STATE_RUNNING      2
-#define TASK_STATE_BLOCKED      3
 
 /*
  * Inter-task message
  */
+#define KMSG_TYPE_SIGNAL        1
+#define KMSG_TYPE_DATA          2
 struct kmsg {
     u8 type;
     union {
         u8 msg;
+        struct {
+            void *buf;
+            int n;
+        } data;
     } u;
 };
+
+
+#define TASK_STATE_READY        1
+#define TASK_STATE_RUNNING      2
+#define TASK_STATE_BLOCKED      3
 
 /*
  * Task

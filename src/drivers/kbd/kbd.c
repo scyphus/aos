@@ -148,6 +148,7 @@ kbd_driver_main(int argc, char *argv[])
 {
     /* Hold keyboard stats and buffer */
     struct kbd_status stat;
+    int c;
 
     /* Initialize the keyboard status */
     stat.lshift = 0;
@@ -164,7 +165,13 @@ kbd_driver_main(int argc, char *argv[])
 
     while ( 1 ) {
         //shalt();
-        __asm__ ("hlt");
+        if ( rpos != wpos ) {
+            /* Send */
+            c = buf[rpos++];
+            write(0, &c, 1);
+        } else {
+            /* Sleep */
+        }
     }
 
     return 0;

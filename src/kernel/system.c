@@ -16,6 +16,31 @@
 ssize_t
 read(int fd, void *buf, size_t n)
 {
+    struct ktask *self;
+    struct ktask *src;
+
+    /* Disable interrupts */
+    arch_disable_interrupts();
+
+    /* Get current task */
+    self = arch_get_current_task();
+
+    /* Get the source task */
+
+    if ( TASK_STATE_BLOCKED == src->state ) {
+        /* Change the state to ready */
+        src->state = TASK_STATE_READY;
+    } else {
+        /* Change the state to blocked, and wait until the source writes here */
+        self->state = TASK_STATE_BLOCKED;
+    }
+
+    /* Enable interrupts */
+    arch_enable_interrupts();
+
+    kmemcpy(buf, self->msg.u.data.buf, n);
+
+
     return -1;
 }
 
@@ -25,6 +50,29 @@ read(int fd, void *buf, size_t n)
 ssize_t
 write(int fd, const void *buf, size_t n)
 {
+    struct ktask *self;
+    struct ktask *dst;
+
+    /* Disable interrupts */
+    arch_disable_interrupts();
+
+    /* Get current task */
+    self = arch_get_current_task();
+
+    /* Get the destination task */
+
+    if ( TASK_STATE_BLOCKED == dst->state ) {
+        /* Change the state to ready */
+        dst->state = TASK_STATE_READY;
+    } else {
+        /* Change the state to blocked, and wait until the destination reads
+           this */
+        self->state = TASK_STATE_BLOCKED;
+    }
+
+    /* Enable interrupts */
+    arch_enable_interrupts();
+
     return -1;
 }
 

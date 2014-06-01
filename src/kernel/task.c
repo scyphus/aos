@@ -270,8 +270,6 @@ ktask_fork_execv(int policy, int (*main)(int, char *[]), char **argv)
     return 0;
 }
 
-
-
 /*
  * Entry point for kernel task
  */
