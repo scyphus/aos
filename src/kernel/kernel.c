@@ -107,6 +107,9 @@ kmain(void)
     }
 #endif
 
+    /* Initialize IRQ handlers */
+    irq_handler_table_init();
+
     /* Print out a message */
     kprintf("\r\nStarting a shell.  Press Esc to power off the machine:\r\n");
 
@@ -229,11 +232,56 @@ ktask_switched(struct ktask *t)
 
 
 /*
+ * Initialize IRQ handler table
+ */
+int
+irq_handler_table_init(void)
+{
+    int i;
+
+    for ( i = 0; i <= IRQ_MAX; i++ ) {
+        irq_handler_table[i].handler = NULL;
+        irq_handler_table[i].user = NULL;
+    }
+}
+
+/*
  * Register an interrupt service routine
  */
 int
 register_isr(int nr, void (*isr)(void))
 {
+    return 0;
+}
+
+int
+register_irq_handler(int irq, void (*handler)(int, void *), void *user)
+{
+    struct interrupt_handler *ih;
+
+    /* Checl the IRQ # */
+    if ( irq < 0 || irq > IRQ_MAX ) {
+        return -1;
+    }
+    /* Check if the handler is already registered */
+    if ( irq_handler_table[irq].handler ) {
+        /* Already registered */
+        return -1;
+    }
+
+    irq_handler_table[irq].handler = handler;
+    irq_handler_table[irq].user = user;
+
+#if 0
+    int isr;
+    isr = irq + 32;
+    switch ( irq ) {
+    case 1:
+        idt_setup_intr_gate(isr, &intr_apic_int33); /* IRQ1 */
+        break;
+    }
+#endif
+
     return 0;
 }
 
@@ -284,12 +332,28 @@ kintr_ipi(void)
 void
 kintr_isr(u64 vec)
 {
+    /* FIXME: Separate IRQ from this switch block */
     switch ( vec ) {
-    case IV_TMR:
+    case IV_IRQ0:
+        if ( irq_handler_table[0].handler ) {
+            irq_handler_table[0].handler(0, irq_handler_table[0].user);
+        }
         kintr_int32();
         break;
-    case IV_KBD:
+    case IV_IRQ1:
+        if ( irq_handler_table[1].handler ) {
+            irq_handler_table[1].handler(1, irq_handler_table[1].user);
+        }
         kintr_int33();
+        break;
+    case IV_IRQ2:
+        if ( irq_handler_table[2].handler ) {
+            irq_handler_table[2].handler(2, irq_handler_table[2].user);
+        }
+    case IV_IRQ3:
+        if ( irq_handler_table[3].handler ) {
+            irq_handler_table[3].handler(2, irq_handler_table[3].user);
+        }
         break;
     case IV_LOC_TMR:
         kintr_loc_tmr();

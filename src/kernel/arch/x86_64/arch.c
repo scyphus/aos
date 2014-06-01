@@ -132,15 +132,15 @@ arch_bsp_init(void)
 
     /* Setup interrupt handlers */
     arch_dbg_printf("Setting up interrupt handlers.\r\n");
-    idt_setup_intr_gate(IV_TMR, &intr_apic_int32); /* IRQ0 */
-    idt_setup_intr_gate(IV_KBD, &intr_apic_int33); /* IRQ1 */
+    idt_setup_intr_gate(IV_IRQ0, &intr_apic_int32); /* IRQ0 */
+    idt_setup_intr_gate(IV_IRQ1, &intr_apic_int33); /* IRQ1 */
     idt_setup_intr_gate(IV_LOC_TMR, &intr_apic_loc_tmr); /* Local APIC timer */
     idt_setup_intr_gate(IV_IPI, &intr_apic_ipi);
     idt_setup_intr_gate(IV_CRASH, &intr_crash); /* crash */
     idt_setup_intr_gate(0xff, &intr_apic_spurious); /* Spurious interrupt */
 
     /* Setup interrupt service routine then initialize I/O APIC */
-    ioapic_map_intr(IV_KBD, 1, acpi_ioapic_base); /* IRQ1 */
+    ioapic_map_intr(IV_IRQ0, 1, acpi_ioapic_base); /* IRQ1 */
     ioapic_init();
 
 #if 0
@@ -373,6 +373,11 @@ arch_spin_lock(volatile int *lock)
 {
     spin_lock(lock);
 }
+void
+arch_spin_lock_intr(volatile int *lock)
+{
+    spin_lock_intr(lock);
+}
 
 /*
  * Unlock with spinlock
@@ -381,6 +386,11 @@ void
 arch_spin_unlock(volatile int *lock)
 {
     spin_unlock(lock);
+}
+void
+arch_spin_unlock_intr(volatile int *lock)
+{
+    spin_unlock_intr(lock);
 }
 
 /*

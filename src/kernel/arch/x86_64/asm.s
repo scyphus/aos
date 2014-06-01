@@ -7,6 +7,7 @@
  *      Hirochika Asai  <asai@jar.jp>
  */
 
+	.set	APIC_BASE,0xfee00000
 	.set	APIC_EOI,0x0b0
 	.set	APIC_LDR,0x0d0		/* Logical Destination Register */
 	.set	APIC_DFR,0x0e0		/* Destination Format Register */
@@ -92,6 +93,9 @@
 
 	.globl	_syscall_setup
 	.globl	_syscall
+
+	.globl	_sem_up
+	.globl	_sem_down
 
 	.code64
 
@@ -328,7 +332,7 @@ _get_cpu_model:
 /* int this_cpu(void); */
 _this_cpu:
 	/* Obtain APIC ID */
-	movl	$0xfee00000,%edx
+	movl	$APIC_BASE,%edx
 	movl	0x20(%edx),%eax
 	shrl	$24,%eax
 	ret
@@ -352,14 +356,11 @@ checktsc:
 /* Null function for interrupt handler */
 _intr_null:
 	pushq	%rdx
-
 	/* APIC EOI */
-	movq	$0xfee00000,%rdx
+	movq	$APIC_BASE,%rdx
 	//addq	$APIC_EOI,%rdx
 	movq	$0,APIC_EOI(%rdx)
-
 	popq	%rdx
-
 	iretq
 
 foo:
@@ -473,6 +474,30 @@ _intr_apic_int36:
 	intr_lapic_isr_done
 	iretq
 
+_intr_apic_int37:
+	intr_lapic_isr 37
+	intr_lapic_isr_done
+	iretq
+
+_intr_apic_int38:
+	intr_lapic_isr 38
+	intr_lapic_isr_done
+	iretq
+
+_intr_apic_int39:
+	intr_lapic_isr 39
+	intr_lapic_isr_done
+	iretq
+
+_intr_apic_int40:
+	intr_lapic_isr 40
+	intr_lapic_isr_done
+	iretq
+
+_intr_apic_int41:
+	intr_lapic_isr 41
+	intr_lapic_isr_done
+	iretq
 
 _intr_apic_loc_tmr:
 	intr_lapic_isr 0x50
@@ -806,6 +831,27 @@ syscall_routine:
 	iretq
 
 
+/* void sem_up(u64 *) */
+_sem_up:
+	incq	(%rdi)
+	ret
+/* int sem_down(u64 *) */
+_sem_down:
+	movq	(%rdi),%rax
+	movq	%rax,%rdx
+	decq	%rdx
+	/* If %rax==(%rdi) %rdi<-%rdx, else %rax<-(%rdi) */
+	lock cmpxchg	%rdx,(%rdi)
+	jnz	1f
+	/* Succeeded */
+	movq	$1,%rax
+	ret
+1:
+	/* Failed */
+	movq	$-1,%rax
+	ret
+
+
 
 	.data
 apic_base:
@@ -813,3 +859,5 @@ apic_base:
 
 gpf_reentry:
 	.quad	0x0
+
+

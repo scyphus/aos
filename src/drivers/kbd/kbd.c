@@ -162,8 +162,12 @@ kbd_read(void)
 }
 
 
+/*
+ * Main
+ */
 int
 kbd_driver_main(int argc, char *argv[])
+
 {
     while ( 1 ) {
         hlt1();

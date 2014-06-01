@@ -14,8 +14,22 @@
 
 #define MAX_PROCESSORS  256
 
-#define IV_TMR          0x20
-#define IV_KBD          0x21
+#define IV_IRQ0         0x20
+#define IV_IRQ1         0x21
+#define IV_IRQ2         0x22
+#define IV_IRQ3         0x23
+#define IV_IRQ4         0x24
+#define IV_IRQ5         0x25
+#define IV_IRQ6         0x26
+#define IV_IRQ7         0x27
+#define IV_IRQ8         0x28
+#define IV_IRQ9         0x29
+#define IV_IRQ10        0x2a
+#define IV_IRQ11        0x2b
+#define IV_IRQ12        0x2c
+#define IV_IRQ13        0x2d
+#define IV_IRQ14        0x2e
+#define IV_IRQ15        0x2f
 #define IV_LOC_TMR      0x50
 #define IV_IPI          0x51
 #define IV_CRASH        0xfe
@@ -143,6 +157,26 @@ struct kmq {
 };
 
 /*
+ * Semaphore
+ */
+struct semaphore {
+    int lock;
+    int count;
+    struct ktask_queue waiting;
+};
+
+/*
+ * Interrupt handler
+ */
+struct interrupt_handler {
+    void (*handler)(int, void *);
+    void *user;
+};
+#define IRQ_MAX 31
+struct interrupt_handler irq_handler_table[IRQ_MAX+1];
+
+
+/*
  * Processor
  */
 #define PROCESSOR_BSP 1
@@ -240,6 +274,8 @@ void arch_poweroff(void);
 
 void arch_spin_lock(volatile int *);
 void arch_spin_unlock(volatile int *);
+void arch_spin_lock_intr(volatile int *);
+void arch_spin_unlock_intr(volatile int *);
 
 u8 arch_inb(u16);
 
@@ -263,6 +299,14 @@ u64 arch_clock_get(void);
 int phys_mem_wire(void *, u64);
 void * phys_mem_alloc_pages(u64);
 void phys_mem_free_pages(void *);
+
+
+/* in system.c */
+#include <aos/types.h>
+ssize_t read(int, void *, size_t);
+ssize_t write(int, const void *, size_t);
+
+
 
 #endif /* _KERNEL_H */
 

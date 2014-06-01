@@ -244,6 +244,8 @@ void syscall(u64);
 /* spinlock.s */
 void spin_lock(volatile int *);
 void spin_unlock(volatile int *);
+void spin_lock_intr(volatile int *);
+void spin_unlock_intr(volatile int *);
 
 extern u64 acpi_ioapic_base;
 extern u64 acpi_pm_tmr_port;
