@@ -50,6 +50,8 @@
 	.globl	apstart64		/* Application processor */
 	.globl	_hlt1
 	.globl	_pause
+	.globl	_disable_interrupts
+	.globl	_enable_interrupts
 	.globl	_bswap16
 	.globl	_bswap32
 	.globl	_bswap64
@@ -79,6 +81,7 @@
 	.globl	_intr_pf
 	.globl	_intr_apic_int32
 	.globl	_intr_apic_int33
+	.globl	_intr_apic_int34
 	.globl	_intr_apic_loc_tmr
 	.globl	_intr_apic_ipi
 	.globl	_intr_crash
@@ -127,6 +130,16 @@ _idle:
 
 _hlt1:
 	hlt
+	ret
+
+/* void disable_interrupts(void) */
+_disable_interrupts:
+	cli
+	ret
+
+/* void enable_interrupts(void) */
+_enable_interrupts:
+	cli
 	ret
 
 /* void pause(void); */
@@ -653,13 +666,14 @@ _syscall_setup:
 	ret
 
 
-/* void scall(u64); */
+/* void syscall(u64); */
 _syscall:
 	syscall
 	ret
 
 /* Syscall entry */
 syscall_entry:
+	cli
 	movw	%cs,%ax
 	andw	$3,%ax
 	cmpw	$3,%ax
@@ -700,6 +714,7 @@ syscall_r0:
 	movq    $GDT_RING0_CODE_SEL,%rax /* CS */
 	pushq   %rax
 	pushq   %rcx /* IP */
+	sti
 	iretq
 
 syscall_r1:
@@ -733,6 +748,7 @@ syscall_r1:
 	movq    $GDT_RING1_CODE_SEL,%rax /* CS */
 	pushq   %rax
 	pushq   %rcx /* IP */
+	sti
 	iretq
 
 syscall_r2:
@@ -766,6 +782,7 @@ syscall_r2:
 	movq    $GDT_RING2_CODE_SEL,%rax /* CS */
 	pushq   %rax
 	pushq   %rcx /* IP */
+	sti
 	iretq
 
 
@@ -828,6 +845,7 @@ syscall_routine:
 	movq    $0x19,%rax /* CS */
 	pushq   %rax
 	pushq   %rcx /* IP */
+	sti
 	iretq
 
 

@@ -18,12 +18,11 @@ struct syscall *syscall_table;
 /*
  * Temporary: Keyboard drivers
  */
-void kbd_init(void);
 void kbd_event(void);
 int kbd_read(void);
 
-/* FIXME: To be moved to somewhere else */
-int kbd_driver_main(int argc, char *argv[]);
+
+int irq_handler_table_init(void);
 
 
 /* arch.c */
@@ -53,9 +52,6 @@ kmain(void)
 
     /* Initialize architecture-related devices */
     arch_bsp_init();
-
-    /* Initialize keyboard */
-    kbd_init();
 
     /* Wait for 10ms */
     arch_busy_usleep(10000);
@@ -121,31 +117,12 @@ kmain(void)
         t->main = &ktask_idle_main;
         t->id = -1;
         t->name = "[idle]";
-        t->argc = 0;
         t->argv = NULL;
         t->state = TASK_STATE_READY;
         processors->prs[i].idle = t;
     }
 
     sched_ktask_enqueue(ktask_queue_entry_new(processors->prs[processors->map[this_cpu()]].idle));
-
-    t = ktask_alloc(TASK_POLICY_KERNEL);
-    t->main = &proc_shell;
-    t->id = 1;
-    t->name = "[shell]";
-    t->argc = 0;
-    t->argv = NULL;
-    t->state = TASK_STATE_READY;
-    sched_ktask_enqueue(ktask_queue_entry_new(t));
-
-    t = ktask_alloc(TASK_POLICY_KERNEL);
-    t->main = &kbd_driver_main;
-    t->id = 2;
-    t->name = "[kbd]";
-    t->argc = 0;
-    t->argv = NULL;
-    t->state = TASK_STATE_READY;
-    sched_ktask_enqueue(ktask_queue_entry_new(t));
 
     sched();
     task_restart();
@@ -168,6 +145,8 @@ apmain(void)
 
 #define SYSCALL_MAX_NR  0x10
 #define SYSCALL_HLT     1
+#define SYSCALL_READ    2
+#define SYSCALL_WRITE   3
 
 /*
  * System calls
@@ -187,11 +166,17 @@ syscall_dummy(void)
 void
 syscall_hlt(void)
 {
-    __asm__ __volatile__ ("hlt");
+    __asm__ __volatile__ ("sti;hlt;cli;");
 }
 
 void
-syscall_test(void)
+syscall_read(void)
+{
+    kprintf("XXXX\r\n");
+}
+
+void
+syscall_write(void)
 {
     kprintf("XXXX\r\n");
 }
@@ -211,7 +196,8 @@ syscall_init(void)
         syscall_table[i].func = &syscall_dummy;
     }
     syscall_table[1].func = &syscall_hlt;
-    syscall_table[2].func = &syscall_test;
+    syscall_table[2].func = &syscall_read;
+    syscall_table[3].func = &syscall_write;
 
     /* Setup */
     syscall_setup();
@@ -243,6 +229,8 @@ irq_handler_table_init(void)
         irq_handler_table[i].handler = NULL;
         irq_handler_table[i].user = NULL;
     }
+
+    return 0;
 }
 
 /*
@@ -257,8 +245,6 @@ register_isr(int nr, void (*isr)(void))
 int
 register_irq_handler(int irq, void (*handler)(int, void *), void *user)
 {
-    struct interrupt_handler *ih;
-
     /* Checl the IRQ # */
     if ( irq < 0 || irq > IRQ_MAX ) {
         return -1;
@@ -272,19 +258,8 @@ register_irq_handler(int irq, void (*handler)(int, void *), void *user)
     irq_handler_table[irq].handler = handler;
     irq_handler_table[irq].user = user;
 
-#if 0
-    int isr;
-    isr = irq + 32;
-    switch ( irq ) {
-    case 1:
-        idt_setup_intr_gate(isr, &intr_apic_int33); /* IRQ1 */
-        break;
-    }
-#endif
-
     return 0;
 }
-
 
 
 
@@ -295,15 +270,6 @@ void
 kintr_int32(void)
 {
     arch_clock_update();
-}
-
-/*
- * Keyboard interrupt
- */
-void
-kintr_int33(void)
-{
-    kbd_event();
 }
 
 /*
@@ -344,7 +310,6 @@ kintr_isr(u64 vec)
         if ( irq_handler_table[1].handler ) {
             irq_handler_table[1].handler(1, irq_handler_table[1].user);
         }
-        kintr_int33();
         break;
     case IV_IRQ2:
         if ( irq_handler_table[2].handler ) {

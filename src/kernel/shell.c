@@ -483,14 +483,16 @@ _exec_cmd(struct kshell *kshell)
  * Shell process
  */
 int
-proc_shell(int argc, const char *const argv[])
+proc_shell(int argc, char *argv[])
 {
     struct kshell kshell;
     volatile int c;
+    int ret;
 
     _init(&kshell);
 
     for ( ;; ) {
+        //ret = read(0, &c, 1);
         c = kbd_read();
         if ( c > 0 ) {
             if ( c == 0x08 ) {
@@ -516,7 +518,7 @@ proc_shell(int argc, const char *const argv[])
                 }
             }
         } else {
-            arch_scall(1);
+            //__asm__ ("hlt;");
         }
     }
 

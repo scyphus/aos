@@ -21,28 +21,12 @@ struct kbd_status {
 };
 
 /* Hold keyboard stats and buffer */
-static volatile struct kbd_status stat;
 static volatile unsigned char buf[256];
 static volatile u8 rpos;
 static volatile u8 wpos;
 
 static volatile int lock;
 
-/*
- * Initialize the keyboard driver
- */
-void
-kbd_init(void)
-{
-    stat.lshift = 0;
-    stat.rshift = 0;
-    stat.lctrl = 0;
-    stat.rctrl = 0;
-    stat.capslock = 0;
-    rpos = 0;
-    wpos = 0;
-    lock = 0;
-}
 
 /*
  * Read from buffer
@@ -62,14 +46,34 @@ static unsigned char keymap_shift[] =
     "                                                                             ";
 
 /*
- * Keyboard event handler
+ * Read one character from the buffer
+ */
+volatile int
+kbd_read(void)
+{
+    int c;
+
+    arch_spin_lock_intr(&lock);
+    if ( rpos != wpos ) {
+        c = buf[rpos++];
+    } else {
+        c = -1;
+    }
+    arch_spin_unlock_intr(&lock);
+
+    return c;
+}
+
+/*
+ * IRQ handler
  */
 void
-kbd_event(void)
+kbd_irq_handler(int irq, void *user)
 {
+    struct kbd_status *stat;
     u8 scan_code;
 
-    arch_spin_lock(&lock);
+    stat = (struct kbd_status *)user;
 
     scan_code = kbd_enc_read_buf();
     if ( !(0x80 & scan_code) ) {
@@ -83,25 +87,25 @@ kbd_event(void)
         switch ( scan_code ) {
         case 0x1d:
             /* Left ctrl */
-            stat.lctrl = 1;
+            stat->lctrl = 1;
             break;
         case 0x2a:
             /* Left shift */
-            stat.lshift = 1;
+            stat->lshift = 1;
             break;
         case 0x36:
             /* Right shift */
-            stat.rshift = 1;
+            stat->rshift = 1;
             break;
         case 0x3a:
             /* Caps lock */
             break;
         case 0x5a:
             /* Right ctrl */
-            stat.rctrl = 1;
+            stat->rctrl = 1;
             break;
         default:
-            if ( (stat.lshift | stat.rshift) ^ stat.capslock ) {
+            if ( (stat->lshift | stat->rshift) ^ stat->capslock ) {
                 buf[wpos++] = keymap_shift[scan_code];
             } else {
                 buf[wpos++] = keymap_base[scan_code];
@@ -112,65 +116,55 @@ kbd_event(void)
         switch ( scan_code ) {
         case 0x9d:
             /* Left ctrl */
-            stat.rctrl = 0;
+            stat->rctrl = 0;
             break;
         case 0xaa:
             /* Left shift */
-            stat.lshift = 0;
+            stat->lshift = 0;
             break;
         case 0xb6:
             /* Right shift */
-            stat.rshift = 0;
+            stat->rshift = 0;
             break;
         case 0xba:
             /* Caps lock */
-            stat.capslock ^= 1;
+            stat->capslock ^= 1;
             break;
         case 0xda:
             /* Right ctrl */
-            stat.rctrl = 0;
+            stat->rctrl = 0;
             break;
         default:
             ;
         }
     }
-
-    arch_spin_unlock(&lock);
 }
-
-/*
- * Read one character from the buffer
- */
-volatile int
-kbd_read(void)
-{
-    int c;
-
-    __asm__ __volatile__ ("cli");
-
-    arch_spin_lock(&lock);
-    if ( rpos != wpos ) {
-        c = buf[rpos++];
-    } else {
-        c = -1;
-    }
-    arch_spin_unlock(&lock);
-
-    __asm__ __volatile__ ("sti");
-
-    return c;
-}
-
 
 /*
  * Main
  */
 int
 kbd_driver_main(int argc, char *argv[])
-
 {
+    /* Hold keyboard stats and buffer */
+    struct kbd_status stat;
+
+    /* Initialize the keyboard status */
+    stat.lshift = 0;
+    stat.rshift = 0;
+    stat.lctrl = 0;
+    stat.rctrl = 0;
+    stat.capslock = 0;
+    rpos = 0;
+    wpos = 0;
+    lock = 0;
+
+    /* Register IRQ handler */
+    register_irq_handler(1, &kbd_irq_handler, &stat);
+
     while ( 1 ) {
-        hlt1();
+        //shalt();
+        __asm__ ("hlt");
     }
 
     return 0;

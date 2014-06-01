@@ -227,6 +227,9 @@ int this_cpu(void);
 void halt(void);
 void idle(void);
 
+void disable_interrupts(void);
+void enable_interrupts(void);
+
 u64 bswap64(u64);
 void movsb(void *, const void *, u64);
 void set_cr3(u64);
@@ -234,6 +237,7 @@ u64 rdtsc(void);
 
 void intr_apic_int32(void);
 void intr_apic_int33(void);
+void intr_apic_int34(void);
 void intr_apic_loc_tmr(void);
 void intr_apic_ipi(void);
 void intr_crash(void);

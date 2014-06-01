@@ -134,13 +134,16 @@ arch_bsp_init(void)
     arch_dbg_printf("Setting up interrupt handlers.\r\n");
     idt_setup_intr_gate(IV_IRQ0, &intr_apic_int32); /* IRQ0 */
     idt_setup_intr_gate(IV_IRQ1, &intr_apic_int33); /* IRQ1 */
+    idt_setup_intr_gate(IV_IRQ2, &intr_apic_int34); /* IRQ1 */
     idt_setup_intr_gate(IV_LOC_TMR, &intr_apic_loc_tmr); /* Local APIC timer */
     idt_setup_intr_gate(IV_IPI, &intr_apic_ipi);
     idt_setup_intr_gate(IV_CRASH, &intr_crash); /* crash */
     idt_setup_intr_gate(0xff, &intr_apic_spurious); /* Spurious interrupt */
 
     /* Setup interrupt service routine then initialize I/O APIC */
-    ioapic_map_intr(IV_IRQ0, 1, acpi_ioapic_base); /* IRQ1 */
+    ioapic_map_intr(IV_IRQ0, 0, acpi_ioapic_base); /* IRQ0 */
+    ioapic_map_intr(IV_IRQ1, 1, acpi_ioapic_base); /* IRQ1 */
+    ioapic_map_intr(IV_IRQ2, 2, acpi_ioapic_base); /* IRQ2 */
     ioapic_init();
 
 #if 0
@@ -550,6 +553,16 @@ arch_alloc_task(struct ktask *kt, void (*entry)(struct ktask *), int policy)
     return t;
 }
 
+void
+arch_free_task(void *t)
+{
+    struct arch_task *at;
+
+    at = (struct arch_task *)t;
+    kfree(at->kstack);
+    kfree(at->ustack);
+}
+
 /*
  * Is active processor
  */
@@ -568,6 +581,18 @@ arch_cpu_active(u16 id)
     } else {
         return 0;
     }
+}
+
+void
+arch_disable_interrupts(void)
+{
+    disable_interrupts();
+}
+
+void
+arch_enable_interrupts(void)
+{
+    enable_interrupts();
 }
 
 void

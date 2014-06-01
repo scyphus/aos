@@ -11,11 +11,17 @@
 #include "kernel.h"
 
 static volatile int ktask_lock;
+static volatile int ktask_fork_lock;
 static struct ktask_queue *ktaskq;
 static struct ktask_table *ktasks;
 
 int ktask_idle_main(int argc, char *argv[]);
 int ktask_init_main(int argc, char *argv[]);
+int ktask_fork_execv(int, int (*)(int, char *[]), char **);
+void ktask_free(struct ktask *);
+
+/* FIXME: To be moved to somewhere else */
+int kbd_driver_main(int argc, char *argv[]);
 
 /*
  * Initialize the scheduler
@@ -24,6 +30,7 @@ int
 sched_init(void)
 {
     ktask_lock = 0;
+    ktask_fork_lock = 0;
 
     /* Initialize kernel task queue */
     ktaskq = kmalloc(sizeof(struct ktask_queue));
@@ -168,39 +175,100 @@ int
 ktask_init(void)
 {
     char **argv;
-
-    /* Prepare arguments */
-    argv = kmalloc(sizeof(char *) * 1);
-    if ( NULL == argv ) {
-        return -1;
-    }
-    argv[0] = kstrdup("kernel");
-    if ( NULL == argv[0] ) {
-        kfree(argv);
-        return -1;
-    }
+    int ret;
 
     /* Allocate memory for new task */
     ktasks = kmalloc(sizeof(struct ktask_table));
     if ( NULL == ktasks ) {
-        kfree(argv[0]);
-        kfree(argv);
         return -1;
     }
-    /* Kernel task */
-    ktasks->kernel = ktask_alloc(TASK_POLICY_KERNEL);
-    ktasks->kernel->main = &ktask_kernel_main;
-    ktasks->kernel->argc = 1;
-    ktasks->kernel->argv = argv;
-    ktasks->kernel->id = 0;
-    ktasks->kernel->name = "[kernel]";
-    ktasks->kernel->state = TASK_STATE_READY;
 
-    sched_ktask_enqueue(ktask_queue_entry_new(ktasks->kernel));
+    /* Initialize task table */
+    (void)kmemset(ktasks->tasks, 0, sizeof(struct ktask *) * TASK_TABLE_SIZE);
+
+    /* Prepare arguments */
+    argv = kmalloc(sizeof(char *) * 2);
+    if ( NULL == argv ) {
+        kfree(ktasks);
+        return -1;
+    }
+    argv[0] = kstrdup("kernel");
+    argv[1] = NULL;
+    if ( NULL == argv[0] ) {
+        kfree(argv);
+        kfree(ktasks);
+        return -1;
+    }
+
+    ret = ktask_fork_execv(TASK_POLICY_KERNEL, &ktask_kernel_main, argv);
+    if ( ret < 0 ) {
+        kfree(argv[0]);
+        kfree(argv);
+        kfree(ktasks);
+        return -1;
+    }
 
     return 0;
 }
 
+/*
+ * New task
+ */
+int
+ktask_fork_execv(int policy, int (*main)(int, char *[]), char **argv)
+{
+    struct ktask *t;
+    struct ktask_queue_entry *e;
+    int i;
+    int tid;
+
+    /* Disable interrupts and lock */
+    arch_spin_lock_intr(&ktask_fork_lock);
+
+    /* Search available PID from the table */
+    tid = -1;
+    for ( i = 0; i < TASK_TABLE_SIZE; i++ ) {
+        if ( NULL ==  ktasks->tasks[i] ) {
+            /* Found an available space */
+            tid = i;
+            break;
+        }
+    }
+
+    /* Corresponding task ID found? */
+    if ( tid < 0 ) {
+        arch_spin_unlock_intr(&ktask_fork_lock);
+        return -1;
+    }
+
+    /* Allocate task */
+    t = ktask_alloc(TASK_POLICY_KERNEL);
+    if ( NULL == t ) {
+        arch_spin_unlock_intr(&ktask_fork_lock);
+        return -1;
+    }
+    t->main = main;
+    t->argv = argv;
+    t->id = tid;
+    t->name = NULL;
+    t->state = TASK_STATE_READY;
+
+    ktasks->tasks[tid] = t;
+
+    /* Enqueue to the scheduler */
+    e = ktask_queue_entry_new(t);
+    if ( NULL == e ) {
+        ktask_free(t);
+        arch_spin_unlock_intr(&ktask_fork_lock);
+        return -1;
+    }
+    sched_ktask_enqueue(e);
+
+    /* Unlock and enable interrupts */
+    arch_spin_unlock_intr(&ktask_fork_lock);
+
+    return 0;
+}
 
 
 
@@ -211,9 +279,20 @@ void
 ktask_entry(struct ktask *t)
 {
     int ret;
+    int argc;
+    char **tmp;
+
+    argc = 0;
+    if ( NULL != t->argv ) {
+        tmp = t->argv;
+        while ( NULL != *tmp ) {
+            argc++;
+            tmp++;
+        }
+    }
 
     /* Get the arguments from the stack pointer */
-    ret = t->main(t->argc, t->argv);
+    ret = t->main(argc, t->argv);
 
     /* Set return code */
     t->ret = ret;
@@ -243,10 +322,19 @@ ktask_alloc(int policy)
     t->arch = arch_alloc_task(t, &ktask_entry, policy);
 
     t->main = NULL;
-    t->argc = 0;
     t->argv = NULL;
 
     return t;
+}
+
+/*
+ * Free a task
+ */
+void
+ktask_free(struct ktask *t)
+{
+    arch_free_task(t->arch);
+    kfree(t);
 }
 
 
@@ -275,7 +363,18 @@ ktask_destroy(struct ktask *t)
 int
 ktask_kernel_main(int argc, char *argv[])
 {
-    u64 x;
+    int tid;
+
+    /* Keyboard */
+    tid = ktask_fork_execv(TASK_POLICY_KERNEL, &kbd_driver_main, NULL);
+    if ( tid < 0 ) {
+        kprintf("Cannot fork-exec keyboard driver.\r\n");
+    }
+    /* Shell */
+    tid = ktask_fork_execv(TASK_POLICY_KERNEL, &proc_shell, NULL);
+    if ( tid < 0 ) {
+        kprintf("Cannot fork-exec a shell.\r\n");
+    }
 
     while ( 1 ) {
         arch_clock_update();

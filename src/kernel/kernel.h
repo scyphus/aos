@@ -78,6 +78,7 @@ u32 rng_random(void);
 #define TASK_POLICY_KERNEL      0
 #define TASK_POLICY_DRIVER      1
 #define TASK_POLICY_USER        3
+#define TASK_TABLE_SIZE         0x100
 #define TASK_KSTACK_SIZE        4096
 #define TASK_USTACK_SIZE        4096 * 0x10
 #define TASK_STACK_GUARD        16
@@ -90,6 +91,15 @@ void halt(void);
 #define TASK_STATE_RUNNING      2
 #define TASK_STATE_BLOCKED      3
 
+/*
+ * Inter-task message
+ */
+struct kmsg {
+    u8 type;
+    union {
+        u8 msg;
+    } u;
+};
 
 /*
  * Task
@@ -101,7 +111,6 @@ struct ktask {
 
     /* Main routine */
     int (*main)(int argc, char *argv[]);
-    int argc;
     char **argv;
 
     /* For scheduler */
@@ -117,9 +126,8 @@ struct ktask {
     /* Archtecture-specific structure */
     void *arch;
 
-
     /* Message */
-    struct kmsg_queue *msg_queue;
+    struct kmsg msg;
 };
 
 /*
@@ -139,21 +147,7 @@ struct ktask_queue {
  */
 struct ktask_table {
     /* Kernel tasks */
-    struct ktask *kernel;
-};
-
-/*
- * Inter-task message
- */
-struct kmsg {
-    u8 type;
-    union {
-        u8 msg;
-    } u;
-};
-struct kmq {
-    struct kmsq *head;
-    struct kmsq *tail;
+    struct ktask *tasks[TASK_TABLE_SIZE];
 };
 
 /*
@@ -234,6 +228,8 @@ struct ktask * ktask_alloc(int);
 int ktask_kernel_main(int argc, char *argv[]);
 int ktask_idle_main(int argc, char *argv[]);
 
+void syscall_init(void);
+
 
 /* in util.c */
 int kstrcmp(const char *, const char *);
@@ -247,16 +243,17 @@ void kfree(void *);
 int kstrlen(const char *);
 char * kstrdup(const char *);
 
-/* in sched.c */
+/* in task.c */
 int ktask_init(void);
 int sched_init(void);
 void sched(void);
 int sched_ktask_enqueue(struct ktask_queue_entry *);
 struct ktask_queue_entry * sched_ktask_dequeue(void);
+struct ktask_queue_entry * ktask_queue_entry_new(struct ktask *);
 
 
 /* in shell.c */
-int proc_shell(int, const char *const []);
+int proc_shell(int, char *[]);
 /* in router.c */
 void proc_router(void);
 
@@ -284,12 +281,19 @@ void arch_idle(void);
 void * arch_memcpy(void *, const void *, u64);
 
 void * arch_alloc_task(struct ktask *, void (*entry)(struct ktask *), int);
+void arch_free_task(void *);
+struct ktask * arch_get_current_task(void);
 int arch_set_next_task(struct ktask *);
 struct ktask * arch_get_next_task(void);
 
 int arch_cpu_active(u16);
 
 void arch_scall(u64 nr);
+
+void arch_disable_interrupts(void);
+void arch_enable_interrupts(void);
+
+void syscall_setup(void);
 
 /* Clock and timer */
 void arch_clock_update(void);

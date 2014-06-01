@@ -53,7 +53,14 @@ int
 semaphore_up(struct semaphore *sem)
 {
     arch_spin_lock_intr(&sem->lock);
-    sem->count--;
+    if ( sem->count <= 0 ) {
+        /* Execute one of the waiting list */
+        if ( NULL != sem->waiting.head ) {
+            //notify
+        }
+    } else {
+        sem->count++;
+    }
     arch_spin_unlock_intr(&sem->lock);
 
     return 0;
@@ -61,8 +68,6 @@ semaphore_up(struct semaphore *sem)
 int
 semaphore_down(struct semaphore *sem, struct ktask_queue_entry *e)
 {
-    int ret;
-
     arch_spin_lock_intr(&sem->lock);
 
     if ( sem->count <= 0 ) {
@@ -86,6 +91,49 @@ semaphore_down(struct semaphore *sem, struct ktask_queue_entry *e)
     return 0;
 }
 
+/*
+ * Message
+ */
+int
+kmsg_send(struct ktask *dst, struct kmsg *msg)
+{
+    struct ktask *self;
+
+    /* Disable interrupts */
+    arch_disable_interrupts();
+
+    /* Get current task */
+    self = arch_get_current_task();
+
+    /* Enable interrupts */
+    arch_enable_interrupts();
+
+    return 0;
+}
+
+int
+kmsg_recv(struct ktask *src, struct kmsg *msg)
+{
+    struct ktask *self;
+
+    /* Disable interrupts */
+    arch_disable_interrupts();
+
+    /* Get current task */
+    self = arch_get_current_task();
+
+    /* Enable interrupts */
+    arch_enable_interrupts();
+
+    return 0;
+}
+
+
+void
+shalt(void)
+{
+    arch_scall(1);
+}
 
 /*
  * Local variables:
