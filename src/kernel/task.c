@@ -22,6 +22,7 @@ void ktask_free(struct ktask *);
 
 /* FIXME: To be moved to somewhere else */
 int kbd_driver_main(int argc, char *argv[]);
+int this_cpu(void);
 
 /*
  * Initialize the scheduler
@@ -87,17 +88,25 @@ sched(void)
     }
 
     /* If the task is not ready, enqueue it and dequeue another one. */
+    t = arch_get_current_task();
+    //kprintf("[%d %d]\r\n", t->id, t->state);
     while ( TASK_STATE_READY != e->ktask->state ) {
         /* Schedule it again */
         sched_ktask_enqueue(e);
+        if ( t == e->ktask ) {
+            /* Loop detected */
+            processors->prs[processors->map[this_cpu()]].idle->cred = 16;
+            arch_set_next_task(processors->prs[processors->map[this_cpu()]].idle);
+            return;
+        }
         e = sched_ktask_dequeue();
     }
 
     /* Set the next task */
     e->ktask->cred = 16;
     arch_set_next_task(e->ktask);
-    e->ktask->state = TASK_STATE_RUNNING;
     sched_ktask_enqueue(e);
+    //kprintf("[%d %d]\r\n", arch_get_current_task()->id, e->ktask->id);
 }
 
 /*
@@ -108,6 +117,7 @@ sched_ktask_enqueue(struct ktask_queue_entry *e)
 {
     int ret;
 
+    ret = 0;
     arch_spin_lock(&ktask_lock);
 
     e->next = NULL;
@@ -375,7 +385,6 @@ ktask_kernel_main(int argc, char *argv[])
     }
 
     while ( 1 ) {
-        arch_clock_update();
         arch_scall(1);
     }
 

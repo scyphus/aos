@@ -134,7 +134,8 @@ arch_bsp_init(void)
     arch_dbg_printf("Setting up interrupt handlers.\r\n");
     idt_setup_intr_gate(IV_IRQ0, &intr_apic_int32); /* IRQ0 */
     idt_setup_intr_gate(IV_IRQ1, &intr_apic_int33); /* IRQ1 */
-    idt_setup_intr_gate(IV_IRQ2, &intr_apic_int34); /* IRQ1 */
+    idt_setup_intr_gate(IV_IRQ2, &intr_apic_int34); /* IRQ2 */
+    idt_setup_intr_gate(IV_IRQ32, &intr_apic_int64); /* IRQ32 */
     idt_setup_intr_gate(IV_LOC_TMR, &intr_apic_loc_tmr); /* Local APIC timer */
     idt_setup_intr_gate(IV_IPI, &intr_apic_ipi);
     idt_setup_intr_gate(IV_CRASH, &intr_crash); /* crash */
@@ -144,6 +145,7 @@ arch_bsp_init(void)
     ioapic_map_intr(IV_IRQ0, 0, acpi_ioapic_base); /* IRQ0 */
     ioapic_map_intr(IV_IRQ1, 1, acpi_ioapic_base); /* IRQ1 */
     ioapic_map_intr(IV_IRQ2, 2, acpi_ioapic_base); /* IRQ2 */
+    ioapic_map_intr(IV_IRQ32, 32, acpi_ioapic_base); /* IRQ32 */
     ioapic_init();
 
 #if 0
@@ -437,6 +439,21 @@ arch_clock_get(void)
     return clock_get();
 }
 
+/*
+ * arch_task_switched
+ */
+void
+arch_task_switched(struct arch_task *cur, struct arch_task *next)
+{
+    if ( NULL != cur && TASK_STATE_RUNNING == cur->ktask->state ) {
+        cur->ktask->state = TASK_STATE_READY;
+        //kprintf("RUNNING => READY : %d\r\n", cur->ktask->id);
+    } else if ( cur ) {
+        //kprintf("RUNNING => %d : %d\r\n", cur->ktask->state, cur->ktask->id);
+    }
+    next->ktask->state = TASK_STATE_RUNNING;
+    //kprintf("READY => RUNNING : %d\r\n", next->ktask->id);
+}
 
 /*
  * Set next task
@@ -444,9 +461,9 @@ arch_clock_get(void)
 int
 arch_set_next_task(struct ktask *ktask)
 {
-    struct p_data *pdata;
+    volatile struct p_data *pdata;
 
-    pdata = (struct p_data *)(P_DATA_BASE + this_cpu() * P_DATA_SIZE);
+    pdata = (volatile struct p_data *)(P_DATA_BASE + this_cpu() * P_DATA_SIZE);
     pdata->next_task = (u64)ktask->arch;
 
     return 0;
@@ -458,10 +475,10 @@ arch_set_next_task(struct ktask *ktask)
 struct ktask *
 arch_get_next_task(void)
 {
-    struct p_data *pdata;
+    volatile struct p_data *pdata;
     struct arch_task *t;
 
-    pdata = (struct p_data *)(P_DATA_BASE + this_cpu() * P_DATA_SIZE);
+    pdata = (volatile struct p_data *)(P_DATA_BASE + this_cpu() * P_DATA_SIZE);
     t = (struct arch_task *)pdata->next_task;
     if ( NULL != t ) {
         return t->ktask;
@@ -477,10 +494,10 @@ arch_get_next_task(void)
 struct ktask *
 arch_get_current_task(void)
 {
-    struct p_data *pdata;
+    volatile struct p_data *pdata;
     struct arch_task *t;
 
-    pdata = (struct p_data *)(P_DATA_BASE + this_cpu() * P_DATA_SIZE);
+    pdata = (volatile struct p_data *)(P_DATA_BASE + this_cpu() * P_DATA_SIZE);
     t = (struct arch_task *)pdata->cur_task;
     if ( NULL != t ) {
         return t->ktask;

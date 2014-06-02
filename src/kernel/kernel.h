@@ -30,6 +30,7 @@
 #define IV_IRQ13        0x2d
 #define IV_IRQ14        0x2e
 #define IV_IRQ15        0x2f
+#define IV_IRQ32        0x40
 #define IV_LOC_TMR      0x50
 #define IV_IPI          0x51
 #define IV_CRASH        0xfe
@@ -123,7 +124,7 @@ struct ktask {
 
     /* For scheduler */
     int pri;
-    u64 cred;
+    int cred;
 
     /* State */
     int state;
@@ -174,7 +175,7 @@ struct interrupt_handler {
     void (*handler)(int, void *);
     void *user;
 };
-#define IRQ_MAX 31
+#define IRQ_MAX 63
 struct interrupt_handler irq_handler_table[IRQ_MAX+1];
 
 
@@ -315,6 +316,7 @@ void phys_mem_free_pages(void *);
 
 /* in system.c */
 #include <aos/types.h>
+int open(const char *, int);
 ssize_t read(int, void *, size_t);
 ssize_t write(int, const void *, size_t);
 

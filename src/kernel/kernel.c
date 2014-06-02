@@ -111,7 +111,6 @@ kmain(void)
 
     syscall_init();
 
-    ktask_init();
     for ( i = 0; i < processors->n; i++ ) {
         t = ktask_alloc(TASK_POLICY_KERNEL);
         t->main = &ktask_idle_main;
@@ -121,8 +120,10 @@ kmain(void)
         t->state = TASK_STATE_READY;
         processors->prs[i].idle = t;
     }
+    ktask_init();
 
-    sched_ktask_enqueue(ktask_queue_entry_new(processors->prs[processors->map[this_cpu()]].idle));
+
+    //sched_ktask_enqueue(ktask_queue_entry_new(processors->prs[processors->map[this_cpu()]].idle));
 
     sched();
     task_restart();
@@ -137,7 +138,8 @@ apmain(void)
     /* Initialize this AP */
     arch_ap_init();
 
-    sched();
+    //sched();
+    arch_set_next_task(processors->prs[processors->map[this_cpu()]].idle);
     task_restart();
 }
 
@@ -201,19 +203,6 @@ syscall_init(void)
 
     /* Setup */
     syscall_setup();
-}
-
-
-
-
-/*
- * ktask_switched
- */
-void
-ktask_switched(struct ktask *t)
-{
-    //kprintf("XXXXXXXX %d\r\n", t->id);
-    t->state = TASK_STATE_READY;
 }
 
 
@@ -315,10 +304,17 @@ kintr_isr(u64 vec)
         if ( irq_handler_table[2].handler ) {
             irq_handler_table[2].handler(2, irq_handler_table[2].user);
         }
+        break;
     case IV_IRQ3:
         if ( irq_handler_table[3].handler ) {
             irq_handler_table[3].handler(2, irq_handler_table[3].user);
         }
+        break;
+    case IV_IRQ32:
+        if ( irq_handler_table[32].handler ) {
+            irq_handler_table[32].handler(32, irq_handler_table[32].user);
+        }
+        sched();
         break;
     case IV_LOC_TMR:
         kintr_loc_tmr();

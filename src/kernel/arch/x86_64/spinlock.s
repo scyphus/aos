@@ -28,12 +28,12 @@ _spin_lock:
 /* void spin_unlock(u32 *); */
 _spin_unlock:
 	xorl	%eax,%eax
-	xchgl	(%rdi),%eax
+	lock xchgl	(%rdi),%eax
 	ret
 
 /* void spin_unlock_intr(u32 *); */
 _spin_unlock_intr:
 	xorl	%eax,%eax
-	xchgl	(%rdi),%eax
+	lock xchgl	(%rdi),%eax
 	sti
 	ret

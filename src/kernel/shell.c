@@ -487,14 +487,22 @@ proc_shell(int argc, char *argv[])
 {
     struct kshell kshell;
     volatile int c;
-    int ret;
+    volatile int ret;
+    int fd;
 
     _init(&kshell);
 
+    /* Open keyboard */
+    fd = open("/dev/kbd", 0);
+    if ( fd < 0 ) {
+        kprintf("Cannot open keyboard\r\n");
+        return -1;
+    }
+
     for ( ;; ) {
-        //ret = read(0, &c, 1);
-        c = kbd_read();
-        if ( c > 0 ) {
+        ret = read(fd, &c, 1);
+        //c = kbd_read();
+        if ( ret > 0 ) {
             if ( c == 0x08 ) {
                 /* Backspace */
                 if ( kshell.pos > 0 ) {
@@ -517,8 +525,6 @@ proc_shell(int argc, char *argv[])
                     arch_putc(c);
                 }
             }
-        } else {
-            //__asm__ ("hlt;");
         }
     }
 

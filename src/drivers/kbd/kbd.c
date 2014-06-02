@@ -28,6 +28,9 @@ static volatile u8 wpos;
 static volatile int lock;
 
 
+/* In system.c */
+int putc_buffer_irq(int, unsigned char);
+
 /*
  * Read from buffer
  */
@@ -79,7 +82,6 @@ kbd_irq_handler(int irq, void *user)
     if ( !(0x80 & scan_code) ) {
         if ( scan_code == 1 ) {
             /* Escape key */
-            arch_spin_unlock(&lock);
             arch_poweroff();
             return;
         }
@@ -107,8 +109,10 @@ kbd_irq_handler(int irq, void *user)
         default:
             if ( (stat->lshift | stat->rshift) ^ stat->capslock ) {
                 buf[wpos++] = keymap_shift[scan_code];
+                putc_buffer_irq(0, keymap_shift[scan_code]);
             } else {
                 buf[wpos++] = keymap_base[scan_code];
+                putc_buffer_irq(0, keymap_base[scan_code]);
             }
         }
     } else {
@@ -164,14 +168,23 @@ kbd_driver_main(int argc, char *argv[])
     register_irq_handler(1, &kbd_irq_handler, &stat);
 
     while ( 1 ) {
-        //shalt();
         if ( rpos != wpos ) {
             /* Send */
-            c = buf[rpos++];
-            write(0, &c, 1);
+            //c = buf[rpos++];
+            //write(0, &c, 1);
         } else {
             /* Sleep */
         }
+
+        struct ktask *self;
+        /* Disable interrupts */
+        arch_disable_interrupts();
+        /* Get current task */
+        self = arch_get_current_task();
+        self->state = TASK_STATE_BLOCKED;
+        /* Enable interrupts */
+        arch_enable_interrupts();
+        __asm__ __volatile__ ("int $0x40");
     }
 
     return 0;

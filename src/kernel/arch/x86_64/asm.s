@@ -82,6 +82,7 @@
 	.globl	_intr_apic_int32
 	.globl	_intr_apic_int33
 	.globl	_intr_apic_int34
+	.globl	_intr_apic_int64
 	.globl	_intr_apic_loc_tmr
 	.globl	_intr_apic_ipi
 	.globl	_intr_crash
@@ -139,7 +140,7 @@ _disable_interrupts:
 
 /* void enable_interrupts(void) */
 _enable_interrupts:
-	cli
+	sti
 	ret
 
 /* void pause(void); */
@@ -474,6 +475,7 @@ _intr_apic_int33:
 
 _intr_apic_int34:
 	intr_lapic_isr 34
+	//jmp	_task_restart
 	intr_lapic_isr_done
 	iretq
 
@@ -509,6 +511,12 @@ _intr_apic_int40:
 
 _intr_apic_int41:
 	intr_lapic_isr 41
+	intr_lapic_isr_done
+	iretq
+
+_intr_apic_int64:
+	intr_lapic_isr 64
+	jmp	_task_restart
 	intr_lapic_isr_done
 	iretq
 
@@ -549,11 +557,14 @@ _task_restart:
 	/* Save stack pointer */
 	movq	P_CUR_TASK_OFFSET(%rbp),%rax
 	movq	%rsp,TASK_RP(%rax)
-	/* Set the state */
-	movq	TASK_KTASK(%rax),%rdi
-	/* Notify that the current task is switched*/
-	callq	_ktask_switched
 0:
+	/* Notify that the current task is switched */
+	pushq	%rbp
+	movq	P_CUR_TASK_OFFSET(%rbp),%rdi
+	movq	P_NEXT_TASK_OFFSET(%rbp),%rsi
+	callq	_arch_task_switched
+	popq	%rbp
+
 	/* Task switch (set the stack frame of the new task) */
 	movq	P_NEXT_TASK_OFFSET(%rbp),%rax
 	movq	%rax,P_CUR_TASK_OFFSET(%rbp)
@@ -668,7 +679,9 @@ _syscall_setup:
 
 /* void syscall(u64); */
 _syscall:
+	cli
 	syscall
+	sti
 	ret
 
 /* Syscall entry */
