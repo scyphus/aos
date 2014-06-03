@@ -134,7 +134,9 @@ arch_bsp_init(void)
     arch_dbg_printf("Setting up interrupt handlers.\r\n");
     idt_setup_intr_gate(IV_IRQ0, &intr_apic_int32); /* IRQ0 */
     idt_setup_intr_gate(IV_IRQ1, &intr_apic_int33); /* IRQ1 */
-    idt_setup_intr_gate(IV_IRQ2, &intr_apic_int34); /* IRQ2 */
+    //idt_setup_intr_gate(IV_IRQ2, &intr_apic_int34); /* IRQ2 */
+    idt_setup_intr_gate(IV_IRQ5, &intr_apic_int37); /* IRQ5 */
+    idt_setup_intr_gate(IV_IRQ11, &intr_apic_int43); /* IRQ11 */
     idt_setup_intr_gate(IV_IRQ32, &intr_apic_int64); /* IRQ32 */
     idt_setup_intr_gate(IV_LOC_TMR, &intr_apic_loc_tmr); /* Local APIC timer */
     idt_setup_intr_gate(IV_IPI, &intr_apic_ipi);
@@ -142,9 +144,14 @@ arch_bsp_init(void)
     idt_setup_intr_gate(0xff, &intr_apic_spurious); /* Spurious interrupt */
 
     /* Setup interrupt service routine then initialize I/O APIC */
+    for ( i = 17; i < 32; i++ ) {
+        //ioapic_map_intr(i + 32, i, acpi_ioapic_base); /* IRQ0 */
+    }
     ioapic_map_intr(IV_IRQ0, 0, acpi_ioapic_base); /* IRQ0 */
     ioapic_map_intr(IV_IRQ1, 1, acpi_ioapic_base); /* IRQ1 */
-    ioapic_map_intr(IV_IRQ2, 2, acpi_ioapic_base); /* IRQ2 */
+    //ioapic_map_intr(IV_IRQ2, 2, acpi_ioapic_base); /* IRQ2 */
+    ioapic_map_intr(IV_IRQ5, 16, acpi_ioapic_base); /* IRQ5 */
+    ioapic_map_intr(IV_IRQ11, 17, acpi_ioapic_base); /* IRQ11 */
     ioapic_map_intr(IV_IRQ32, 32, acpi_ioapic_base); /* IRQ32 */
     ioapic_init();
 

@@ -1,11 +1,11 @@
 /*_
- * Copyright 2013 Scyphus Solutions Co. Ltd.  All rights reserved.
+ * Copyright (c) 2013 Scyphus Solutions Co. Ltd.
+ * Copyright (c) 2014 Hirochika Asai
+ * All rights reserved.
  *
  * Authors:
- *      Hirochika Asai  <asai@scyphus.co.jp>
+ *      Hirochika Asai  <asai@jar.jp>
  */
-
-/* $Id$ */
 
 #ifndef _KERNEL_ARCH_H
 #define _KERNEL_ARCH_H
@@ -238,6 +238,8 @@ u64 rdtsc(void);
 void intr_apic_int32(void);
 void intr_apic_int33(void);
 void intr_apic_int34(void);
+void intr_apic_int37(void);
+void intr_apic_int43(void);
 void intr_apic_int64(void);
 void intr_apic_loc_tmr(void);
 void intr_apic_ipi(void);

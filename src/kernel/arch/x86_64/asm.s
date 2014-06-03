@@ -82,6 +82,8 @@
 	.globl	_intr_apic_int32
 	.globl	_intr_apic_int33
 	.globl	_intr_apic_int34
+	.globl	_intr_apic_int37
+	.globl	_intr_apic_int43
 	.globl	_intr_apic_int64
 	.globl	_intr_apic_loc_tmr
 	.globl	_intr_apic_ipi
@@ -370,6 +372,7 @@ checktsc:
 /* Null function for interrupt handler */
 _intr_null:
 	pushq	%rdx
+	movq	%rsp,%dr0
 	/* APIC EOI */
 	movq	$APIC_BASE,%rdx
 	//addq	$APIC_EOI,%rdx
@@ -398,7 +401,7 @@ _intr_gpf:
 _intr_pf:
 	pushq	%rbp
 	movq	%rsp,%rbp
-	movq	%rsp,%dr0
+	//movq	%rsp,%dr0
 	popq	%rbp
 	addq	$0x8,%rsp
 	iretq
@@ -469,7 +472,6 @@ _intr_apic_int32:
 
 _intr_apic_int33:
 	intr_lapic_isr 33
-	//jmp	_task_restart
 	intr_lapic_isr_done
 	iretq
 
@@ -511,6 +513,16 @@ _intr_apic_int40:
 
 _intr_apic_int41:
 	intr_lapic_isr 41
+	intr_lapic_isr_done
+	iretq
+
+_intr_apic_int42:
+	intr_lapic_isr 42
+	intr_lapic_isr_done
+	iretq
+
+_intr_apic_int43:
+	intr_lapic_isr 43
 	intr_lapic_isr_done
 	iretq
 

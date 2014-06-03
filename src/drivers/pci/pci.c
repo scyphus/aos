@@ -1,8 +1,10 @@
 /*_
- * Copyright 2013 Scyphus Solutions Co. Ltd.  All rights reserved.
+ * Copyright (c) 2013 Scyphus Solutions Co. Ltd.
+ * Copyright (c) 2014 Hirochika Asai
+ * All rights reserved.
  *
  * Authors:
- *      Hirochika Asai  <asai@scyphus.co.jp>
+ *      Hirochika Asai  <asai@jar.jp>
  */
 
 /* $Id$ */
@@ -135,6 +137,20 @@ pci_check_function(u8 bus, u8 slot, u8 func)
     pci_dev->progif = (u8)(prog >> 8);
     pci->device = pci_dev;
     pci->next = NULL;
+
+#if 0
+    if ( vendor == 0x8086 ) {
+        kprintf("%x.%x.%x %x %x %x / %x %x %x %x %x %x %x\r\n",
+                bus, slot, func, vendor, device, reg,
+                pci_read_config(bus, slot, func, 0x0f),
+                pci_read_config(bus, slot, func, 0x06),
+                pci_read_config(bus, slot, func, 0x04),
+                pci_read_config(bus, slot, func, 0xf2),
+                pci_read_config(bus, slot, func, 0xf0),
+                pci_read_config(bus, slot, func, 0xf6),
+                pci_read_config(bus, slot, func, 0xf4));
+    }
+#endif
 
     /* Search the tail */
     tail = &pci_head;

@@ -310,6 +310,9 @@ kintr_isr(u64 vec)
             irq_handler_table[3].handler(2, irq_handler_table[3].user);
         }
         break;
+    case IV_IRQ5:
+        kprintf("TEST\r\n");
+        break;
     case IV_IRQ32:
         if ( irq_handler_table[32].handler ) {
             irq_handler_table[32].handler(32, irq_handler_table[32].user);
@@ -325,6 +328,7 @@ kintr_isr(u64 vec)
         kintr_ipi();
         break;
     default:
+        kprintf("TEST %d\r\n", vec);
         ;
     }
 }

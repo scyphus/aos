@@ -1,11 +1,10 @@
 /*_
- * Copyright 2013 Scyphus Solutions Co. Ltd.  All rights reserved.
+ * Copyright (c) 2013 Scyphus Solutions Co. Ltd.
+ * Copyright (c) 2014 Hirochika Asai
  *
  * Authors:
- *      Hirochika Asai  <asai@scyphus.co.jp>
+ *      Hirochika Asai  <asai@jar.jp>
  */
-
-/* $Id$ */
 
 #include <aos/const.h>
 #include "../pci/pci.h"
@@ -19,7 +18,9 @@ void pause(void);
 #define E1000_REG_EEC   0x10
 #define E1000_REG_CTRL_EXT 0x18
 #define E1000_REG_EERD  0x14
+#define E1000_REG_MDIC  0x20
 #define E1000_REG_ICR   0x00c0
+#define E1000_REG_ICS   0x00c8
 #define E1000_REG_IMS   0x00d0
 #define E1000_REG_IMC   0x00d8
 #define E1000_REG_RCTL  0x0100
@@ -169,7 +170,6 @@ e1000_init(void)
     e1000_update_hw();
 }
 
-
 void
 e1000_update_hw(void)
 {
@@ -237,7 +237,7 @@ e1000_init_hw(struct pci_device *pcidev)
     }
 
     /* Initialize */
-    mmio_write32(dev->mmio, E1000_REG_IMC, 0);
+    mmio_write32(dev->mmio, E1000_REG_IMC, 0xffffffff);
     mmio_write32(dev->mmio, E1000_REG_CTRL,
                  mmio_read32(dev->mmio, E1000_REG_CTRL)
                  | E1000_CTRL_RST);
@@ -309,16 +309,31 @@ e1000_init_hw(struct pci_device *pcidev)
         mmio_write32(dev->mmio, E1000_REG_MTA + i * 4, 0);
     }
 
-    /* Enable interrupt (REG_IMS <- 0x1F6DC, then read REG_ICR ) */
-    //mmio_write32(dev->mmio, E1000_REG_IMS, 0x1f6dc);
-    //mmio_read32(dev->mmio, 0xc0);
-
     /* Start TX/RX */
     e1000_setup_rx_desc(dev);
     e1000_setup_tx_desc(dev);
 
     /* Store the parent device information */
     dev->pci_device = pcidev;
+
+    /* Enable interrupt (REG_IMS <- 0x1F6DC, then read REG_ICR ) */
+    mmio_write32(dev->mmio, E1000_REG_IMS, 0x908e);
+    kprintf("PCI: %x %x %x %x %x\r\n", pcidev->intr_pin, pcidev->intr_line,
+            (((pcidev->intr_pin -1) + pcidev->slot) % 4) + 1,
+            mmio_read32(dev->mmio, E1000_REG_IMS),
+            mmio_read32(dev->mmio, E1000_REG_ICR));
+    /* http://msdn.microsoft.com/en-us/library/windows/hardware/ff538017(v=vs.85).aspx */
+    //mmio_write32(dev->mmio, E1000_REG_ICS, 0x908e);
+
+#if 0
+    for ( i = 0; i < 3000; i++ ) {
+        u32 h = mmio_read32(dev->mmio, E1000_REG_ICR);
+        if ( h ) {
+            kprintf("*** %x\r\n", h);
+        }
+        arch_busy_usleep(1000);
+    }
+#endif
 
     return dev;
 }
@@ -519,108 +534,6 @@ e1000_tx_commit(struct netdev *netdev)
     u32 tdh;
     tdh = mmio_read32(e1000dev->mmio, E1000_REG_TDH);
     e1000dev->tx_head_cache = tdh;
-
-    return 0;
-}
-
-
-/*
- * Routing process (RX poll)
- */
-int
-e1000_routing(struct netdev *netdev, router_rx_cb_t cb)
-{
-    struct e1000_device *e1000dev;
-    struct e1000_rx_desc *rxdesc;
-    u32 rdh;
-    u32 tdh;
-    int rx_que;
-    int i;
-    u8 *rxpkt;
-
-    /* Retrieve data structure of e1000 driver */
-    e1000dev = (struct e1000_device *)netdev->vendor;
-
-#if 0
-    kprintf("[%x : %x]\r\n",
-            mmio_read32(e1000dev->mmio, E1000_REG_RDH),
-            mmio_read32(e1000dev->mmio, E1000_REG_RDT));
-#endif
-
-    for ( ;; ) {
-        /* Get the head pointers of RX/TX ring buffers */
-        rdh = mmio_read32(e1000dev->mmio, E1000_REG_RDH);
-        tdh = mmio_read32(e1000dev->mmio, E1000_REG_TDH);
-
-        /* Update the cache */
-        e1000dev->rx_head_cache = rdh;
-        e1000dev->tx_head_cache = tdh;
-
-        /* Get RX queue length */
-        rx_que = (e1000dev->rx_bufsz - e1000dev->rx_tail + rdh)
-            % e1000dev->rx_bufsz;
-
-#if 0
-        rxdesc = (struct e1000_rx_desc *)
-            (e1000dev->rx_base + e1000dev->rx_tail * sizeof(struct e1000_rx_desc));
-        kprintf("[%d : %d / %d /// %x | %d]\r\n", rdh, e1000dev->rx_tail, rx_que,
-                rxdesc->status, mmio_read32(e1000dev->mmio, E1000_REG_RDH));
-#endif
-
-#if 0
-        /* Device status */
-        kprintf("[%x : %x]\r\n",
-                mmio_read32(e1000dev->mmio, E1000_REG_RDH),
-                mmio_read32(e1000dev->mmio, E1000_REG_RDT));
-#endif
-
-        if ( rx_que <= 0 ) {
-            continue;
-        }
-#if 0
-        kprintf("[%x : %x]\r\n",
-                mmio_read32(e1000dev->mmio, E1000_REG_RDH),
-                mmio_read32(e1000dev->mmio, E1000_REG_RDT));
-#endif
-
-        /* Routing */
-        for ( i = 0; i < rx_que; i++ ) {
-            rxdesc = (struct e1000_rx_desc *)
-                (e1000dev->rx_base
-                 + ((e1000dev->rx_tail + i) % e1000dev->rx_bufsz)
-                 * sizeof(struct e1000_rx_desc));
-
-#if 0
-            kprintf("[%x %x %x]\r\n",
-                    rxdesc->checksum, rxdesc->status, rxdesc->errors);
-#endif
-            rxpkt = (u8 *)rxdesc->address;
-
-            if ( rxdesc->status & (1<<3) ) {
-                /* VLAN packet (VP) */
-                cb(rxpkt, rxdesc->length, rxdesc->special & 0xfff);
-            } else {
-                cb(rxpkt, rxdesc->length, 0);
-            }
-
-            rxdesc->status = 0;
-        }
-
-        /* Sync RX */
-        e1000dev->rx_tail = (e1000dev->rx_tail + rx_que - 1) % e1000dev->rx_bufsz;
-        mmio_write32(e1000dev->mmio, E1000_REG_RDT, e1000dev->rx_tail);
-        e1000dev->rx_tail = (e1000dev->rx_tail + 1) % e1000dev->rx_bufsz;
-
-        /* Commit TX queue */
-        e1000_tx_commit(netdev);
-
-#if 0
-        kprintf("C0 : %x %x %x \r\n",
-                mmio_read32(e1000dev->mmio, 0xc0),
-                mmio_read32(e1000dev->mmio, 0xc0),
-                mmio_read32(e1000dev->mmio, 0xc0));
-#endif
-    }
 
     return 0;
 }
