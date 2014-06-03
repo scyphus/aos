@@ -107,12 +107,18 @@ kbd_irq_handler(int irq, void *user)
             stat->rctrl = 1;
             break;
         default:
-            if ( (stat->lshift | stat->rshift) ^ stat->capslock ) {
+            if ( (stat->lctrl || stat->rctrl)
+                 && 'h' == keymap_base[scan_code] ) {
                 buf[wpos++] = keymap_shift[scan_code];
-                putc_buffer_irq(0, keymap_shift[scan_code]);
+                putc_buffer_irq(0, 0x08);
             } else {
-                buf[wpos++] = keymap_base[scan_code];
-                putc_buffer_irq(0, keymap_base[scan_code]);
+                if ( (stat->lshift | stat->rshift) ^ stat->capslock ) {
+                    buf[wpos++] = keymap_shift[scan_code];
+                    putc_buffer_irq(0, keymap_shift[scan_code]);
+                } else {
+                    buf[wpos++] = keymap_base[scan_code];
+                    putc_buffer_irq(0, keymap_base[scan_code]);
+                }
             }
         }
     } else {

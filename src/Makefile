@@ -71,6 +71,7 @@ kpack: kernel/arch/$(ARCH)/asm.o \
 	drivers/kbd/kbd.o \
 	drivers/rng/rng.o \
 	drivers/net/net.o \
+	drivers/net/tcp.o \
 	drivers/net/netdev.o \
 	drivers/e1000/e1000.o \
 	drivers/e1000e/e1000e.o \

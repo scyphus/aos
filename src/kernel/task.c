@@ -10,6 +10,8 @@
 #include <aos/const.h>
 #include "kernel.h"
 
+#define DEFAULT_CREDIT 8
+
 static volatile int ktask_lock;
 static volatile int ktask_fork_lock;
 static struct ktask_queue *ktaskq;
@@ -78,7 +80,7 @@ sched(void)
     if ( NULL == e ) {
         if ( NULL == arch_get_current_task() ) {
             /* No task is running, then schedule idle process */
-            processors->prs[processors->map[this_cpu()]].idle->cred = 16;
+            processors->prs[processors->map[this_cpu()]].idle->cred = DEFAULT_CREDIT;
             arch_set_next_task(processors->prs[processors->map[this_cpu()]].idle);
             return;
         } else {
@@ -95,7 +97,7 @@ sched(void)
         sched_ktask_enqueue(e);
         if ( t == e->ktask ) {
             /* Loop detected */
-            processors->prs[processors->map[this_cpu()]].idle->cred = 16;
+            processors->prs[processors->map[this_cpu()]].idle->cred = DEFAULT_CREDIT;
             arch_set_next_task(processors->prs[processors->map[this_cpu()]].idle);
             return;
         }
@@ -103,7 +105,7 @@ sched(void)
     }
 
     /* Set the next task */
-    e->ktask->cred = 16;
+    e->ktask->cred = DEFAULT_CREDIT;
     arch_set_next_task(e->ktask);
     sched_ktask_enqueue(e);
     //kprintf("[%d %d]\r\n", arch_get_current_task()->id, e->ktask->id);
@@ -383,6 +385,16 @@ ktask_kernel_main(int argc, char *argv[])
     if ( tid < 0 ) {
         kprintf("Cannot fork-exec a shell.\r\n");
     }
+
+
+#if 0
+    /* Notify to all processors except for BSP */
+    int i;
+    for ( i = i; i < processors->n; i++ ) {
+        //lapic_send_fixed_ipi(IV_IPI);
+        lapic_send_ns_fixed_ipi(processors->prs[i].id, IV_IPI);
+    }
+#endif
 
     while ( 1 ) {
         arch_scall(1);

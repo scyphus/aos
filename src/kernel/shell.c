@@ -280,6 +280,54 @@ _builtin_test2(char *const argv[])
     return 0;
 }
 
+int
+atoi(const char *s)
+{
+    int i;
+    int sign;
+
+    if ( '-' == *s ) {
+        /* Minus */
+        sign = -1;
+        s++;
+    } else if ( '+' == *s ) {
+        sign = 1;
+        s++;
+    } else {
+        sign = 1;
+    }
+
+    i = 0;
+    while ( '\0' != *s ) {
+        i *= 10;
+        if ( *s < '0' || *s > '9' ) {
+            return sign * i;
+        } else {
+            i += *s - '0';
+        }
+        s++;
+    }
+
+    return sign * i;
+}
+
+
+int
+_mgmt_main(int argc, char *argv[])
+{
+    while ( 1 ) {
+        //__asm__ __volatile__ ("hlt");
+        kprintf("uuuuu\r\n");
+        arch_busy_usleep(100000);
+    }
+
+    return 0;
+}
+int
+_routing_main(int argc, char *argv[])
+{
+    return 0;
+}
 
 void lapic_send_fixed_ipi(u8 vector);
 int this_cpu();
@@ -287,25 +335,54 @@ int
 _builtin_start(char *const argv[])
 {
     u8 id;
+    struct ktask *t;
 
     id = 1;
 
-    /* Start command */
+    /* FIXME: This is experimental. This must be free but...  */
+    t = ktask_alloc(TASK_POLICY_KERNEL);
+    t->argv = NULL;
+    t->id = -2;
+    t->name = NULL;
+    t->state = TASK_STATE_READY;
 
-    /* IPI */
-    lapic_send_ns_fixed_ipi(id, IV_IPI);
+    /* Start command */
+    if ( 0 == kstrcmp("mgmt", argv[1]) ) {
+        /* Start management process */
+        id = atoi(argv[2]);
+        t->main = &_mgmt_main;
+        arch_set_next_task_other_cpu(t, id);
+        kprintf("Launch mgmt @ CPU #%d\r\n", id);
+        lapic_send_ns_fixed_ipi(id, IV_IPI);
+    } else if ( 0 == kstrcmp("routing", argv[1]) ) {
+        /* Start routing */
+        id = atoi(argv[2]);
+        t->main = &_routing_main;
+        kprintf("Launch routing @ CPU #%d\r\n", id);
+        lapic_send_ns_fixed_ipi(id, IV_IPI);
+    } else {
+        ktask_free(t);
+        kprintf("start <routing|mgmt> <id>\r\n");
+    }
+
+    return 0;
 }
+extern struct processor_table *processors;
 int
 _builtin_stop(char *const argv[])
 {
     u8 id;
 
-    id = 1;
-
-    /* Stop command */
-
-    /* IPI */
-    lapic_send_ns_fixed_ipi(id, IV_IPI);
+    id = atoi(argv[1]);
+    if ( 0 != id ) {
+        /* Stop command */
+        processors->prs[processors->map[id]].idle->cred = 16;
+        arch_set_next_task_other_cpu(processors->prs[processors->map[id]].idle, id);
+        /* IPI */
+        lapic_send_ns_fixed_ipi(id, IV_IPI);
+    } else {
+        kprintf("stop <id>\r\n");
+    }
 }
 
 int

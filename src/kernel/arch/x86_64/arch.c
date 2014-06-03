@@ -495,6 +495,19 @@ arch_set_next_task(struct ktask *ktask)
 
     return 0;
 }
+int
+arch_set_next_task_other_cpu(struct ktask *ktask, int i)
+{
+    if ( i < 0 || i >= MAX_PROCESSORS ) {
+        return -1;
+    }
+    volatile struct p_data *pdata;
+
+    pdata = (volatile struct p_data *)(P_DATA_BASE + i * P_DATA_SIZE);
+    pdata->next_task = (u64)ktask->arch;
+
+    return 0;
+}
 
 /*
  * Get next task

@@ -296,6 +296,7 @@ void * arch_alloc_task(struct ktask *, void (*entry)(struct ktask *), int);
 void arch_free_task(void *);
 struct ktask * arch_get_current_task(void);
 int arch_set_next_task(struct ktask *);
+int arch_set_next_task_other_cpu(struct ktask *, int);
 struct ktask * arch_get_next_task(void);
 
 int arch_cpu_active(u16);

@@ -279,7 +279,8 @@ kintr_loc_tmr(void)
 void
 kintr_ipi(void)
 {
-    sched();
+    //kprintf("Received IPI #%d\r\n", this_cpu());
+    //sched();
 }
 
 /*

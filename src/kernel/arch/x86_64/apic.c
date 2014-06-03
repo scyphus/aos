@@ -73,8 +73,8 @@ lapic_send_startup_ipi(u8 vector)
     icrl = (icrl & ~0x000cdfff) | ICR_STARTUP | ICR_DEST_ALL_EX_SELF | vector;
     icrh = icrh & 0x000fffff;
 
-    asm_lapic_write(APIC_BASE + APIC_ICR_LOW, icrl);
     asm_lapic_write(APIC_BASE + APIC_ICR_HIGH, icrh);
+    asm_lapic_write(APIC_BASE + APIC_ICR_LOW, icrl);
 }
 
 /*
@@ -92,8 +92,8 @@ lapic_send_fixed_ipi(u8 vector)
     icrl = (icrl & ~0x000cdfff) | ICR_FIXED | ICR_DEST_ALL_EX_SELF | vector;
     icrh = icrh & 0x000fffff;
 
-    asm_lapic_write(APIC_BASE + APIC_ICR_LOW, icrl);
     asm_lapic_write(APIC_BASE + APIC_ICR_HIGH, icrh);
+    asm_lapic_write(APIC_BASE + APIC_ICR_LOW, icrl);
 }
 
 /*
@@ -110,9 +110,10 @@ lapic_send_ns_fixed_ipi(u8 dst, u8 vector)
 
     icrl = (icrl & ~0x000cdfff) | ICR_FIXED | ICR_DEST_NOSHORTHAND | vector;
     icrh = (icrh & 0x000fffff) | ((u32)dst << 24);
+    kprintf("%x %x\r\n", icrh, icrl);
 
-    asm_lapic_write(APIC_BASE + APIC_ICR_LOW, icrl);
     asm_lapic_write(APIC_BASE + APIC_ICR_HIGH, icrh);
+    asm_lapic_write(APIC_BASE + APIC_ICR_LOW, icrl);
 }
 
 
