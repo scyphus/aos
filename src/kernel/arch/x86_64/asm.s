@@ -82,8 +82,35 @@
 	.globl	_intr_apic_int32
 	.globl	_intr_apic_int33
 	.globl	_intr_apic_int34
+	.globl	_intr_apic_int35
+	.globl	_intr_apic_int36
 	.globl	_intr_apic_int37
+	.globl	_intr_apic_int38
+	.globl	_intr_apic_int39
+	.globl	_intr_apic_int40
+	.globl	_intr_apic_int41
+	.globl	_intr_apic_int42
 	.globl	_intr_apic_int43
+	.globl	_intr_apic_int44
+	.globl	_intr_apic_int45
+	.globl	_intr_apic_int46
+	.globl	_intr_apic_int47
+	.globl	_intr_apic_int48
+	.globl	_intr_apic_int49
+	.globl	_intr_apic_int50
+	.globl	_intr_apic_int51
+	.globl	_intr_apic_int52
+	.globl	_intr_apic_int53
+	.globl	_intr_apic_int54
+	.globl	_intr_apic_int55
+	.globl	_intr_apic_int56
+	.globl	_intr_apic_int57
+	.globl	_intr_apic_int58
+	.globl	_intr_apic_int59
+	.globl	_intr_apic_int60
+	.globl	_intr_apic_int61
+	.globl	_intr_apic_int62
+	.globl	_intr_apic_int63
 	.globl	_intr_apic_int64
 	.globl	_intr_apic_loc_tmr
 	.globl	_intr_apic_ipi
@@ -523,6 +550,106 @@ _intr_apic_int42:
 
 _intr_apic_int43:
 	intr_lapic_isr 43
+	intr_lapic_isr_done
+	iretq
+
+_intr_apic_int44:
+	intr_lapic_isr 44
+	intr_lapic_isr_done
+	iretq
+
+_intr_apic_int45:
+	intr_lapic_isr 45
+	intr_lapic_isr_done
+	iretq
+
+_intr_apic_int46:
+	intr_lapic_isr 46
+	intr_lapic_isr_done
+	iretq
+
+_intr_apic_int47:
+	intr_lapic_isr 47
+	intr_lapic_isr_done
+	iretq
+
+_intr_apic_int48:
+	intr_lapic_isr 48
+	intr_lapic_isr_done
+	iretq
+
+_intr_apic_int49:
+	intr_lapic_isr 49
+	intr_lapic_isr_done
+	iretq
+
+_intr_apic_int50:
+	intr_lapic_isr 50
+	intr_lapic_isr_done
+	iretq
+
+_intr_apic_int51:
+	intr_lapic_isr 51
+	intr_lapic_isr_done
+	iretq
+
+_intr_apic_int52:
+	intr_lapic_isr 52
+	intr_lapic_isr_done
+	iretq
+
+_intr_apic_int53:
+	intr_lapic_isr 53
+	intr_lapic_isr_done
+	iretq
+
+_intr_apic_int54:
+	intr_lapic_isr 54
+	intr_lapic_isr_done
+	iretq
+
+_intr_apic_int55:
+	intr_lapic_isr 55
+	intr_lapic_isr_done
+	iretq
+
+_intr_apic_int56:
+	intr_lapic_isr 56
+	intr_lapic_isr_done
+	iretq
+
+_intr_apic_int57:
+	intr_lapic_isr 57
+	intr_lapic_isr_done
+	iretq
+
+_intr_apic_int58:
+	intr_lapic_isr 58
+	intr_lapic_isr_done
+	iretq
+
+_intr_apic_int59:
+	intr_lapic_isr 59
+	intr_lapic_isr_done
+	iretq
+
+_intr_apic_int60:
+	intr_lapic_isr 60
+	intr_lapic_isr_done
+	iretq
+
+_intr_apic_int61:
+	intr_lapic_isr 61
+	intr_lapic_isr_done
+	iretq
+
+_intr_apic_int62:
+	intr_lapic_isr 62
+	intr_lapic_isr_done
+	iretq
+
+_intr_apic_int63:
+	intr_lapic_isr 63
 	intr_lapic_isr_done
 	iretq
 

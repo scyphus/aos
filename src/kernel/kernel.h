@@ -14,6 +14,7 @@
 
 #define MAX_PROCESSORS  256
 
+#define IV_IRQ(n)       (0x20 + (n))
 #define IV_IRQ0         0x20
 #define IV_IRQ1         0x21
 #define IV_IRQ2         0x22

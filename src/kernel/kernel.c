@@ -20,7 +20,7 @@ struct syscall *syscall_table;
  */
 void kbd_event(void);
 int kbd_read(void);
-
+void e1000_init(void);
 
 int irq_handler_table_init(void);
 
@@ -111,6 +111,8 @@ kmain(void)
 
     syscall_init();
 
+    e1000_init();
+
     for ( i = 0; i < processors->n; i++ ) {
         t = ktask_alloc(TASK_POLICY_KERNEL);
         t->main = &ktask_idle_main;
@@ -121,7 +123,6 @@ kmain(void)
         processors->prs[i].idle = t;
     }
     ktask_init();
-
 
     //sched_ktask_enqueue(ktask_queue_entry_new(processors->prs[processors->map[this_cpu()]].idle));
 
@@ -307,11 +308,18 @@ kintr_isr(u64 vec)
         break;
     case IV_IRQ3:
         if ( irq_handler_table[3].handler ) {
-            irq_handler_table[3].handler(2, irq_handler_table[3].user);
+            irq_handler_table[3].handler(3, irq_handler_table[3].user);
         }
         break;
-    case IV_IRQ5:
-        kprintf("TEST\r\n");
+    case IV_IRQ(16):
+        if ( irq_handler_table[16].handler ) {
+            irq_handler_table[16].handler(16, irq_handler_table[16].user);
+        }
+        break;
+    case IV_IRQ(17):
+        if ( irq_handler_table[17].handler ) {
+            irq_handler_table[17].handler(17, irq_handler_table[17].user);
+        }
         break;
     case IV_IRQ32:
         if ( irq_handler_table[32].handler ) {
@@ -328,7 +336,6 @@ kintr_isr(u64 vec)
         kintr_ipi();
         break;
     default:
-        kprintf("TEST %d\r\n", vec);
         ;
     }
 }

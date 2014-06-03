@@ -28,7 +28,6 @@ void search_clock_sources(void);
 void vga_init(void);
 void pci_init(void);
 void netdev_init(void);
-void e1000_init(void);
 void e1000e_init(void);
 void ixgbe_init(void);
 void ahci_init(void);
@@ -132,26 +131,48 @@ arch_bsp_init(void)
 
     /* Setup interrupt handlers */
     arch_dbg_printf("Setting up interrupt handlers.\r\n");
-    idt_setup_intr_gate(IV_IRQ0, &intr_apic_int32); /* IRQ0 */
-    idt_setup_intr_gate(IV_IRQ1, &intr_apic_int33); /* IRQ1 */
-    //idt_setup_intr_gate(IV_IRQ2, &intr_apic_int34); /* IRQ2 */
-    idt_setup_intr_gate(IV_IRQ5, &intr_apic_int37); /* IRQ5 */
-    idt_setup_intr_gate(IV_IRQ11, &intr_apic_int43); /* IRQ11 */
-    idt_setup_intr_gate(IV_IRQ32, &intr_apic_int64); /* IRQ32 */
+    idt_setup_intr_gate(IV_IRQ(0), &intr_apic_int32);
+    idt_setup_intr_gate(IV_IRQ(1), &intr_apic_int33);
+    idt_setup_intr_gate(IV_IRQ(2), &intr_apic_int34);
+    idt_setup_intr_gate(IV_IRQ(3), &intr_apic_int35);
+    idt_setup_intr_gate(IV_IRQ(4), &intr_apic_int36);
+    idt_setup_intr_gate(IV_IRQ(5), &intr_apic_int37);
+    idt_setup_intr_gate(IV_IRQ(6), &intr_apic_int38);
+    idt_setup_intr_gate(IV_IRQ(7), &intr_apic_int39);
+    idt_setup_intr_gate(IV_IRQ(8), &intr_apic_int40);
+    idt_setup_intr_gate(IV_IRQ(9), &intr_apic_int41);
+    idt_setup_intr_gate(IV_IRQ(10), &intr_apic_int42);
+    idt_setup_intr_gate(IV_IRQ(11), &intr_apic_int43);
+    idt_setup_intr_gate(IV_IRQ(12), &intr_apic_int44);
+    idt_setup_intr_gate(IV_IRQ(13), &intr_apic_int45);
+    idt_setup_intr_gate(IV_IRQ(14), &intr_apic_int46);
+    idt_setup_intr_gate(IV_IRQ(15), &intr_apic_int47);
+    idt_setup_intr_gate(IV_IRQ(16), &intr_apic_int48);
+    idt_setup_intr_gate(IV_IRQ(17), &intr_apic_int49);
+    idt_setup_intr_gate(IV_IRQ(18), &intr_apic_int50);
+    idt_setup_intr_gate(IV_IRQ(19), &intr_apic_int51);
+    idt_setup_intr_gate(IV_IRQ(20), &intr_apic_int52);
+    idt_setup_intr_gate(IV_IRQ(21), &intr_apic_int53);
+    idt_setup_intr_gate(IV_IRQ(22), &intr_apic_int54);
+    idt_setup_intr_gate(IV_IRQ(23), &intr_apic_int55);
+    idt_setup_intr_gate(IV_IRQ(24), &intr_apic_int56);
+    idt_setup_intr_gate(IV_IRQ(25), &intr_apic_int57);
+    idt_setup_intr_gate(IV_IRQ(26), &intr_apic_int58);
+    idt_setup_intr_gate(IV_IRQ(27), &intr_apic_int59);
+    idt_setup_intr_gate(IV_IRQ(28), &intr_apic_int60);
+    idt_setup_intr_gate(IV_IRQ(29), &intr_apic_int61);
+    idt_setup_intr_gate(IV_IRQ(30), &intr_apic_int62);
+    idt_setup_intr_gate(IV_IRQ(31), &intr_apic_int63);
+    idt_setup_intr_gate(IV_IRQ(32), &intr_apic_int64);
     idt_setup_intr_gate(IV_LOC_TMR, &intr_apic_loc_tmr); /* Local APIC timer */
     idt_setup_intr_gate(IV_IPI, &intr_apic_ipi);
     idt_setup_intr_gate(IV_CRASH, &intr_crash); /* crash */
     idt_setup_intr_gate(0xff, &intr_apic_spurious); /* Spurious interrupt */
 
     /* Setup interrupt service routine then initialize I/O APIC */
-    for ( i = 17; i < 32; i++ ) {
-        //ioapic_map_intr(i + 32, i, acpi_ioapic_base); /* IRQ0 */
+    for ( i = 0; i < 32; i++ ) {
+        ioapic_map_intr(IV_IRQ(i), i, acpi_ioapic_base); /* IRQn */
     }
-    ioapic_map_intr(IV_IRQ0, 0, acpi_ioapic_base); /* IRQ0 */
-    ioapic_map_intr(IV_IRQ1, 1, acpi_ioapic_base); /* IRQ1 */
-    //ioapic_map_intr(IV_IRQ2, 2, acpi_ioapic_base); /* IRQ2 */
-    ioapic_map_intr(IV_IRQ5, 16, acpi_ioapic_base); /* IRQ5 */
-    ioapic_map_intr(IV_IRQ11, 17, acpi_ioapic_base); /* IRQ11 */
     ioapic_map_intr(IV_IRQ32, 32, acpi_ioapic_base); /* IRQ32 */
     ioapic_init();
 
@@ -185,7 +206,6 @@ arch_bsp_init(void)
     pci_init();
     arch_dbg_printf("Initializing network devices.\r\n");
     netdev_init();
-    e1000_init();
     e1000e_init();
     ixgbe_init();
     arch_dbg_printf("Initializing AHCI.\r\n");

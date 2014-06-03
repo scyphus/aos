@@ -213,6 +213,21 @@ mmio_write32(u64 base, u64 offset, volatile u32 value)
     *(volatile u32 *)(base + offset) = value;
 }
 
+/*
+ * IRQ handler
+ */
+void
+e1000_irq_handler(int irq, void *user)
+{
+    struct e1000_device *dev;
+    u16 isr;
+
+    dev = (struct e1000_device *)user;
+    /* Read and clear */
+    isr = mmio_read32(dev->mmio, E1000_REG_ICR);
+    //kprintf("XXXX %x\r\n", mmio_read32(dev->mmio, E1000_REG_ICR));
+}
+
 struct e1000_device *
 e1000_init_hw(struct pci_device *pcidev)
 {
@@ -318,10 +333,16 @@ e1000_init_hw(struct pci_device *pcidev)
 
     /* Enable interrupt (REG_IMS <- 0x1F6DC, then read REG_ICR ) */
     mmio_write32(dev->mmio, E1000_REG_IMS, 0x908e);
+    (void)mmio_read32(dev->mmio, E1000_REG_ICR);
+    /* Register IRQ handler */
+    register_irq_handler((((pcidev->intr_pin -1) + pcidev->slot) % 4) + 16,
+                         &e1000_irq_handler, dev);
+#if 0
     kprintf("PCI: %x %x %x %x %x\r\n", pcidev->intr_pin, pcidev->intr_line,
             (((pcidev->intr_pin -1) + pcidev->slot) % 4) + 1,
             mmio_read32(dev->mmio, E1000_REG_IMS),
             mmio_read32(dev->mmio, E1000_REG_ICR));
+#endif
     /* http://msdn.microsoft.com/en-us/library/windows/hardware/ff538017(v=vs.85).aspx */
     //mmio_write32(dev->mmio, E1000_REG_ICS, 0x908e);
 
