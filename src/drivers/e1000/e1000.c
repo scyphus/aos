@@ -124,10 +124,12 @@ struct e1000_device {
 };
 
 /* Prototype declarations */
+struct e1000_device * e1000_init_hw(struct pci_device *);
 void e1000_update_hw(void);
 struct e1000_device * e1000_init_hw(struct pci_device *);
 int e1000_setup_rx_desc(struct e1000_device *);
 int e1000_setup_tx_desc(struct e1000_device *);
+void e1000_irq_handler(int, void *);
 
 u16
 e1000_eeprom_read_8254x(u64 mmio, u8 addr)
@@ -225,6 +227,10 @@ e1000_irq_handler(int irq, void *user)
     dev = (struct e1000_device *)user;
     /* Read and clear */
     isr = mmio_read32(dev->mmio, E1000_REG_ICR);
+
+    if ( isr & 0x80 ) {
+        /* Packet received */
+    }
     //kprintf("XXXX %x\r\n", mmio_read32(dev->mmio, E1000_REG_ICR));
 }
 

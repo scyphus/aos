@@ -253,6 +253,8 @@ void kfree(void *);
 int kstrlen(const char *);
 char * kstrdup(const char *);
 
+int register_irq_handler(int, void (*)(int, void *), void *);
+
 /* in task.c */
 int ktask_init(void);
 int sched_init(void);
