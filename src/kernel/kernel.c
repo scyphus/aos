@@ -15,6 +15,9 @@ struct processor_table *processors;
 
 struct syscall *syscall_table;
 
+/* FIXME */
+struct ptcam *tcam;
+
 /*
  * Temporary: Keyboard drivers
  */
@@ -108,6 +111,10 @@ kmain(void)
 
     /* Print out a message */
     kprintf("\r\nStarting a shell.  Press Esc to power off the machine:\r\n");
+
+    /* FIXME */
+    tcam = ptcam_init();
+
 
     syscall_init();
 

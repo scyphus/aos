@@ -130,6 +130,7 @@ struct e1000_device * e1000_init_hw(struct pci_device *);
 int e1000_setup_rx_desc(struct e1000_device *);
 int e1000_setup_tx_desc(struct e1000_device *);
 void e1000_irq_handler(int, void *);
+int e1000_recvpkt(u8 *, u32, struct netdev *);
 
 u16
 e1000_eeprom_read_8254x(u64 mmio, u8 addr)
@@ -177,6 +178,7 @@ e1000_update_hw(void)
 {
     struct pci *pci;
     struct e1000_device *e1000dev;
+    struct netdev *netdev;
     int idx;
 
     idx = 0;
@@ -192,7 +194,8 @@ e1000_update_hw(void)
             case E1000_82577LM:
             case E1000_82579LM:
                 e1000dev = e1000_init_hw(pci->device);
-                netdev_add_device(e1000dev->macaddr, e1000dev);
+                netdev = netdev_add_device(e1000dev->macaddr, e1000dev);
+                netdev->recvpkt = e1000_recvpkt;
                 idx++;
                 break;
             default:
@@ -337,6 +340,7 @@ e1000_init_hw(struct pci_device *pcidev)
     /* Store the parent device information */
     dev->pci_device = pcidev;
 
+#if 0
     /* Enable interrupt (REG_IMS <- 0x1F6DC, then read REG_ICR ) */
     mmio_write32(dev->mmio, E1000_REG_IMS, 0x908e);
     (void)mmio_read32(dev->mmio, E1000_REG_ICR);
@@ -351,6 +355,7 @@ e1000_init_hw(struct pci_device *pcidev)
 #endif
     /* http://msdn.microsoft.com/en-us/library/windows/hardware/ff538017(v=vs.85).aspx */
     //mmio_write32(dev->mmio, E1000_REG_ICS, 0x908e);
+#endif
 
 #if 0
     for ( i = 0; i < 3000; i++ ) {
@@ -455,6 +460,35 @@ e1000_setup_tx_desc(struct e1000_device *dev)
 }
 
 
+int
+e1000_recvpkt(u8 *pkt, u32 len, struct netdev *netdev)
+{
+    u32 rdh;
+    struct e1000_device *dev;
+    int rx_que;
+    struct e1000_rx_desc *rxdesc;
+    int ret;
+
+    dev = (struct e1000_device *)netdev->vendor;
+    rdh = mmio_read32(dev->mmio, E1000_REG_RDH);
+
+    rx_que = (dev->rx_bufsz - dev->rx_tail + rdh) % dev->rx_bufsz;
+    if ( rx_que > 0 ) {
+        /* Check the head of RX ring buffer */
+        rxdesc = (struct e1000_rx_desc *)
+            (dev->rx_base + (dev->rx_tail % dev->rx_bufsz)
+             * sizeof(struct e1000_rx_desc));
+        ret = len < rxdesc->length ? len : rxdesc->length;
+        kmemcpy(pkt, (void *)rxdesc->address, ret);
+
+        mmio_write32(dev->mmio, E1000_REG_RDT, dev->rx_tail);
+        dev->rx_tail = (dev->rx_tail + 1) % dev->rx_bufsz;
+
+        return ret;
+    }
+
+    return -1;
+}
 
 
 typedef int (*router_rx_cb_t)(const u8 *, u32, int);

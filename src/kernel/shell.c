@@ -33,6 +33,7 @@ struct kcmd {
 };
 
 
+
 /* Clear */
 static void
 _init(struct kshell *kshell)
@@ -312,12 +313,124 @@ atoi(const char *s)
 }
 
 
+struct fib {
+    int sz;
+    int n;
+    u64 *ipaddr;
+    u64 *macaddr;
+};
+struct fib fib;
+
+static void
+_mgmt_operate(u8 *data)
+{
+    //kprintf("XXXX\r\n");
+    u16 vid;
+    u64 ipaddr;
+    u64 prefix;
+    int prefixlen;
+    u8 mac[8];
+    int i;
+    int found;
+
+    if ( data[0] == 1 ) {
+        prefix = (((u64)data[1] << 56) | ((u64)data[2] << 48)
+                  | ((u64)data[3] << 40) | ((u64)data[4] << 32));
+        prefixlen = data[5];
+        ipaddr = (((u64)data[6] << 56) | ((u64)data[7] << 48)
+                  | ((u64)data[8] << 40) | ((u64)data[9] << 32));
+        found = -1;
+        for ( i = 0; i < fib.n; i++ ) {
+            if ( fib.ipaddr[i] == ipaddr ) {
+                found = i;
+                break;
+            }
+        }
+        if ( found < 0 ) {
+            /* Not found */
+            kprintf("FIB not found.\r\n");
+        } else {
+            ptcam_add_entry(tcam, prefix, prefixlen, fib.macaddr[found]);
+        }
+    } else if ( data[0] == 2 ) {
+        vid = (((u16)data[1] << 8) | data[2]);
+        ipaddr = (((u64)data[3] << 56) | ((u64)data[4] << 48)
+                  | ((u64)data[5] << 40) | ((u64)data[6] << 32));
+        mac[0] = data[7];
+        mac[1] = data[8];
+        mac[2] = data[9];
+        mac[3] = data[10];
+        mac[4] = data[11];
+        mac[5] = data[12];
+
+        /* Insert to the fib */
+        if ( fib.n + 1 >= fib.sz ) {
+            kprintf("FIB is full\r\n");
+        } else {
+            found = -1;
+            for ( i = 0; i < fib.n; i++ ) {
+                if ( fib.ipaddr[i] == ipaddr ) {
+                    found = i;
+                    break;
+                }
+            }
+            if ( found < 0 ) {
+                fib.ipaddr[fib.n] = ipaddr;
+                fib.macaddr[fib.n] = (u64)((u64 *)mac);
+            fib.n++;
+            }
+        }
+    } else if ( data[0] == 3 ) {
+        /* Commit */
+        ptcam_commit(tcam);
+        kprintf("Commit done\r\n");
+    }
+}
+
 int
 _mgmt_main(int argc, char *argv[])
 {
+    /* Search network device for management */
+    struct netdev_list *list;
+    u8 pkt[4096];
+    u8 *ip;
+    u8 *udp;
+    u8 *data;
+    int n;
+
+    /* FIXME */
+    fib.n = 0;
+    fib.sz = 4096;
+    fib.ipaddr = kmalloc(sizeof(u64) * fib.n);
+    fib.macaddr = kmalloc(sizeof(u64) * fib.n);
+
+    /* FIXME: Choose the first interface for management */
+    list = netdev_head;
+
+    kprintf("MGMT: %s %x\r\n", list->netdev->name, list->netdev->recvpkt);
+    while ( 1 ) {
+        n = list->netdev->recvpkt(pkt, 4096, list->netdev);
+        if ( n >= 60 && 0x08 == pkt[12] && 0x00 == pkt[13] ) {
+            //kprintf("XXXX\r\n");
+            ip = pkt + 14;
+            if ( 17 == ip[9] ) {
+                udp = ip + (int)(ip[0] & 0xf) * 4;
+                /* Check port 5000 */
+                if ( udp[2] == 0x13 && udp[3] == 0x88 ) {
+                    data = udp + 8;
+                    _mgmt_operate(data);
+#if 0
+                    kprintf("%d (%d) %x %x %x %x\r\n",
+                            n, udp - pkt, udp[0], udp[1], udp[2], udp[3]);
+#endif
+                }
+            }
+        }
+    }
+
+    //list->netdev;
     while ( 1 ) {
         //__asm__ __volatile__ ("hlt");
-        kprintf("uuuuu\r\n");
         arch_busy_usleep(100000);
     }
 
@@ -326,6 +439,13 @@ _mgmt_main(int argc, char *argv[])
 int
 _routing_main(int argc, char *argv[])
 {
+    struct netdev_list *list;
+
+    list = netdev_head;
+
+    kprintf("XX: %s\r\n", list->next->netdev);
+    ixgbe_forwarding_test(list->next->netdev, list->next->netdev);
+
     return 0;
 }
 
@@ -349,15 +469,25 @@ _builtin_start(char *const argv[])
     /* Start command */
     if ( 0 == kstrcmp("mgmt", argv[1]) ) {
         /* Start management process */
+#if 0
+        struct netdev_list *list;
+        list = netdev_head;
+        kfree(t);
+        u8 pkt[4096];
+        list->netdev->recvpkt(pkt, 4096, list->netdev);
+#endif
+#if 1
         id = atoi(argv[2]);
         t->main = &_mgmt_main;
         arch_set_next_task_other_cpu(t, id);
         kprintf("Launch mgmt @ CPU #%d\r\n", id);
         lapic_send_ns_fixed_ipi(id, IV_IPI);
+#endif
     } else if ( 0 == kstrcmp("routing", argv[1]) ) {
         /* Start routing */
         id = atoi(argv[2]);
         t->main = &_routing_main;
+        arch_set_next_task_other_cpu(t, id);
         kprintf("Launch routing @ CPU #%d\r\n", id);
         lapic_send_ns_fixed_ipi(id, IV_IPI);
     } else {
@@ -577,8 +707,8 @@ proc_shell(int argc, char *argv[])
     }
 
     for ( ;; ) {
-        ret = read(fd, &c, 1);
-        //c = kbd_read();
+        //ret = read(fd, &c, 1);
+        ret = c = kbd_read();
         if ( ret > 0 ) {
             if ( c == 0x08 ) {
                 /* Backspace */

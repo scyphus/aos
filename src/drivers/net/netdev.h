@@ -29,7 +29,8 @@ extern "C" {
 #endif
 
     void netdev_init(void);
-    int netdev_add_device(const u8 *, void *);
+    struct netdev * netdev_add_device(const u8 *, void *);
+
 
 #ifdef __cplusplus
 }

@@ -39,6 +39,56 @@
 #define PAGESIZE        4096
 
 
+
+
+
+/* tCAM module */
+#define LEAF_COMPRESSION        1
+#define SKIP_TOP_TIER           2
+
+#define BLOCK_SIZE              64
+#define BLOCK_SIZE_BIT          6
+struct ptcam_block {
+    struct {
+        int type;
+        union {
+            struct {
+                u64 prefix;
+                u32 preflen;
+                u64 data;
+            } data;
+            struct ptcam_block *children;
+        } c;
+    } blk[BLOCK_SIZE];
+};
+struct ptcam_node {
+#if LEAF_COMPRESSION
+    u64 mask;
+#endif
+    u64 node;
+    u32 map0;
+    u32 map1;
+} __attribute__ ((packed));
+struct ptcam {
+    /* Original memory */
+    struct {
+        struct ptcam_block *root;
+    } o;
+    /* Compressed one */
+    struct {
+        struct ptcam_node *nodes;
+        u64 *data;
+    } c;
+};
+int ptcam_add_entry(struct ptcam*, u64, u32, u64);
+int ptcam_commit(struct ptcam *);
+struct ptcam * ptcam_init(void);
+u64 ptcam_lookup(struct ptcam *, u64);
+extern struct ptcam *tcam;
+
+
+
+
 /* DRIVER */
 #define NETDEV_MAX_NAME 32
 struct netdev {
@@ -49,6 +99,7 @@ struct netdev {
 
     int (*sendpkt)(u8 *pkt, u32 len, struct netdev *netdev);
     int (*recvpkt)(u8 *pkt, u32 len, struct netdev *netdev);
+
 };
 struct netdev_list {
     struct netdev *netdev;

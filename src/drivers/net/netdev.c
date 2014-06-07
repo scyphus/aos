@@ -22,7 +22,7 @@ netdev_init(void)
 /*
  * Add one device
  */
-int
+struct netdev *
 netdev_add_device(const u8 *macaddr, void *vendor)
 {
     struct netdev_list **list;
@@ -40,13 +40,13 @@ netdev_add_device(const u8 *macaddr, void *vendor)
     /* Allocate memory for the tail of the list */
     *list = kmalloc(sizeof(struct netdev_list));
     if ( NULL == *list ) {
-        return -1;
+        return NULL;
     }
     (*list)->next = NULL;
     (*list)->netdev = kmalloc(sizeof(struct netdev));
     if ( NULL == (*list)->netdev ) {
         kfree(*list);
-        return -1;
+        return NULL;
     }
     (*list)->netdev->name[0] = 'e';
     (*list)->netdev->name[1] = '0' + num;
@@ -58,7 +58,7 @@ netdev_add_device(const u8 *macaddr, void *vendor)
 
     (*list)->netdev->vendor = vendor;
 
-    return 0;
+    return (*list)->netdev;
 }
 
 
