@@ -874,9 +874,10 @@ ixgbe_forwarding_test(struct netdev *netdev1, struct netdev *netdev2)
 #endif
 
             u64 addr;
-            addr = ((u64)txpkt[30]<<56) | ((u64)txpkt[31]<<48)
-                | ((u64)txpkt[32]<<40) | ((u64)txpkt[33]<<32);
+            addr = (((u64)txpkt[30]<<56)) | (((u64)txpkt[31]<<48))
+                | (((u64)txpkt[32]<<40)) | (((u64)txpkt[33]<<32));
             u64 mac = ptcam_lookup(tcam, addr);
+            kprintf("%x %x\r\n", addr, mac);
             u8 *nxmac = (u8 *)&mac;
             kmemcpy(txpkt, nxmac, 6);
             kmemcpy(txpkt+6, netdev2->macaddr, 6);

@@ -344,11 +344,11 @@ _mgmt_operate(u8 *data)
     int found;
 
     if ( data[0] == 1 ) {
-        prefix = (((u64)data[1] << 56) | ((u64)data[2] << 48)
-                  | ((u64)data[3] << 40) | ((u64)data[4] << 32));
+        prefix = ((((u64)data[1]) << 56) | (((u64)data[2]) << 48)
+                  | (((u64)data[3]) << 40) | (((u64)data[4]) << 32));
         prefixlen = data[5];
-        ipaddr = (((u64)data[6] << 56) | ((u64)data[7] << 48)
-                  | ((u64)data[8] << 40) | ((u64)data[9] << 32));
+        ipaddr = ((((u64)data[6]) << 56) | (((u64)data[7]) << 48)
+                  | (((u64)data[8]) << 40) | (((u64)data[9]) << 32));
         found = -1;
         for ( i = 0; i < fib.n; i++ ) {
             if ( fib.ipaddr[i] == ipaddr ) {
@@ -364,8 +364,8 @@ _mgmt_operate(u8 *data)
         }
     } else if ( data[0] == 2 ) {
         vid = (((u16)data[1] << 8) | data[2]);
-        ipaddr = (((u64)data[3] << 56) | ((u64)data[4] << 48)
-                  | ((u64)data[5] << 40) | ((u64)data[6] << 32));
+        ipaddr = ((((u64)data[3]) << 56) | (((u64)data[4]) << 48)
+                  | (((u64)data[5]) << 40) | (((u64)data[6]) << 32));
         mac[0] = data[7];
         mac[1] = data[8];
         mac[2] = data[9];
