@@ -180,6 +180,7 @@ _builtin_test(char *const argv[])
     pkt[4] = 0x00;
     pkt[5] = 0x01;
 #else
+#if 0
     pkt[0] = 0x90;
     pkt[1] = 0xe2;
     pkt[2] = 0xba;
@@ -188,6 +189,14 @@ _builtin_test(char *const argv[])
     pkt[5] = 0x40;
     //90:e2:ba:6a:0c:40
     //90:e2:ba:6a:0c:41
+#else
+    pkt[0] = 0x90;
+    pkt[1] = 0xe2;
+    pkt[2] = 0xba;
+    pkt[3] = 0x68;
+    pkt[4] = 0xb4;
+    pkt[5] = 0xb4;
+#endif
 #endif
 
     /* src */
@@ -263,7 +272,7 @@ _builtin_test(char *const argv[])
     pkt[24] = cs & 0xff;
     pkt[25] = cs >> 8;
 
-    ixgbe_tx_test(list->netdev, pkt, pktsz + 18 - 4, blk);
+    ixgbe_tx_test(list->next->netdev, pkt, pktsz + 18 - 4, blk);
     //kprintf("%llx: pkt\r\n", list->netdev);
     //list->netdev->sendpkt(pkt, pktsz + 18 - 4, list->netdev);
 
@@ -280,6 +289,7 @@ _builtin_test2(char *const argv[])
     ixgbe_forwarding_test(list->netdev, list->next->netdev);
     return 0;
 }
+
 
 int
 atoi(const char *s)
@@ -443,8 +453,152 @@ _routing_main(int argc, char *argv[])
 
     list = netdev_head;
 
-    kprintf("XX: %s\r\n", list->next->netdev);
+    kprintf("Started routing: %s\r\n", list->next->netdev);
     ixgbe_forwarding_test(list->next->netdev, list->next->netdev);
+
+    return 0;
+}
+
+int
+_tx_main(int argc, char *argv[])
+{
+    struct netdev_list *list;
+    u8 *pkt;
+    //int pktsz = 64 - 18;
+    int i;
+    int sz;
+    int blk;
+    char *s;
+
+#if 0
+    s = argv[1];
+    sz = 0;
+    while ( *s ) {
+        sz *= 10;
+        sz += *s - '0';
+        s++;
+    }
+    s = argv[2];
+    blk = 0;
+    while ( *s ) {
+        blk *= 10;
+        blk += *s - '0';
+        s++;
+    }
+#endif
+    sz = 64;
+    blk = 64;
+    kprintf("Testing: %d/%d\r\n", sz, blk);
+
+    int pktsz = sz - 18;
+
+    pkt = kmalloc(9200);
+
+    list = netdev_head;
+    /* dst (multicast) */
+#if 0
+    pkt[0] = 0x01;
+    pkt[1] = 0x00;
+    pkt[2] = 0x5e;
+    pkt[3] = 0x00;
+    pkt[4] = 0x00;
+    pkt[5] = 0x01;
+#else
+#if 0
+    pkt[0] = 0x90;
+    pkt[1] = 0xe2;
+    pkt[2] = 0xba;
+    pkt[3] = 0x6a;
+    pkt[4] = 0x0c;
+    pkt[5] = 0x40;
+    //90:e2:ba:6a:0c:40
+    //90:e2:ba:6a:0c:41
+#else
+    pkt[0] = 0x90;
+    pkt[1] = 0xe2;
+    pkt[2] = 0xba;
+    pkt[3] = 0x68;
+    pkt[4] = 0xb4;
+    pkt[5] = 0xb4;
+#endif
+#endif
+
+    /* src */
+    pkt[6] = list->netdev->macaddr[0];
+    pkt[7] = list->netdev->macaddr[1];
+    pkt[8] = list->netdev->macaddr[2];
+    pkt[9] = list->netdev->macaddr[3];
+    pkt[10] = list->netdev->macaddr[4];
+    pkt[11] = list->netdev->macaddr[5];
+
+    /* type = IP (0800) */
+    pkt[12] = 0x08;
+    pkt[13] = 0x00;
+    /* IP header */
+    pkt[14] = 0x45;
+    pkt[15] = 0x00;
+    pkt[16] = (pktsz >> 8) & 0xff;
+    pkt[17] = pktsz & 0xff;
+    /* ID / fragment */
+    pkt[18] = 0x26;
+    pkt[19] = 0x6d;
+    pkt[20] = 0x00;
+    pkt[21] = 0x00;
+    /* TTL/protocol */
+    pkt[22] = 0x64;
+    pkt[23] = 17;
+    /* checksum */
+    pkt[24] = 0x00;
+    pkt[25] = 0x00;
+    /* src: 192.168.56.2 */
+    pkt[26] = 192;
+    pkt[27] = 168;
+    pkt[28] = 100;
+    pkt[29] = 2;
+    /* dst */
+#if 0
+    pkt[30] = 224;
+    pkt[31] = 0;
+    pkt[32] = 0;
+    pkt[33] = 1;
+#else
+    pkt[30] = 10;
+    pkt[31] = 0;
+    pkt[32] = 0;
+    pkt[33] = 100;
+#endif
+
+    /* UDP */
+    pkt[34] = 0xff;
+    pkt[35] = 0xff;
+    pkt[36] = 0xff;
+    pkt[37] = 0xfe;
+    pkt[38] = (pktsz - 20) >> 8;
+    pkt[39] = (pktsz - 20) & 0xff;
+    pkt[40] = 0x00;
+    pkt[41] = 0x00;
+    for ( i = 42; i < pktsz + 14; i++ ) {
+        pkt[i] = 0;
+    }
+
+    /* Compute checksum */
+    u16 *tmp;
+    u32 cs;
+    pkt[24] = 0x0;
+    pkt[25] = 0x0;
+    tmp = (u16 *)pkt;
+    cs = 0;
+    for ( i = 7; i < 17; i++ ) {
+        cs += (u32)tmp[i];
+        cs = (cs & 0xffff) + (cs >> 16);
+    }
+    cs = 0xffff - cs;
+    pkt[24] = cs & 0xff;
+    pkt[25] = cs >> 8;
+
+    ixgbe_tx_test(list->next->netdev, pkt, pktsz + 18 - 4, blk);
+    //kprintf("%llx: pkt\r\n", list->netdev);
+    //list->netdev->sendpkt(pkt, pktsz + 18 - 4, list->netdev);
 
     return 0;
 }
@@ -483,6 +637,13 @@ _builtin_start(char *const argv[])
         kprintf("Launch mgmt @ CPU #%d\r\n", id);
         lapic_send_ns_fixed_ipi(id, IV_IPI);
 #endif
+    } else if ( 0 == kstrcmp("tx", argv[1]) ) {
+        /* Start routing */
+        id = atoi(argv[2]);
+        t->main = &_tx_main;
+        arch_set_next_task_other_cpu(t, id);
+        kprintf("Launch routing @ CPU #%d\r\n", id);
+        lapic_send_ns_fixed_ipi(id, IV_IPI);
     } else if ( 0 == kstrcmp("routing", argv[1]) ) {
         /* Start routing */
         id = atoi(argv[2]);

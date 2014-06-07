@@ -692,6 +692,22 @@ ixgbe_tx_commit(struct netdev *netdev)
     return 0;
 }
 
+static u32 Ax;
+static u32 Ay;
+static u32 Az;
+static u32 Aw;
+static __inline__ u32
+xor128(void)
+{
+    u32 t;
+
+    t = Ax ^ (Ax<<11);
+    Ax = Ay;
+    Ay = Az;
+    Az = Aw;
+    return Aw = (Aw ^ (Aw>>19)) ^ (t ^ (t >> 8));
+}
+
 int
 ixgbe_tx_test(struct netdev *netdev, u8 *pkt, int len, int blksize)
 {
@@ -702,6 +718,11 @@ ixgbe_tx_test(struct netdev *netdev, u8 *pkt, int len, int blksize)
     u32 next_tail;
     //int blksize = 32;
     int i;
+
+    Ax = 123456789;
+    Ay = 362436069;
+    Az = 521288629;
+    Aw = 88675123;
 
     ixgbedev = (struct ixgbe_device *)netdev->vendor;
 
@@ -721,6 +742,9 @@ ixgbe_tx_test(struct netdev *netdev, u8 *pkt, int len, int blksize)
                 //for ( j = 0; j < len; j++ ) {
                 //    ((u8 *)(txdesc->address))[j] = pkt[j];
                 //}
+                u32 tmp = xor128();
+                kmemcpy(pkt+30, &tmp, 4);
+
                 txdesc->pkt_addr = (u64)pkt;
                 txdesc->length = len;
                 txdesc->dtyp_mac = (3 << 4);
@@ -829,7 +853,7 @@ ixgbe_forwarding_test(struct netdev *netdev1, struct netdev *netdev2)
                 continue;
             }
 #endif
-
+#if 0
             /* dst:  00:40:66:67:72:24  */
             txpkt[0] = 0x00;
             txpkt[1] = 0x40;
@@ -847,6 +871,15 @@ ixgbe_forwarding_test(struct netdev *netdev1, struct netdev *netdev2)
             //for ( j = 12; j < rxdesc->wb.length; j++ ) {
             //    txpkt[j] = rxpkt[j];
             //}
+#endif
+
+            u64 addr;
+            addr = ((u64)txpkt[30]<<56) | ((u64)txpkt[31]<<48)
+                | ((u64)txpkt[32]<<40) | ((u64)txpkt[33]<<32);
+            u64 mac = ptcam_lookup(tcam, addr);
+            u8 *nxmac = (u8 *)&mac;
+            kmemcpy(txpkt, nxmac, 6);
+            kmemcpy(txpkt+6, netdev2->macaddr, 6);
 
             /* Save Tx */
             u8 *tmp = (u64)txdesc->pkt_addr & 0xfffffffffffffff0ULL;
