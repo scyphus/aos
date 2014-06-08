@@ -14,7 +14,7 @@
 
 void pause(void);
 
-#define PKTSZ   2048
+#define PKTSZ   4096
 
 #define PCI_VENDOR_INTEL        0x8086
 
@@ -405,7 +405,7 @@ ixgbe_setup_tx_desc(struct ixgbe_device *dev)
     dev->tx_tail[1] = 0;
     /* up to 64 K minus 8 */
     dev->tx_bufsz[0] = 512;
-    dev->tx_bufsz[1] = 768;
+    dev->tx_bufsz[1] = 512;
     /* Cache */
     dev->tx_head_cache[0] = 0;
     dev->tx_head_cache[1] = 0;
@@ -726,6 +726,13 @@ ixgbe_tx_test(struct netdev *netdev, u8 *pkt, int len, int blksize)
 
     ixgbedev = (struct ixgbe_device *)netdev->vendor;
 
+    /* Prepare */
+    for ( i = 0; i < ixgbedev->tx_bufsz[0]; i++ ) {
+        txdesc = (struct ixgbe_adv_tx_desc_data *)(ixgbedev->tx_base[0] + i
+                                                   * sizeof(struct ixgbe_adv_tx_desc_data));
+        kmemcpy((void *)txdesc->pkt_addr, pkt, len);
+    }
+
     for ( ;; ) {
         tdh = mmio_read32(ixgbedev->mmio, IXGBE_REG_TDH(0));
         //tdh = *(ixgbedev->tx_head);
@@ -743,9 +750,11 @@ ixgbe_tx_test(struct netdev *netdev, u8 *pkt, int len, int blksize)
                 //    ((u8 *)(txdesc->address))[j] = pkt[j];
                 //}
                 u32 tmp = xor128();
-                kmemcpy(pkt+30, &tmp, 4);
+                //txdesc->pkt_addr = txdesc->pkt_addr & 0xfffffffffffffff0;
+                //kmemcpy((void *)((u64)txdesc->pkt_addr+30), &tmp, 4);
+                *(u32 *)((u64)txdesc->pkt_addr+30) = tmp;
 
-                txdesc->pkt_addr = (u64)pkt;
+                //txdesc->pkt_addr = (u64)pkt;
                 txdesc->length = len;
                 txdesc->dtyp_mac = (3 << 4);
                 txdesc->dcmd = (1<<1) | 1;
@@ -873,17 +882,33 @@ ixgbe_forwarding_test(struct netdev *netdev1, struct netdev *netdev2)
             //}
 #endif
 
+#if 0
+            u32 addr;
+            addr = *(u32 *)(txpkt + 30);
+            __asm__ ("bswapl %0" : "=r"(addr): "0"(addr));
+            u64 mac = ptcam_lookup(tcam, ((u64)addr) << 32);
+#else
             u64 addr;
             addr = (((u64)txpkt[30]<<56)) | (((u64)txpkt[31]<<48))
                 | (((u64)txpkt[32]<<40)) | (((u64)txpkt[33]<<32));
             u64 mac = ptcam_lookup(tcam, addr);
-            kprintf("%x %x\r\n", addr, mac);
+#endif
+            //kprintf("%llx %llx\r\n", addr, mac);
             u8 *nxmac = (u8 *)&mac;
-            kmemcpy(txpkt, nxmac, 6);
-            kmemcpy(txpkt+6, netdev2->macaddr, 6);
+            *(u32 *)txpkt = *(u32 *)nxmac;
+            *(u16 *)(txpkt + 4) = *(u16 *)(nxmac + 4);
+            //kmemcpy(txpkt, nxmac, 6);
+            *(u32 *)(txpkt + 6) = *(u32 *)netdev2->macaddr;
+            *(u16 *)(txpkt + 10) = *(u16 *)(netdev2->macaddr + 4);
+            //kmemcpy(txpkt+6, netdev2->macaddr, 6);
 
             /* Save Tx */
             u8 *tmp = (u64)txdesc->pkt_addr & 0xfffffffffffffff0ULL;
+
+            /* TTL -= 1 */
+            //txpkt[22]--;
+            //txpkt[24] = 0;
+            //txpkt[25] = 0;
 
             txdesc->pkt_addr = (u64)txpkt;
             txdesc->length = rxdesc->wb.length;

@@ -329,7 +329,7 @@ struct fib {
     u64 *ipaddr;
     u64 *macaddr;
 };
-struct fib fib;
+static struct fib fib;
 
 static void
 _mgmt_operate(u8 *data)
@@ -339,7 +339,7 @@ _mgmt_operate(u8 *data)
     u64 ipaddr;
     u64 prefix;
     int prefixlen;
-    u8 mac[8];
+    u64 mac;
     int i;
     int found;
 
@@ -360,18 +360,17 @@ _mgmt_operate(u8 *data)
             /* Not found */
             kprintf("FIB not found.\r\n");
         } else {
+            //kprintf("FIB: %llx/%d %llx %llx (%d)\r\n", prefix, prefixlen,
+            //ipaddr, fib.macaddr[found], found);
             ptcam_add_entry(tcam, prefix, prefixlen, fib.macaddr[found]);
         }
     } else if ( data[0] == 2 ) {
         vid = (((u16)data[1] << 8) | data[2]);
         ipaddr = ((((u64)data[3]) << 56) | (((u64)data[4]) << 48)
                   | (((u64)data[5]) << 40) | (((u64)data[6]) << 32));
-        mac[0] = data[7];
-        mac[1] = data[8];
-        mac[2] = data[9];
-        mac[3] = data[10];
-        mac[4] = data[11];
-        mac[5] = data[12];
+        mac = ((((u64)data[7])) | (((u64)data[8]) << 8)
+               | (((u64)data[9]) << 16) | (((u64)data[10]) << 24)
+               | (((u64)data[11]) << 32) | (((u64)data[12]) << 40));
 
         /* Insert to the fib */
         if ( fib.n + 1 >= fib.sz ) {
@@ -386,14 +385,24 @@ _mgmt_operate(u8 *data)
             }
             if ( found < 0 ) {
                 fib.ipaddr[fib.n] = ipaddr;
-                fib.macaddr[fib.n] = (u64)((u64 *)mac);
-            fib.n++;
+                fib.macaddr[fib.n] = mac;
+                //kprintf("MAC: %llx %llx\r\n", fib.ipaddr[fib.n], fib.macaddr[fib.n]);
+                fib.n++;
             }
         }
     } else if ( data[0] == 3 ) {
         /* Commit */
+        kprintf("Commit start\r\n");
         ptcam_commit(tcam);
         kprintf("Commit done\r\n");
+    } else if ( data[0] == 4 ) {
+        /* Lookup */
+        ipaddr = ((((u64)data[1]) << 56) | (((u64)data[2]) << 48)
+                  | (((u64)data[3]) << 40) | (((u64)data[4]) << 32));
+        u64 tmp;
+        tmp = ptcam_lookup(tcam, ipaddr);
+        kprintf("Lookup: %llx %llx (%d.%d.%d.%d)\r\n", ipaddr, tmp, data[1],
+                data[2], data[3], data[4]);
     }
 }
 
@@ -411,8 +420,8 @@ _mgmt_main(int argc, char *argv[])
     /* FIXME */
     fib.n = 0;
     fib.sz = 4096;
-    fib.ipaddr = kmalloc(sizeof(u64) * fib.n);
-    fib.macaddr = kmalloc(sizeof(u64) * fib.n);
+    fib.ipaddr = kmalloc(sizeof(u64) * fib.sz);
+    fib.macaddr = kmalloc(sizeof(u64) * fib.sz);
 
     /* FIXME: Choose the first interface for management */
     list = netdev_head;
@@ -453,8 +462,9 @@ _routing_main(int argc, char *argv[])
 
     list = netdev_head;
 
-    kprintf("Started routing: %s\r\n", list->next->netdev);
-    ixgbe_forwarding_test(list->next->netdev, list->next->netdev);
+    kprintf("Started routing: %s => %s\r\n", list->next->netdev->name,
+            list->next->next->netdev->name);
+    ixgbe_forwarding_test(list->next->netdev, list->next->next->netdev);
 
     return 0;
 }
@@ -638,7 +648,7 @@ _builtin_start(char *const argv[])
         lapic_send_ns_fixed_ipi(id, IV_IPI);
 #endif
     } else if ( 0 == kstrcmp("tx", argv[1]) ) {
-        /* Start routing */
+        /* Start Tx */
         id = atoi(argv[2]);
         t->main = &_tx_main;
         arch_set_next_task_other_cpu(t, id);
