@@ -13,12 +13,28 @@
 #include <aos/const.h>
 #include "bootinfo.h"
 
+#define PHYS_MEM_BUDDY_ORDER 18
+
+/*
+ * Buddy system
+ *   To be implemented
+ */
+struct phys_mem_buddy {
+    struct phys_mem_page *head;
+} __attribute__ ((packed));
+struct phys_mem_root {
+    struct phys_mem_buddy o[PHYS_MEM_BUDDY_ORDER];
+} __attribute__ ((packed));
+
 /*
  * Physical memory page
  */
 struct phys_mem_page {
     u64 flags;
     struct phys_mem_page *lru;
+    /* For buddy system */
+    struct phys_mem_page *next;
+    int order;
 } __attribute__ ((packed));
 
 /*
@@ -27,10 +43,13 @@ struct phys_mem_page {
 struct phys_mem {
     u64 nr;
     struct phys_mem_page *pages;
+    struct phys_mem_root buddy;
 } __attribute__ ((packed));
 
 int phys_mem_init(struct bootinfo *);
+#if 0
 int phys_mem_wire(void *, u64);
+#endif
 
 void * phys_mem_alloc_pages(u64);
 void phys_mem_free_pages(void *);

@@ -20,26 +20,17 @@
 #define PHYS_MEM_UNAVAIL        (u64)(1<<16)
 
 #define PHYS_MEM_IS_FREE(x)     (0 == (x)->flags ? 1 : 0)
+#define PHYS_MEM_PAGE_POS(p)    (((u64)(p) - (u64)phys_mem->pages)  \
+                                 / (sizeof(struct phys_mem_page)))
+
 #define FLOOR(val, base)        ((val) / (base)) * (base)
 #define CEIL(val, base)         (((val) - 1) / (base) + 1) * (base)
 
 
-#define PHYS_MEM_BUDDY_ORDER 64
-
 static volatile int memory_lock;
 static volatile struct phys_mem *phys_mem;
 
-/*
- * Buddy system
- *   To be implemented
- */
-struct phys_mem_buddy {
-    struct phys_mem_page *page;
-} __attribute__ ((packed));
 
-struct phys_mem_root {
-    struct phys_mem_buddy *o[PHYS_MEM_BUDDY_ORDER];
-} __attribute__ ((packed));
 
 
 /*
@@ -57,6 +48,8 @@ phys_mem_init(struct bootinfo *bi)
     u64 b;
     u64 i;
     u64 j;
+    int k;
+    int flag;
 
     /* Clear lock variable */
     memory_lock = 0;
@@ -128,6 +121,9 @@ phys_mem_init(struct bootinfo *bi)
     for ( i = 0; i < phys_mem->nr; i++ ) {
         /* Mark as unavailable */
         phys_mem->pages[i].flags = PHYS_MEM_UNAVAIL;
+        phys_mem->pages[i].lru = NULL;
+        phys_mem->pages[i].next = NULL;
+        phys_mem->pages[i].order = -1;
     }
 
     /* Check system address map obitaned from BIOS */
@@ -159,9 +155,44 @@ phys_mem_init(struct bootinfo *bi)
         phys_mem->pages[i].flags |= PHYS_MEM_WIRED;
     }
 
+    /* Initialize buddy system */
+    for ( k = 0; k < PHYS_MEM_BUDDY_ORDER; k++ ) {
+        phys_mem->buddy.o[k].head = NULL;
+    }
+    for ( k = PHYS_MEM_BUDDY_ORDER-1; k >= 0; k-- ) {
+        for ( i = 0; i < phys_mem->nr; i += (1<<k) ) {
+            flag = 0;
+            if ( phys_mem->pages[i].order >= 0 ) {
+                /* Already used in a higher order buddy list */
+                flag = 1;
+                break;
+            }
+            if ( !flag ) {
+                /* Not used in a higher order buddy list */
+                flag = 1;
+                for ( j = 0; i < (1<<k); j++ ) {
+                    if ( !PHYS_MEM_IS_FREE(&phys_mem->pages[i+j]) ) {
+                        /* Not free */
+                        flag = 0;
+                        break;
+                    }
+                }
+                if ( flag ) {
+                    /* All pages are free */
+                    phys_mem->pages[i].next = phys_mem->buddy.o[k].head;
+                    phys_mem->buddy.o[k].head = &phys_mem->pages[i];
+                    for ( j = 0; i < (1<<k); j++ ) {
+                        phys_mem->pages[k].order = k;
+                    }
+                }
+            }
+        }
+    }
+
     return 0;
 }
 
+#if 0
 /*
  * Wire
  */
@@ -187,25 +218,30 @@ phys_mem_wire(void *page, u64 size)
     /* Wired */
     for ( i = a; i < b; i++ ) {
         phys_mem->pages[i].flags |= PHYS_MEM_WIRED;
+
+        /* FIXME: Buddy system support */
     }
 
     spin_unlock(&memory_lock);
 
     return 0;
 }
+#endif
 
 
 /*
  * Allocate n pages for kernel
- * Now we support a very naive allocation algorithm; first find.  Buddy/Slab
- * will be implemented?
  */
 void *
 phys_mem_alloc_pages(u64 n)
 {
     u64 i;
+    u64 j;
     u64 f;
     u64 cnt;
+    int o;
+    u64 tmp;
+
 
     /* Check address first */
     if ( n > phys_mem->nr ) {
@@ -214,6 +250,7 @@ phys_mem_alloc_pages(u64 n)
 
     spin_lock(&memory_lock);
 
+#if 1
     cnt = 0;
     f = 0;
     for ( i = 0; i < phys_mem->nr; i++ ) {
@@ -242,6 +279,35 @@ phys_mem_alloc_pages(u64 n)
         spin_unlock(&memory_lock);
         return NULL;
     }
+#endif
+
+#if 0
+    /* Calculate order */
+    tmp = n - 1;
+    o = 0;
+    while ( tmp ) {
+        tmp >>= 1;
+        o++;
+    }
+
+    for ( i = o; i < PHYS_MEM_BUDDY_ORDER; i++ ) {
+        if ( NULL != phys_mem->buddy.o[i].head ) {
+            /* Found */
+            f = PHYS_MEM_PAGE_POS(phys_mem->buddy.o[i].head);
+            for ( j = 0; j < n; j++ ) {
+                PHYS_MEM_PAGE_POS(phys_mem->buddy.o[i].head);
+                phys_mem->pages[f + j].flags | PHYS_MEM_USED;
+            }
+
+            spin_unlock(&memory_lock);
+            return (void *)(PHYS_MEM_PAGE_POS(phys_mem->buddy.o[i].head)
+                            * PAGESIZE);
+        }
+    }
+
+    spin_unlock(&memory_lock);
+    return NULL;
+#endif
 }
 
 /*
