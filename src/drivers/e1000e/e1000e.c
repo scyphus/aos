@@ -111,6 +111,7 @@ struct e1000e_device * e1000e_init_hw(struct pci_device *);
 int e1000e_setup_rx_desc(struct e1000e_device *);
 int e1000e_setup_tx_desc(struct e1000e_device *);
 int e1000e_recvpkt(u8 *, u32, struct netdev *);
+int e1000e_sendpkt(const u8 *, u32, struct netdev *);
 
 static __inline__ volatile u32
 mmio_read32(u64 base, u64 offset)
@@ -148,6 +149,7 @@ e1000e_update_hw(void)
     idx = 0;
     pci = pci_list();
     while ( NULL != pci ) {
+        //kprintf("XXXX %x:%x\r\n", pci->device->vendor_id, pci->device->device_id);
         if ( PCI_VENDOR_INTEL == pci->device->vendor_id ) {
             switch ( pci->device->device_id ) {
             case E1000E_I217V:
@@ -155,6 +157,7 @@ e1000e_update_hw(void)
                 dev = e1000e_init_hw(pci->device);
                 netdev = netdev_add_device(dev->macaddr, dev);
                 netdev->recvpkt = e1000e_recvpkt;
+                netdev->sendpkt = e1000e_sendpkt;
                 idx++;
                 break;
             default:
@@ -407,7 +410,7 @@ e1000e_setup_tx_desc(struct e1000e_device *dev)
 
     for ( i = 0; i < dev->tx_bufsz; i++ ) {
         txdesc = &(dev->tx_desc[i]);
-        txdesc->address = 0;
+        txdesc->address = (u64)kmalloc(8192);
         txdesc->cmd = 0;
         txdesc->sta = 0;
         txdesc->cso = 0;
@@ -509,6 +512,45 @@ e1000e_recvpkt(u8 *pkt, u32 len, struct netdev *netdev)
 
     return -1;
 }
+
+int
+e1000e_sendpkt(const u8 *pkt, u32 len, struct netdev *netdev)
+{
+    u32 tdh;
+    struct e1000e_device *dev;
+    int tx_avl;
+    struct e1000e_tx_desc *txdesc;
+
+    dev = (struct e1000e_device *)netdev->vendor;
+    tdh = mmio_read32(dev->mmio, E1000E_REG_TDH(0));
+
+    tx_avl = dev->tx_bufsz - ((dev->tx_bufsz - tdh + dev->tx_tail)
+                              % dev->tx_bufsz);
+
+    if ( tx_avl > 0 ) {
+        /* Check the head of TX ring buffer */
+        txdesc = (struct e1000e_tx_desc *)
+            (((u64)dev->tx_desc) + (dev->tx_tail % dev->tx_bufsz)
+             * sizeof(struct e1000e_tx_desc));
+        kmemcpy((void *)txdesc->address, pkt, len);
+
+        dev->tx_desc[dev->tx_tail].length = len;
+        dev->tx_desc[dev->tx_tail].sta = 0;
+        dev->tx_desc[dev->tx_tail].css = 0;
+        dev->tx_desc[dev->tx_tail].cso = 0;
+        dev->tx_desc[dev->tx_tail].special = 0;
+        dev->tx_desc[dev->tx_tail].cmd = (1<<3) | (1<<1) | 1;
+
+        dev->tx_tail = (dev->tx_tail + 1) % dev->tx_bufsz;
+        mmio_write32(dev->mmio, E1000E_REG_TDT(0), dev->tx_tail);
+        //kprintf("%x %x\r\n", E1000E_REG_TDH(0), E1000E_REG_TDT(0));
+
+        return len;
+    }
+
+    return -1;
+}
+
 
 
 /*

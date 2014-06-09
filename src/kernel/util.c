@@ -401,9 +401,8 @@ kmalloc(u64 sz)
 
     arch_spin_lock(&kmem_lock);
 
-    if ( bsz < 8 ) {
+    if ( bsz < 6 ) {
         /* Small objects */
-
         if ( kmem_slab_head->gslabs[bsz].partial ) {
             /* Has partial list */
             hdr = kmem_slab_head->gslabs[bsz].partial;
@@ -433,7 +432,7 @@ kmalloc(u64 sz)
             hdr->marks[hdr->free] = 1;
             hdr->nused++;
             if ( hdr->nr <= hdr->nused ) {
-                hdr->free = 0;
+                hdr->free = -1;
                 /* Becomes full */
                 kmem_slab_head->gslabs[bsz].partial = hdr->next;
                 /* Prepend to the full list */
@@ -453,7 +452,7 @@ kmalloc(u64 sz)
                 }
             }
         } else {
-            /* No free space */
+            /* No free space, then allocate new page */
             npg = (((1<<(bsz+8)) - 1) / PAGESIZE) + 1;
             hdr = phys_mem_alloc_pages(npg);
             if ( NULL == hdr ) {
@@ -466,12 +465,13 @@ kmalloc(u64 sz)
             hdr->obj_head = (void *)((u64)hdr + (npg * PAGESIZE)
                                      - (asz * hdr->nr));
             hdr->next = NULL;
+            kmemset(hdr->marks, 0, hdr->nr);
 
             ret = (void *)((u64)hdr->obj_head + hdr->free * asz);
             hdr->marks[hdr->free] = 1;
             hdr->nused++;
             if ( hdr->nr <= hdr->nused ) {
-                hdr->free = 0;
+                hdr->free = -1;
                 /* Becomes full */
                 kmem_slab_head->gslabs[bsz].partial = hdr->next;
                 /* Prepend to the full list */

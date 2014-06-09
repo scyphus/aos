@@ -97,7 +97,7 @@ struct netdev {
 
     void *vendor;
 
-    int (*sendpkt)(u8 *pkt, u32 len, struct netdev *netdev);
+    int (*sendpkt)(const u8 *pkt, u32 len, struct netdev *netdev);
     int (*recvpkt)(u8 *pkt, u32 len, struct netdev *netdev);
 
 };

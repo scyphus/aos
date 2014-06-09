@@ -131,6 +131,7 @@ int e1000_setup_rx_desc(struct e1000_device *);
 int e1000_setup_tx_desc(struct e1000_device *);
 void e1000_irq_handler(int, void *);
 int e1000_recvpkt(u8 *, u32, struct netdev *);
+int e1000_sendpkt(const u8 *, u32, struct netdev *);
 
 u16
 e1000_eeprom_read_8254x(u64 mmio, u8 addr)
@@ -196,6 +197,7 @@ e1000_update_hw(void)
                 e1000dev = e1000_init_hw(pci->device);
                 netdev = netdev_add_device(e1000dev->macaddr, e1000dev);
                 netdev->recvpkt = e1000_recvpkt;
+                netdev->sendpkt = e1000_sendpkt;
                 idx++;
                 break;
             default:
@@ -483,6 +485,38 @@ e1000_recvpkt(u8 *pkt, u32 len, struct netdev *netdev)
 
         mmio_write32(dev->mmio, E1000_REG_RDT, dev->rx_tail);
         dev->rx_tail = (dev->rx_tail + 1) % dev->rx_bufsz;
+
+        return ret;
+    }
+
+    return -1;
+}
+
+int
+e1000_sendpkt(const u8 *pkt, u32 len, struct netdev *netdev)
+{
+    u32 tdh;
+    struct e1000_device *dev;
+    int tx_avl;
+    struct e1000_tx_desc *txdesc;
+    int ret;
+
+    dev = (struct e1000_device *)netdev->vendor;
+    tdh = mmio_read32(dev->mmio, E1000_REG_TDH);
+
+    tx_avl = dev->tx_bufsz - ((dev->tx_bufsz - tdh + dev->tx_tail)
+                              % dev->tx_bufsz);
+
+    if ( tx_avl > 0 ) {
+        /* Check the head of TX ring buffer */
+        txdesc = (struct e1000_tx_desc *)
+            (dev->tx_base + (dev->tx_tail % dev->tx_bufsz)
+             * sizeof(struct e1000_tx_desc));
+        ret = len < txdesc->length ? len : txdesc->length;
+        kmemcpy((void *)txdesc->address, pkt, ret);
+
+        dev->tx_tail = (dev->tx_tail + 1) % dev->tx_bufsz;
+        mmio_write32(dev->mmio, E1000_REG_TDT, dev->tx_tail);
 
         return ret;
     }

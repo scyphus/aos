@@ -330,11 +330,12 @@ struct fib {
     u64 *macaddr;
 };
 static struct fib fib;
+u64 rdtsc(void);
 
-static void
+static u64
 _mgmt_operate(u8 *data)
 {
-    //kprintf("XXXX\r\n");
+    u64 ret;
     u16 vid;
     u64 ipaddr;
     u64 prefix;
@@ -342,6 +343,8 @@ _mgmt_operate(u8 *data)
     u64 mac;
     int i;
     int found;
+    u64 t0;
+    u64 t1;
 
     if ( data[0] == 1 ) {
         prefix = ((((u64)data[1]) << 56) | (((u64)data[2]) << 48)
@@ -356,6 +359,7 @@ _mgmt_operate(u8 *data)
                 break;
             }
         }
+        t0 = rdtsc();
         if ( found < 0 ) {
             /* Not found */
             kprintf("FIB not found.\r\n");
@@ -364,6 +368,8 @@ _mgmt_operate(u8 *data)
             //ipaddr, fib.macaddr[found], found);
             ptcam_add_entry(tcam, prefix, prefixlen, fib.macaddr[found]);
         }
+        t1 = rdtsc();
+        ret = t1 - t0;
     } else if ( data[0] == 2 ) {
         vid = (((u16)data[1] << 8) | data[2]);
         ipaddr = ((((u64)data[3]) << 56) | (((u64)data[4]) << 48)
@@ -390,20 +396,29 @@ _mgmt_operate(u8 *data)
                 fib.n++;
             }
         }
+        ret = 0;
     } else if ( data[0] == 3 ) {
         /* Commit */
         kprintf("Commit start\r\n");
+        t0 = rdtsc();
         ptcam_commit(tcam);
-        kprintf("Commit done\r\n");
+        t1 = rdtsc();
+        kprintf("Commit done. %x\r\n", t1 - t0);
+        ret = t1 - t0;
     } else if ( data[0] == 4 ) {
         /* Lookup */
         ipaddr = ((((u64)data[1]) << 56) | (((u64)data[2]) << 48)
                   | (((u64)data[3]) << 40) | (((u64)data[4]) << 32));
         u64 tmp;
+        t0 = rdtsc();
         tmp = ptcam_lookup(tcam, ipaddr);
+        t1 = rdtsc();
         kprintf("Lookup: %llx %llx (%d.%d.%d.%d)\r\n", ipaddr, tmp, data[1],
                 data[2], data[3], data[4]);
+        ret = t1 - t0;
     }
+
+    return ret;
 }
 
 int
@@ -412,10 +427,12 @@ _mgmt_main(int argc, char *argv[])
     /* Search network device for management */
     struct netdev_list *list;
     u8 pkt[4096];
+    u8 pkt2[4096];
     u8 *ip;
     u8 *udp;
     u8 *data;
     int n;
+    u64 ret;
 
     /* FIXME */
     fib.n = 0;
@@ -437,11 +454,58 @@ _mgmt_main(int argc, char *argv[])
                 /* Check port 5000 */
                 if ( udp[2] == 0x13 && udp[3] == 0x88 ) {
                     data = udp + 8;
-                    _mgmt_operate(data);
+                    ret = _mgmt_operate(data);
 #if 0
                     kprintf("%d (%d) %x %x %x %x\r\n",
                             n, udp - pkt, udp[0], udp[1], udp[2], udp[3]);
 #endif
+                    kmemcpy(pkt2, pkt + 6, 6);
+                    kmemcpy(pkt2 + 6, pkt, 6);
+                    pkt2[12] = 0x08;
+                    pkt2[13] = 0x00;
+                    pkt2[14] = 0x45;
+                    pkt2[15] = 0;
+                    pkt2[16] = 0;
+                    pkt2[17] = 20 + 8 + 8;
+                    pkt2[18] = 0;
+                    pkt2[19] = 0;
+                    pkt2[20] = 0;
+                    pkt2[21] = 0;
+                    pkt2[22] = 64;
+                    pkt2[23] = 17;
+                    pkt2[24] = 0;
+                    pkt2[25] = 0;
+                    kmemcpy(pkt2 + 26, pkt + 30, 4);
+                    kmemcpy(pkt2 + 30, pkt + 26, 4);
+                    pkt2[34] = 0x13;
+                    pkt2[35] = 0x88;
+                    pkt2[36] = 0x13;
+                    pkt2[37] = 0x88;
+                    pkt2[38] = 0;
+                    pkt2[39] = 8 + 8;
+                    pkt2[40] = 0;
+                    pkt2[41] = 0;
+                    kmemcpy(pkt2 + 42, &ret, 8);
+
+                    /* Compute checksum */
+                    u16 *tmp;
+                    u32 cs;
+                    int i;
+                    pkt2[24] = 0x0;
+                    pkt2[25] = 0x0;
+                    tmp = (u16 *)pkt2;
+                    cs = 0;
+                    for ( i = 7; i < 17; i++ ) {
+                        cs += (u32)tmp[i];
+                        cs = (cs & 0xffff) + (cs >> 16);
+                    }
+                    cs = 0xffff - cs;
+                    pkt2[24] = cs & 0xff;
+                    pkt2[25] = cs >> 8;
+
+                    kprintf("ret = %x\r\n", ret);
+                    list->netdev->sendpkt(pkt2, 50, list->netdev);
+
                 }
             }
         }
