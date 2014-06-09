@@ -14,7 +14,8 @@
 #define PRINTF_MOD_LONG         1
 #define PRINTF_MOD_LONGLONG     2
 
-struct kmem_slab_page_hdr *kmem_slab_head;
+//struct kmem_slab_page_hdr *kmem_slab_head;
+struct kmem_slab_root *kmem_slab_head;
 static volatile int kmem_lock;
 
 /*
@@ -353,120 +354,241 @@ kprintf(const char *fmt, ...)
 void
 kmem_init(void)
 {
-    kmem_slab_head = NULL;
+    int npg;
+    int i;
+
+    npg = (sizeof(struct kmem_slab_root) - 1) / PAGESIZE + 1;
+
+    kmem_slab_head = phys_mem_alloc_pages(npg);
+    for ( i = 0; i < 8; i++ ) {
+        kmem_slab_head->gslabs[i].partial = NULL;
+        kmem_slab_head->gslabs[i].full = NULL;
+        kmem_slab_head->gslabs[i].free = NULL;
+    }
     kmem_lock = 0;
 }
 
 /*
  * Memory allocation
+ * ** FIXME **
  */
 void *
 kmalloc(u64 sz)
 {
-    struct kmem_slab_page_hdr **slab;
-    volatile u8 *bitmap;
-    u64 n;
-    u64 i;
-    u64 j;
-    u64 cnt;
+    u64 tmp;
+    u64 bsz;
+    u64 asz;
     void *ret;
+    int i;
+    u64 npg;
+    struct kmem_slab *hdr;
+
+    /* Calculate aligned size */
+    tmp = sz - 1;
+    bsz = 0;
+    while ( tmp ) {
+        bsz++;
+        tmp >>= 1;
+    }
+    /* No smaller than 32 (= 1<<5) */
+    if ( bsz >= 5 ) {
+        asz = (1<<bsz);
+        bsz -= 5;
+    } else {
+        asz = (1<<5);
+        bsz = 0;
+    }
 
     arch_spin_lock(&kmem_lock);
 
-    if ( sz > PAGESIZE / 2 ) {
-        ret = phys_mem_alloc_pages(((sz - 1) / PAGESIZE) + 1);
-        arch_spin_unlock(&kmem_lock);
-        return ret;
-    } else {
-        n = ((PAGESIZE - sizeof(struct kmem_slab_page_hdr)) / (16 + 1));
-        /* Search slab */
-        slab = &kmem_slab_head;
-        while ( NULL != *slab ) {
-            bitmap = (u8 *)(*slab) + sizeof(struct kmem_slab_page_hdr);
-            cnt = 0;
-            for ( i = 0; i < n; i++ ) {
-                if ( 0 == bitmap[i] ) {
-                    cnt++;
-                    if ( cnt * 16 >= sz ) {
-                        bitmap[i - cnt + 1] |= 2;
-                        for ( j = i - cnt + 1; j <= i; j++ ) {
-                            bitmap[j] |= 1;
-                        }
-                        ret = (u8 *)(*slab) + sizeof(struct kmem_slab_page_hdr)
-                            + n + (i - cnt + 1) * 16;
-                        arch_spin_unlock(&kmem_lock);
-                        return ret;
+    if ( bsz < 8 ) {
+        /* Small objects */
+
+        if ( kmem_slab_head->gslabs[bsz].partial ) {
+            /* Has partial list */
+            hdr = kmem_slab_head->gslabs[bsz].partial;
+            ret = (void *)((u64)hdr->obj_head + hdr->free * asz);
+            hdr->marks[hdr->free] = 1;
+            hdr->nused++;
+            if ( hdr->nr <= hdr->nused ) {
+                hdr->free = -1;
+                /* Becomes full */
+                kmem_slab_head->gslabs[bsz].partial = hdr->next;
+                /* Prepend to the full list */
+                hdr->next = kmem_slab_head->gslabs[bsz].full;
+                kmem_slab_head->gslabs[bsz].full = hdr;
+            } else {
+                /* Search free space */
+                for ( i = 0; i < hdr->nr; i++ ) {
+                    if ( 0 == hdr->marks[i] ) {
+                        hdr->free = i;
+                        break;
                     }
-                } else {
-                    cnt = 0;
                 }
             }
-            slab = &(*slab)->next;
-        }
-        /* Not found */
-        *slab = phys_mem_alloc_pages(1);
-        if ( NULL == (*slab) ) {
-            /* Error */
-            arch_spin_unlock(&kmem_lock);
-            return NULL;
-        }
-        (*slab)->next = NULL;
-        bitmap = (u8 *)(*slab) + sizeof(struct kmem_slab_page_hdr);
-        for ( i = 0; i < n; i++ ) {
-            bitmap[i] = 0;
-        }
-        bitmap[0] |= 2;
-        for ( i = 0; i < (sz - 1) / 16 + 1; i++ ) {
-            bitmap[i] |= 1;
-        }
+        } else if ( kmem_slab_head->gslabs[bsz].free ) {
+            /* Has free list */
+            hdr = kmem_slab_head->gslabs[bsz].free;
+            ret = (void *)((u64)hdr->obj_head + hdr->free * asz);
+            hdr->marks[hdr->free] = 1;
+            hdr->nused++;
+            if ( hdr->nr <= hdr->nused ) {
+                hdr->free = 0;
+                /* Becomes full */
+                kmem_slab_head->gslabs[bsz].partial = hdr->next;
+                /* Prepend to the full list */
+                hdr->next = kmem_slab_head->gslabs[bsz].full;
+                kmem_slab_head->gslabs[bsz].full = hdr;
+            } else {
+                /* To partial */
+                hdr->next = kmem_slab_head->gslabs[bsz].partial;
+                kmem_slab_head->gslabs[bsz].partial = hdr;
 
-        ret = (u8 *)(*slab) + sizeof(struct kmem_slab_page_hdr) + n;
-        arch_spin_unlock(&kmem_lock);
-        return ret;
+                /* Search free space */
+                for ( i = 0; i < hdr->nr; i++ ) {
+                    if ( 0 == hdr->marks[i] ) {
+                        hdr->free = i;
+                        break;
+                    }
+                }
+            }
+        } else {
+            /* No free space */
+            npg = (((1<<(bsz+8)) - 1) / PAGESIZE) + 1;
+            hdr = phys_mem_alloc_pages(npg);
+            if ( NULL == hdr ) {
+                arch_spin_unlock(&kmem_lock);
+                return NULL;
+            }
+            hdr->nr = (npg * PAGESIZE - sizeof(struct kmem_slab)) / (asz + 1);
+            hdr->nused = 0;
+            hdr->free = 0;
+            hdr->obj_head = (void *)((u64)hdr + (npg * PAGESIZE)
+                                     - (asz * hdr->nr));
+            hdr->next = NULL;
+
+            ret = (void *)((u64)hdr->obj_head + hdr->free * asz);
+            hdr->marks[hdr->free] = 1;
+            hdr->nused++;
+            if ( hdr->nr <= hdr->nused ) {
+                hdr->free = 0;
+                /* Becomes full */
+                kmem_slab_head->gslabs[bsz].partial = hdr->next;
+                /* Prepend to the full list */
+                hdr->next = kmem_slab_head->gslabs[bsz].full;
+                kmem_slab_head->gslabs[bsz].full = hdr;
+            } else {
+                /* To partial */
+                hdr->next = kmem_slab_head->gslabs[bsz].partial;
+                kmem_slab_head->gslabs[bsz].partial = hdr;
+                /* Search free space */
+                for ( i = 0; i < hdr->nr; i++ ) {
+                    if ( 0 == hdr->marks[i] ) {
+                        hdr->free = i;
+                        break;
+                    }
+                }
+            }
+        }
+    } else {
+        /* Large objects */
+        ret = phys_mem_alloc_pages(((sz - 1) / PAGESIZE) + 1);
     }
+
     arch_spin_unlock(&kmem_lock);
-    return NULL;
+    return ret;
 }
 
 /*
  * Free allocated memory
+ * ** FIXME **
  */
 void
 kfree(void *ptr)
 {
-    struct kmem_slab_page_hdr *slab;
-    volatile u8 *bitmap;
-    u64 n;
-    u64 i;
-    u64 off;
+    struct kmem_slab *hdr;
+    struct kmem_slab **hdrp;
+    int i;
+    int j;
+    int found;
+    u64 asz;
 
     arch_spin_lock(&kmem_lock);
 
     if ( 0 == (u64)ptr % PAGESIZE ) {
         phys_mem_free_pages(ptr);
     } else {
-        /* Slab */
-        /* ToDo: Free page */
-        n = ((PAGESIZE - sizeof(struct kmem_slab_page_hdr)) / (16 + 1));
-        slab = (struct kmem_slab_page_hdr *)(((u64)ptr / PAGESIZE) * PAGESIZE);
-        off = (u64)ptr % PAGESIZE;
-        off = (off - sizeof(struct kmem_slab_page_hdr) - n) / 16;
-        bitmap = (u8 *)slab + sizeof(struct kmem_slab_page_hdr);
-        if ( off >= n ) {
-            /* Error */
-            arch_spin_unlock(&kmem_lock);
-            return;
-        }
-        if ( !(bitmap[off] & 2) ) {
-            /* Error */
-            arch_spin_unlock(&kmem_lock);
-            return;
-        }
-        bitmap[off] &= ~(u64)2;
-        for ( i = off; i < n && (!(bitmap[i] & 2) || bitmap[i] != 0); i++ ) {
-            bitmap[off] &= ~(u64)1;
+
+        for ( i = 0; i < 8; i++ ) {
+            asz = (1<<(i + 5));
+
+            /* Search from partial */
+            hdrp = &kmem_slab_head->gslabs[i].partial;
+
+            while ( NULL != *hdrp ) {
+                hdr = *hdrp;
+
+                found = -1;
+                for ( j = 0; j < hdr->nr; j++ ) {
+                    if ( ptr == (void *)((u64)hdr->obj_head + j * asz) ) {
+                        /* Found */
+                        found = j;
+                        break;
+                    }
+                }
+                if ( found >= 0 ) {
+                    hdr->nused--;
+                    hdr->marks[found] = 0;
+                    hdr->free = found;
+                    if ( hdr->nused <= 0 ) {
+                        /* To free list */
+                        *hdrp = hdr->next;
+                        hdr->next = kmem_slab_head->gslabs[i].free;
+                        kmem_slab_head->gslabs[i].free = hdr;
+                    }
+                    arch_spin_unlock(&kmem_lock);
+                    return;
+                }
+                hdrp = &hdr->next;
+            }
+
+            /* Search from full */
+            hdrp = &kmem_slab_head->gslabs[i].full;
+
+            while ( NULL != *hdrp ) {
+                hdr = *hdrp;
+
+                found = -1;
+                for ( j = 0; j < hdr->nr; j++ ) {
+                    if ( ptr == (void *)((u64)hdr->obj_head + j * asz) ) {
+                        /* Found */
+                        found = j;
+                        break;
+                    }
+                }
+                if ( found >= 0 ) {
+                    hdr->nused--;
+                    hdr->marks[found] = 0;
+                    hdr->free = found;
+                    if ( hdr->nused <= 0 ) {
+                        /* To free list */
+                        *hdrp = hdr->next;
+                        hdr->next = kmem_slab_head->gslabs[i].free;
+                        kmem_slab_head->gslabs[i].free = hdr;
+                    } else {
+                        /* To partial list */
+                        *hdrp = hdr->next;
+                        hdr->next = kmem_slab_head->gslabs[i].partial;
+                        kmem_slab_head->gslabs[i].partial = hdr;
+                    }
+                    arch_spin_unlock(&kmem_lock);
+                    return;
+                }
+                hdrp = &hdr->next;
+            }
         }
     }
+
     arch_spin_unlock(&kmem_lock);
 }
 

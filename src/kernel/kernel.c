@@ -50,9 +50,6 @@ kmain(void)
     /* Initialize the lock varialbe */
     lock = 0;
 
-    /* Initialize kmem */
-    kmem_init();
-
     /* Initialize architecture-related devices */
     arch_bsp_init();
 

@@ -257,6 +257,44 @@ struct kmem_slab_page_hdr {
     u64 reserved;
 } __attribute__ ((packed));
 
+struct kmem_slab_obj {
+    void *addr;
+} __attribute__ ((packed));
+
+
+/*
+ * Slab objects
+ *  slab_hdr
+ *    object 0
+ *    object 1
+ *    ...
+ */
+struct kmem_slab {
+    struct kmem_slab *next;
+    int nr;
+    int nused;
+    int free;
+    void *obj_head;
+    /* Free pointer follows (nr byte) */
+    u8 marks[1];
+    /* Objects follows */
+} __attribute__ ((packed));
+
+
+
+struct kmem_slab_free_list {
+    struct kmem_slab *partial;
+    struct kmem_slab *full;
+    struct kmem_slab *free;
+} __attribute__ ((packed));
+
+struct kmem_slab_root {
+    /* Generic slabs */
+    struct kmem_slab_free_list gslabs[8];
+    /* Large objects */
+    //struct kmem_slab_obj *lobj;
+} __attribute__ ((packed));
+
 
 /*
  * Call out queue

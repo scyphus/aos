@@ -107,6 +107,8 @@ arch_bsp_init(void)
     if ( 0 != phys_mem_init(bi) ) {
         panic("Error! Cannot initialize physical memory.\r\n");
     }
+    /* Initialize kmem */
+    kmem_init();
 
     /* For multiprocessors */
 #if 0

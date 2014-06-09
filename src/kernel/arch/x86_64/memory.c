@@ -236,12 +236,8 @@ void *
 phys_mem_alloc_pages(u64 n)
 {
     u64 i;
-    u64 j;
     u64 f;
     u64 cnt;
-    int o;
-    u64 tmp;
-
 
     /* Check address first */
     if ( n > phys_mem->nr ) {
@@ -282,6 +278,10 @@ phys_mem_alloc_pages(u64 n)
 #endif
 
 #if 0
+    u64 j;
+    int o;
+    u64 tmp;
+
     /* Calculate order */
     tmp = n - 1;
     o = 0;
