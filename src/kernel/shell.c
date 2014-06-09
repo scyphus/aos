@@ -416,6 +416,10 @@ _mgmt_operate(u8 *data)
         kprintf("Lookup: %llx %llx (%d.%d.%d.%d)\r\n", ipaddr, tmp, data[1],
                 data[2], data[3], data[4]);
         ret = t1 - t0;
+    } else {
+        t0 = rdtsc();
+        t1 = rdtsc();
+        ret = t1 - t0;
     }
 
     return ret;
@@ -485,7 +489,8 @@ _mgmt_main(int argc, char *argv[])
                     pkt2[39] = 8 + 8;
                     pkt2[40] = 0;
                     pkt2[41] = 0;
-                    kmemcpy(pkt2 + 42, &ret, 8);
+                    *(u64 *)(pkt2 + 42) = ret;
+                    kmemset(pkt2 + 50, 0, 8);
 
                     /* Compute checksum */
                     u16 *tmp;
@@ -503,8 +508,8 @@ _mgmt_main(int argc, char *argv[])
                     pkt2[24] = cs & 0xff;
                     pkt2[25] = cs >> 8;
 
-                    kprintf("ret = %x\r\n", ret);
-                    list->netdev->sendpkt(pkt2, 50, list->netdev);
+                    //kprintf("ret = %x\r\n", ret);
+                    list->netdev->sendpkt(pkt2, 60, list->netdev);
 
                 }
             }

@@ -543,7 +543,6 @@ e1000e_sendpkt(const u8 *pkt, u32 len, struct netdev *netdev)
 
         dev->tx_tail = (dev->tx_tail + 1) % dev->tx_bufsz;
         mmio_write32(dev->mmio, E1000E_REG_TDT(0), dev->tx_tail);
-        //kprintf("%x %x\r\n", E1000E_REG_TDH(0), E1000E_REG_TDT(0));
 
         return len;
     }

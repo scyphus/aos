@@ -499,7 +499,6 @@ e1000_sendpkt(const u8 *pkt, u32 len, struct netdev *netdev)
     struct e1000_device *dev;
     int tx_avl;
     struct e1000_tx_desc *txdesc;
-    int ret;
 
     dev = (struct e1000_device *)netdev->vendor;
     tdh = mmio_read32(dev->mmio, E1000_REG_TDH);
@@ -512,13 +511,18 @@ e1000_sendpkt(const u8 *pkt, u32 len, struct netdev *netdev)
         txdesc = (struct e1000_tx_desc *)
             (dev->tx_base + (dev->tx_tail % dev->tx_bufsz)
              * sizeof(struct e1000_tx_desc));
-        ret = len < txdesc->length ? len : txdesc->length;
-        kmemcpy((void *)txdesc->address, pkt, ret);
+        kmemcpy((void *)txdesc->address, pkt, len);
+        txdesc->length = len;
+        txdesc->sta = 0;
+        txdesc->css = 0;
+        txdesc->cso = 0;
+        txdesc->special = 0;
+        txdesc->cmd = (1<<3) | (1<<1) | 1;
 
         dev->tx_tail = (dev->tx_tail + 1) % dev->tx_bufsz;
         mmio_write32(dev->mmio, E1000_REG_TDT, dev->tx_tail);
 
-        return ret;
+        return len;
     }
 
     return -1;
