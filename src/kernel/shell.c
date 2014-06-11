@@ -409,15 +409,70 @@ _mgmt_operate(u8 *data)
         /* Lookup */
         ipaddr = ((((u64)data[1]) << 56) | (((u64)data[2]) << 48)
                   | (((u64)data[3]) << 40) | (((u64)data[4]) << 32));
+
+        u64 cc = 0;
+        u64 aa = 0;
+        u64 dd = 0;
+        u64 cm0;
+        u64 cf0;
+        u64 cm1;
+        u64 cf1;
+        cc = 0;
+        __asm__ __volatile__ ("rdpmc" : "=a"(aa), "=d"(dd)  : "c"(cc) );
+        cm0 = (dd<<32) | aa;
+        cc = 1;
+        __asm__ __volatile__ ("rdpmc" : "=a"(aa), "=d"(dd)  : "c"(cc) );
+        cf0 = (dd<<32) | aa;
+
         u64 tmp;
+#if 0
         t0 = rdtsc();
         tmp = ptcam_lookup(tcam, ipaddr);
         t1 = rdtsc();
+#endif
+
+        __asm__ __volatile__ ("movq $1,%%rcx;mfence;rdpmc" : "=a"(aa), "=d"(dd) );
+        t0 = (dd<<32) | aa;
+        tmp = ptcam_lookup(tcam, ipaddr);
+        __asm__ __volatile__ ("movq $1,%%rcx;mfence;rdpmc" : "=a"(aa), "=d"(dd) );
+        t1 = (dd<<32) | aa;
+
+#if 0
         kprintf("Lookup: %llx %llx (%d.%d.%d.%d)\r\n", ipaddr, tmp, data[1],
                 data[2], data[3], data[4]);
+#endif
+#if 0
+        cc = 0;
+        __asm__ __volatile__ ("rdpmc" : "=a"(aa), "=d"(dd)  : "c"(cc) );
+        cm1 = (dd<<32) | aa;
+        cc = 1;
+        __asm__ __volatile__ ("rdpmc" : "=a"(aa), "=d"(dd)  : "c"(cc) );
+        cf1 = (dd<<32) | aa;
+#if 0
+        kprintf("LLC misses / refs: %d %d\r\n", cm1 - cm0, cf1 - cf0);
+#endif
+        kprintf("Cycles: %d\r\n", cf1 - cf0);
+#endif
+
+        ret = t1 - t0;
+    } else if ( data[0] == 5 ) {
+        t0 = rdtsc();
+        t1 = rdtsc();
+        ret = t1 - t0;
+    } else if ( data[0] == 6 ) {
+        u64 aa = 0;
+        u64 dd = 0;
+
+        __asm__ __volatile__ ("movq $1,%%rcx;mfence;rdpmc"
+                              : "=a"(aa), "=d"(dd) : );
+        t0 = (dd<<32) | aa;
+        __asm__ __volatile__ ("movq $1,%%rcx;mfence;rdpmc"
+                              : "=a"(aa), "=d"(dd) : );
+        t1 = (dd<<32) | aa;
         ret = t1 - t0;
     } else {
         t0 = rdtsc();
+        arch_busy_usleep(1000 * 1000);
         t1 = rdtsc();
         ret = t1 - t0;
     }
@@ -430,13 +485,23 @@ _mgmt_main(int argc, char *argv[])
 {
     /* Search network device for management */
     struct netdev_list *list;
-    u8 pkt[4096];
-    u8 pkt2[4096];
+    u8 pkt[512];
+    u8 pkt2[512];
     u8 *ip;
     u8 *udp;
     u8 *data;
     int n;
     u64 ret;
+
+
+    u64 pmc = (1<<22) | (1<<17) | (1<<16) | (0x41 << 8) | 0x2e;
+    u64 zero = 0;
+    u64 msr = 0x186;
+    __asm__ __volatile__ ("wrmsr" :: "a"(pmc), "c"(msr), "d"(zero) );
+    msr = 0x187;
+    //pmc = (1<<22) | (0<<21) | (1<<17) | (1<<16) | (0x4f << 8) | 0x2e;
+    pmc = (1<<22) | (0<<21) | (1<<17) | (1<<16) | (0x00 << 8) | 0x3c;
+    __asm__ __volatile__ ("wrmsr" :: "a"(pmc), "c"(msr), "d"(zero) );
 
     /* FIXME */
     fib.n = 0;
@@ -449,7 +514,7 @@ _mgmt_main(int argc, char *argv[])
 
     kprintf("MGMT: %s %x\r\n", list->netdev->name, list->netdev->recvpkt);
     while ( 1 ) {
-        n = list->netdev->recvpkt(pkt, 4096, list->netdev);
+        n = list->netdev->recvpkt(pkt, 512, list->netdev);
         if ( n >= 60 && 0x08 == pkt[12] && 0x00 == pkt[13] ) {
             //kprintf("XXXX\r\n");
             ip = pkt + 14;

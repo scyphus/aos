@@ -68,7 +68,7 @@ bootmon:
 	call	setup_inthandler
 
 /* Reset counter */
-	movw	$1000,%ax
+	movw	$300,%ax /* 3 seconds */
 	movw	%ax,counter
 	movw	$0,%ax
 	movw	%ax,bootmode

@@ -57,6 +57,7 @@
 #define E1000E_RCTL_LPE         (1<<5)
 #define E1000E_RCTL_BAM         (1<<15)
 #define E1000E_RCTL_SECRC       (1<<26)
+#define E1000E_RCTL_BSIZE_2048  (0<<16)
 #define E1000E_RCTL_BSIZE_8192  ((2<<16) | (1<<25))
 
 
@@ -285,7 +286,7 @@ e1000e_setup_rx_desc(struct e1000e_device *dev)
     int i;
 
     dev->rx_tail = 0;
-    dev->rx_bufsz = 512;
+    dev->rx_bufsz = 128;
 
     /* Allocate memory for RX descriptors */
     dev->rx_desc = kmalloc(dev->rx_bufsz * sizeof(struct e1000e_rx_desc));
@@ -295,7 +296,7 @@ e1000e_setup_rx_desc(struct e1000e_device *dev)
 
     for ( i = 0; i < dev->rx_bufsz; i++ ) {
         rxdesc = &(dev->rx_desc[i]);
-        rxdesc->address = (u64)kmalloc(8192);
+        rxdesc->address = (u64)kmalloc(2048);
         rxdesc->checksum = 0;
         rxdesc->status = 0;
         rxdesc->errors = 0;
@@ -313,7 +314,7 @@ e1000e_setup_rx_desc(struct e1000e_device *dev)
 
 #if 0
     dev->rx1_tail = 0;
-    dev->rx1_bufsz = 512;
+    dev->rx1_bufsz = 128;
     /* Allocate memory for RX descriptors */
     dev->rx1_desc = kmalloc(dev->rx1_bufsz * sizeof(struct e1000e_rx_desc));
     if ( NULL == dev->rx1_desc ) {
@@ -322,7 +323,7 @@ e1000e_setup_rx_desc(struct e1000e_device *dev)
 
     for ( i = 0; i < dev->rx1_bufsz; i++ ) {
         rxdesc = &(dev->rx1_desc[i]);
-        rxdesc->address = (u64)kmalloc(8192);
+        rxdesc->address = (u64)kmalloc(2048);
         rxdesc->checksum = 0;
         rxdesc->status = 0;
         rxdesc->errors = 0;
@@ -335,7 +336,7 @@ e1000e_setup_rx_desc(struct e1000e_device *dev)
                  dev->rx1_bufsz * sizeof(struct e1000e_rx_desc));
     mmio_write32(dev->mmio, E1000E_REG_RDH(1), 0);
     mmio_write32(dev->mmio, E1000E_REG_RDT(1), dev->rx1_bufsz - 1);
-    mmio_write32(dev->mmio, E1000E_REG_RCTL1, E1000E_RCTL_BSIZE_8192);
+    mmio_write32(dev->mmio, E1000E_REG_RCTL1, E1000E_RCTL_BSIZE_2048);
 #endif
 
 
@@ -357,7 +358,7 @@ e1000e_setup_rx_desc(struct e1000e_device *dev)
                  mmio_read32(dev->mmio, E1000E_REG_RCTL)
                  | E1000E_RCTL_SBP | E1000E_RCTL_UPE
                  | E1000E_RCTL_MPE | E1000E_RCTL_LPE | E1000E_RCTL_BAM
-                 | E1000E_RCTL_BSIZE_8192 | E1000E_RCTL_SECRC | E1000E_RCTL_EN);
+                 | E1000E_RCTL_BSIZE_2048 | E1000E_RCTL_SECRC | E1000E_RCTL_EN);
 
 
 #if 0
@@ -400,7 +401,7 @@ e1000e_setup_tx_desc(struct e1000e_device *dev)
     int i;
 
     dev->tx_tail = 0;
-    dev->tx_bufsz = 512;
+    dev->tx_bufsz = 128;
 
     /* Allocate memory for TX descriptors */
     dev->tx_desc = kmalloc(dev->tx_bufsz * sizeof(struct e1000e_tx_desc));
@@ -410,7 +411,7 @@ e1000e_setup_tx_desc(struct e1000e_device *dev)
 
     for ( i = 0; i < dev->tx_bufsz; i++ ) {
         txdesc = &(dev->tx_desc[i]);
-        txdesc->address = (u64)kmalloc(8192);
+        txdesc->address = (u64)kmalloc(2048);
         txdesc->cmd = 0;
         txdesc->sta = 0;
         txdesc->cso = 0;

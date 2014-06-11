@@ -255,6 +255,44 @@ arch_bsp_init(void)
     }
 #endif
 
+    //IA32_PMCx
+    //IA32_PERFEVTSEL0: 0x186
+    // LLC cache misses: Event 2E, unmask 41H
+    u64 msr = 0x186;
+    //u64 pmc = (1<<22) | (1<<17) | (1<<16) | (0x41 << 8) | 0x2e;
+    u64 pmc = (1<<22) | (0<<21) | (1<<17) | (1<<16) | (0x00 << 8) | 0x3c;
+    u64 zero = 0;
+    __asm__ __volatile__ ("wrmsr" :: "a"(pmc), "c"(msr), "d"(zero) );
+    msr = 0x187;
+    //pmc = (1<<22) | (0<<21) | (1<<17) | (1<<16) | (0x00 << 8) | 0x3c;
+    pmc = (1<<22) | (1<<17) | (1<<16) | (0x4f << 8) | 0x2e;
+    __asm__ __volatile__ ("wrmsr" :: "a"(pmc), "c"(msr), "d"(zero) );
+
+    //IA32_PERF_GLOBAL_CTRL = 0x38f
+    u64 cc = 0;
+    u64 aa = 0;
+    u64 dd = 0;
+    u64 bb;
+
+    aa = 0x0a;
+    __asm__ __volatile__ ("cpuid" : "=a"(aa), "=b"(bb) : "a"(aa) );
+    kprintf("CPUID.0AH %x %x\r\n", aa, bb);
+    arch_busy_usleep(10);
+
+    msr = 0x38f;
+    aa = 1;
+    //__asm__ __volatile__ ("wrmsr" : : "c"(msr), "a"(aa), "d"(dd) );
+    msr = 0xc1;
+    arch_busy_usleep(10);
+    __asm__ __volatile__ ("rdmsr" : "=a"(aa), "=d"(dd) : "c"(msr) );
+    //aa = 1;
+    //__asm__ __volatile__ ("wrmsr" : : "c"(msr), "a"(aa), "d"(dd) );
+    kprintf("%x %x\r\n", dd, aa);
+    arch_busy_usleep(10);
+    __asm__ __volatile__ ("rdpmc" : "=a"(aa), "=d"(dd)  : "c"(cc) );
+    kprintf("Cycles: %.8x%.8x\r\n", dd, aa);
+
+
     /* Initialize local APIC counter */
     lapic_start_timer(LAPIC_HZ, IV_LOC_TMR);
 }

@@ -112,7 +112,6 @@ kmain(void)
     /* FIXME */
     tcam = ptcam_init();
 
-
     syscall_init();
 
     e1000_init();
