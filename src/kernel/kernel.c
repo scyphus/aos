@@ -17,6 +17,7 @@ struct syscall *syscall_table;
 
 /* FIXME */
 struct ptcam *tcam;
+struct dxr *dxr;
 
 /*
  * Temporary: Keyboard drivers
@@ -111,6 +112,7 @@ kmain(void)
 
     /* FIXME */
     tcam = ptcam_init();
+    dxr = dxr_init();
 
     syscall_init();
 

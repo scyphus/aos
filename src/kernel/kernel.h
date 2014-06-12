@@ -88,6 +88,46 @@ extern struct ptcam *tcam;
 
 
 
+struct dxr_next_hop {
+    u32 addr;
+    struct dxr_next_hop *next;
+    /* Temp */
+    int idx;
+};
+struct dxr_range {
+    u32 begin;
+    u32 end;
+    struct dxr_next_hop *nh;
+    struct dxr_range *next;
+    /* Temp */
+    int idx;
+};
+struct dxr_lookup_table_entry {
+    int nr;
+    int stype;
+};
+struct dxr {
+    struct {
+        struct dxr_range *head;
+        struct dxr_range *tail;
+    } range;
+    struct dxr_next_hop *nhs;
+
+    /* Compiled */
+    u32 *lut;
+    u8 *rt;
+    u32 *nh;
+};
+u32 dxr_lookup(struct dxr *, u32);
+int dxr_commit(struct dxr *);
+int dxr_add_range(struct dxr *, u32 , u32 , u32);
+extern struct dxr *dxr;
+
+
+
+
+
+
 
 /* DRIVER */
 #define NETDEV_MAX_NAME 32

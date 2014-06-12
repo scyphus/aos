@@ -470,6 +470,75 @@ _mgmt_operate(u8 *data)
                               : "=a"(aa), "=d"(dd) : );
         t1 = (dd<<32) | aa;
         ret = t1 - t0;
+    } else if ( data[0] == 7 ) {
+        /* Lookup */
+        ipaddr = ((((u64)data[1]) << 56) | (((u64)data[2]) << 48)
+                  | (((u64)data[3]) << 40) | (((u64)data[4]) << 32));
+        u64 tmp;
+        t0 = rdtsc();
+        tmp = ptcam_lookup(tcam, ipaddr);
+        t1 = rdtsc();
+        ret = t1 - t0;
+
+
+    } else if ( data[0] == 10 ) {
+        /* Commit */
+        kprintf("Commit start\r\n");
+        t0 = rdtsc();
+        dxr_commit(dxr);
+        t1 = rdtsc();
+        kprintf("Commit done. %x\r\n", t1 - t0);
+        ret = t1 - t0;
+    } else if ( data[0] == 11 ) {
+        u64 a1;
+        u64 a2;
+        u64 a3;
+        a1 = ((((u64)data[1]) << 24) | (((u64)data[2]) << 16)
+                  | (((u64)data[3]) << 8) | (((u64)data[4]) << 0));
+        a2 = ((((u64)data[5]) << 24) | (((u64)data[6]) << 16)
+                  | (((u64)data[7]) << 8) | (((u64)data[8]) << 0));
+        a3 = ((((u64)data[9]) << 24) | (((u64)data[10]) << 16)
+                  | (((u64)data[11]) << 8) | (((u64)data[12]) << 0));
+        t0 = rdtsc();
+        dxr_add_range(dxr, a1, a2, a3);
+        t1 = rdtsc();
+        ret = t1 - t0;
+    } else if ( data[0] == 12 ) {
+        /* Lookup */
+        ipaddr = ((((u64)data[1]) << 24) | (((u64)data[2]) << 16)
+                  | (((u64)data[3]) << 8) | (((u64)data[4]) << 0));
+
+        u64 cc = 0;
+        u64 aa = 0;
+        u64 dd = 0;
+        u64 cm0;
+        u64 cf0;
+        u64 cm1;
+        u64 cf1;
+        cc = 0;
+        __asm__ __volatile__ ("rdpmc" : "=a"(aa), "=d"(dd)  : "c"(cc) );
+        cm0 = (dd<<32) | aa;
+        cc = 1;
+        __asm__ __volatile__ ("rdpmc" : "=a"(aa), "=d"(dd)  : "c"(cc) );
+        cf0 = (dd<<32) | aa;
+
+        u64 tmp;
+
+        __asm__ __volatile__ ("movq $1,%%rcx;mfence;rdpmc" : "=a"(aa), "=d"(dd) );
+        t0 = (dd<<32) | aa;
+        tmp = dxr_lookup(dxr, ipaddr);
+        __asm__ __volatile__ ("movq $1,%%rcx;mfence;rdpmc" : "=a"(aa), "=d"(dd) );
+        t1 = (dd<<32) | aa;
+        ret = t1 - t0;
+    } else if ( data[0] == 12 ) {
+        /* Lookup */
+        ipaddr = ((((u64)data[1]) << 24) | (((u64)data[2]) << 16)
+                  | (((u64)data[3]) << 8) | (((u64)data[4]) << 0));
+        u64 tmp;
+        t0 = rdtsc();
+        tmp = dxr_lookup(dxr, ipaddr);
+        t1 = rdtsc();
+        ret = t1 - t0;
     } else {
         t0 = rdtsc();
         arch_busy_usleep(1000 * 1000);
