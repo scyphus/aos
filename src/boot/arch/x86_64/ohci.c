@@ -13,15 +13,15 @@
 
 //106b:003f
 
-static __inline__ u32
+static __inline__ volatile u32
 mmio_read32(u64 base, u64 offset)
 {
-    return *(u32 *)(base + offset);
+    return *(volatile u32 *)(base + offset);
 }
 static __inline__ void
-mmio_write32(u64 base, u64 offset, u32 value)
+mmio_write32(u64 base, u64 offset, volatile u32 value)
 {
-    *(u32 *)(base + offset) = value;
+    *(volatile u32 *)(base + offset) = value;
 }
 
 /*
@@ -56,6 +56,54 @@ ohci_update_hw(void)
                         pci->device->vendor_id, pci->device->device_id);
                 kprintf("OHCI MMIO: %x\r\n", mmio);
                 kprintf("OHCI Revision: %x\r\n", mmio_read32(mmio, 0x0));
+
+                /*
+                  Steps
+                  - Save HcFmInterval
+                  - Reset (maximum 10 microsec)
+                  - Restore HcFmInterval
+                  - Initialize HCCA block
+                  - Set HcHCCA
+                  - Enable all interrupts except SOF detect in HcInterruptEnable
+                  - Enable all queue in HcControl
+                  - HcPeriodicStart to HcFmInterval / 10 * 9
+                */
+                u32 hcfminterval;
+                u32 val;
+
+                /* HcFmInterval 0x34 */
+                hcfminterval = mmio_read32(mmio, 0x34);
+                kprintf("OHCI HcFmInterval: %x\r\n", hcfminterval);
+
+                /* Reset */
+                kprintf("OHCI HcControl: %x\r\n", mmio_read32(mmio, 0x04));
+                val = mmio_read32(mmio, 0x08);
+                kprintf("OHCI HcCommandStatus: %x\r\n", val);
+                mmio_write32(mmio, 0x08, val | 1);
+                while ( mmio_read32(mmio, 0x08) & 1 ) {
+                    /* Wait until the completion of the reset */
+                }
+
+                /* Restore HcFmInterval */
+                kprintf("OHCI HcFmInterval: %x\r\n", mmio_read32(mmio, 0x34));
+                mmio_write32(mmio, 0x34, hcfminterval);
+                kprintf("OHCI HcFmInterval: %x\r\n", mmio_read32(mmio, 0x34));
+
+                kprintf("OHCI HcControl: %x\r\n", mmio_read32(mmio, 0x04));
+
+                /* 4096 is a page size but larger than required size to ensure
+                   located on a 256-byte boundary */
+                u8 *hcca = bmalloc(4096);
+                /* FIXME: Check the boundary and it is in 32-bit address */
+                int i;
+                for ( i = 0; i < 256; i++ ) {
+                    hcca[i] = 0;
+                }
+                /* HcHCCA */
+                mmio_write32(mmio, 0x18, (u32)hcca);
+                kprintf("OHCI HcHCCA: %x\r\n", mmio_read32(mmio, 0x18));
+
+
             } else if ( pci->device->progif == 0x20 ) {
                 /* EHCI */
                 mmio = pci_read_mmio(pci->device->bus, pci->device->slot,
@@ -77,7 +125,7 @@ ohci_init(void)
 {
     kprintf("Searching OHCI...\r\n");
     ohci_update_hw();
-    halt64();
+    //halt64();
 }
 
 /*
