@@ -528,7 +528,7 @@ e1000_sendpkt(const u8 *pkt, u32 len, struct netdev *netdev)
     return -1;
 }
 
-
+#if 0
 typedef int (*router_rx_cb_t)(const u8 *, u32, int);
 
 /*
@@ -636,7 +636,7 @@ e1000_tx_commit(struct netdev *netdev)
 
     return 0;
 }
-
+#endif
 
 /*
  * Local variables:

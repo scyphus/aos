@@ -109,7 +109,7 @@ kbd_irq_handler(int irq, void *user)
         default:
             if ( (stat->lctrl || stat->rctrl)
                  && 'h' == keymap_base[scan_code] ) {
-                buf[wpos++] = keymap_shift[scan_code];
+                buf[wpos++] = 0x08;
                 putc_buffer_irq(0, 0x08);
             } else {
                 if ( (stat->lshift | stat->rshift) ^ stat->capslock ) {

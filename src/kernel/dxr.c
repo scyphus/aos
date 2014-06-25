@@ -42,7 +42,7 @@ dxr_init(void)
  * Add an entry
  */
 int
-dxr_add_range(struct dxr *dxr, u32 begin, u32 end, u32 nexthop)
+dxr_add_range(struct dxr *dxr, u32 begin, u32 end, u64 nexthop)
 {
     struct dxr_range *r;
     struct dxr_next_hop **nh;
@@ -112,10 +112,6 @@ dxr_commit(struct dxr *dxr)
     u32 mask;
     u32 v;
 
-    if ( NULL != dxr->lut ) {
-        kfree(dxr->lut);
-    }
-
     /* Indexing */
     nh = dxr->nhs;
     i = 0;
@@ -126,7 +122,7 @@ dxr_commit(struct dxr *dxr)
     }
 
     /* Range */
-    dxr->nh = kmalloc(i * 4);
+    dxr->nh = kmalloc(i * sizeof(u64));
     if ( NULL == dxr->nh ) {
         return -1;
     }
@@ -137,19 +133,22 @@ dxr_commit(struct dxr *dxr)
         nh = nh->next;
     }
 
-
     ltes = kmalloc(sizeof(struct dxr_lookup_table_entry) * (1<<CHUNK));
+//kprintf("%x %x\r\n", ltes, sizeof(struct dxr_lookup_table_entry) * (1<<CHUNK));
+//return 0;
     for ( i = 0; i < (1<<CHUNK); i++ ) {
         ltes[i].nr = 0;
         /* Prevent short format */
-        ltes[i].stype = -1;
+        //ltes[i].stype = -1;
     }
     r = dxr->range.head;
     while ( NULL != r ) {
         i = (r->begin >> (32 - CHUNK));
+#if 0
         if ( 0 == (r->begin & 0xff) && 0xff == (r->end & 0xff) ) {
             ltes[i].stype++;
         }
+#endif
         ltes[i].nr++;
         r = r->next;
     }
@@ -163,6 +162,8 @@ dxr_commit(struct dxr *dxr)
             ridx += (4 * ltes[i].nr);
         }
     }
+
+//return 0;
 
     /* Range */
     dxr->rt = kmalloc(ridx);
@@ -217,7 +218,7 @@ dxr_commit(struct dxr *dxr)
 }
 
 
-u32
+u64
 dxr_lookup(struct dxr *dxr, u32 addr)
 {
     int idx;

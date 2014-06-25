@@ -45,6 +45,7 @@
 /* tCAM module */
 #define LEAF_COMPRESSION        1
 #define SKIP_TOP_TIER           2
+#define LEAF_INDEX              0
 
 #define BLOCK_SIZE              64
 #define BLOCK_SIZE_BIT          6
@@ -77,6 +78,9 @@ struct ptcam {
     /* Compressed one */
     struct {
         struct ptcam_node *nodes;
+#if LEAF_INDEX
+        u16 *indexes;
+#endif
         u64 *data;
     } c;
 };
@@ -89,7 +93,7 @@ extern struct ptcam *tcam;
 
 
 struct dxr_next_hop {
-    u32 addr;
+    u64 addr;
     struct dxr_next_hop *next;
     /* Temp */
     int idx;
@@ -116,16 +120,102 @@ struct dxr {
     /* Compiled */
     u32 *lut;
     u8 *rt;
-    u32 *nh;
+    u64 *nh;
 };
-u32 dxr_lookup(struct dxr *, u32);
+u64 dxr_lookup(struct dxr *, u32);
 int dxr_commit(struct dxr *);
-int dxr_add_range(struct dxr *, u32 , u32 , u32);
+int dxr_add_range(struct dxr *, u32 , u32 , u64);
 extern struct dxr *dxr;
 
 
 
+/* TCP */
+enum tcp_state {
+    TCP_CLOSED,
+    TCP_LISTEN,
+    TCP_SYN_RECEIVED,
+    TCP_SYN_SENT,
+    /* Established */
+    TCP_ESTABLISHED,
+    /* Active close */
+    TCP_FIN_WAIT1,
+    TCP_FIN_WAIT2,
+    TCP_CLOSING,
+    TCP_TIME_WAIT,
+    /* Passive close */
+    TCP_CLOSE_WAIT,
+    TCP_LAST_ACK,
+};
+struct tcp_session {
+    enum tcp_state state;
+    /* Receive window */
+    struct {
+        u32 sz;
+        u8 *buf;
+        /* Sliding window */
+        u32 pos0;
+        u32 pos1;
+    } rwin;
+    /* Transmit window */
+    struct {
+        u32 sz;
+        u8 *buf;
+        u32 pos0;
+        u32 pos1;
+    } twin;
+    /* local/remote ipaddr/port */
+    u32 lipaddr;
+    u16 lport;
+    u32 ripaddr;
+    u16 rport;
+    /* seq/ack number */
+    u32 seq;
+    u32 ack;
+    /* MSS */
+    u32 mss;
+    /* Window */
+    u8 wscale;
+};
 
+struct ether_hdr {
+    u8 dst[6];
+    u8 src[6];
+    u16 type;
+} __attribute__ ((packed));
+struct ip_hdr {
+    u8 ihl:4;
+    u8 version:4;
+    u8 diffserv;
+    u16 length;
+    u16 id;
+    u16 offset:13;
+    u16 flags:3;
+    u8 ttl;
+    u8 protocol;
+    u16 checksum;
+    u32 srcip;
+    u32 dstip;
+} __attribute__ ((packed));
+struct tcp_hdr {
+    u16 sport;
+    u16 dport;
+    u32 seqno;
+    u32 ackno;
+    u8 flag_ns:1;
+    u8 flag_reserved:3;
+    u8 offset:4;
+    u8 flag_fin:1;
+    u8 flag_syn:1;
+    u8 flag_rst:1;
+    u8 flag_psh:1;
+    u8 flag_ack:1;
+    u8 flag_urg:1;
+    u8 flag_ece:1;
+    u8 flag_cwr:1;
+    u16 wsize;
+    u16 checksum;
+    u16 urgptr;
+} __attribute__ ((packed));
 
 
 

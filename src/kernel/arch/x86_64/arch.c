@@ -289,9 +289,8 @@ arch_bsp_init(void)
     //__asm__ __volatile__ ("wrmsr" : : "c"(msr), "a"(aa), "d"(dd) );
     kprintf("%x %x\r\n", dd, aa);
     arch_busy_usleep(10);
-    __asm__ __volatile__ ("rdpmc" : "=a"(aa), "=d"(dd)  : "c"(cc) );
-    kprintf("Cycles: %.8x%.8x\r\n", dd, aa);
-
+    //__asm__ __volatile__ ("rdpmc" : "=a"(aa), "=d"(dd)  : "c"(cc) );
+    //kprintf("Cycles: %.8x%.8x\r\n", dd, aa);
 
     /* Initialize local APIC counter */
     lapic_start_timer(LAPIC_HZ, IV_LOC_TMR);

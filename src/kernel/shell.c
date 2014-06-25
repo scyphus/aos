@@ -15,6 +15,7 @@
 #define ARGS_MAX 128
 
 extern struct netdev_list *netdev_head;
+volatile static u64 globaldata;
 
 /*
  * Temporary: Keyboard drivers
@@ -22,6 +23,7 @@ extern struct netdev_list *netdev_head;
 void kbd_event(void);
 volatile int kbd_read(void);
 void hlt1(void);
+ssize_t read(int, void *, size_t);
 
 struct kshell {
     char cmdbuf[CMDBUF_SIZE];
@@ -32,6 +34,26 @@ struct kcmd {
     char **cmds;
 };
 
+
+
+static u16
+_checksum(u8 *data, int len)
+{
+    /* Compute checksum */
+    u16 *tmp;
+    u32 cs;
+    int i;
+
+    tmp = (u16 *)data;
+    cs = 0;
+    for ( i = 0; i < len / 2; i++ ) {
+        cs += (u32)tmp[i];
+        cs = (cs & 0xffff) + (cs >> 16);
+    }
+    cs = 0xffff - cs;
+
+    return cs;
+}
 
 
 /* Clear */
@@ -399,7 +421,7 @@ _mgmt_operate(u8 *data)
         ret = 0;
     } else if ( data[0] == 3 ) {
         /* Commit */
-        kprintf("Commit start\r\n");
+        kprintf("Commit start %x\r\n", globaldata);
         t0 = rdtsc();
         ptcam_commit(tcam);
         t1 = rdtsc();
@@ -433,7 +455,7 @@ _mgmt_operate(u8 *data)
 
         __asm__ __volatile__ ("movq $1,%%rcx;mfence;rdpmc" : "=a"(aa), "=d"(dd) );
         t0 = (dd<<32) | aa;
-        tmp = ptcam_lookup(tcam, ipaddr);
+        globaldata = ptcam_lookup(tcam, ipaddr);
         __asm__ __volatile__ ("movq $1,%%rcx;mfence;rdpmc" : "=a"(aa), "=d"(dd) );
         t1 = (dd<<32) | aa;
 
@@ -476,7 +498,7 @@ _mgmt_operate(u8 *data)
                   | (((u64)data[3]) << 40) | (((u64)data[4]) << 32));
         u64 tmp;
         t0 = rdtsc();
-        tmp = ptcam_lookup(tcam, ipaddr);
+        globaldata = ptcam_lookup(tcam, ipaddr);
         t1 = rdtsc();
         ret = t1 - t0;
 
@@ -526,7 +548,7 @@ _mgmt_operate(u8 *data)
 
         __asm__ __volatile__ ("movq $1,%%rcx;mfence;rdpmc" : "=a"(aa), "=d"(dd) );
         t0 = (dd<<32) | aa;
-        tmp = dxr_lookup(dxr, ipaddr);
+        globaldata = dxr_lookup(dxr, ipaddr);
         __asm__ __volatile__ ("movq $1,%%rcx;mfence;rdpmc" : "=a"(aa), "=d"(dd) );
         t1 = (dd<<32) | aa;
         ret = t1 - t0;
@@ -536,7 +558,7 @@ _mgmt_operate(u8 *data)
                   | (((u64)data[3]) << 8) | (((u64)data[4]) << 0));
         u64 tmp;
         t0 = rdtsc();
-        tmp = dxr_lookup(dxr, ipaddr);
+        globaldata = dxr_lookup(dxr, ipaddr);
         t1 = rdtsc();
         ret = t1 - t0;
     } else {
@@ -815,6 +837,191 @@ _tx_main(int argc, char *argv[])
 
     return 0;
 }
+int
+_tcp_test_main(int argc, char *argv[])
+{
+    /* Search network device for management */
+    struct netdev_list *list;
+    struct netdev *dev;
+    u8 pkt[1518];
+    u8 pkt2[1518];
+    u8 *ip;
+    u8 *udp;
+    u8 *data;
+    int n;
+    int plen;
+    u64 ret;
+
+
+    struct tcp_session *sess;
+
+    /* Allocate */
+    sess = kmalloc(sizeof(struct tcp_session));
+    sess->state = TCP_CLOSED;
+    sess->rwin.sz = 1024 * 1024;
+    sess->rwin.buf = kmalloc(sizeof(u8) * sess->rwin.sz);
+    sess->twin.sz = 1024 * 1024;
+    sess->twin.buf = kmalloc(sizeof(u8) * sess->twin.sz);
+    sess->lipaddr = 0;
+    sess->lport = 80;
+    sess->ripaddr = 0;
+    sess->rport = 0;
+    sess->mss = 536;
+    sess->wscale = 1;
+
+    /* FIXME: Choose the first interface for management */
+    list = netdev_head;
+    dev = list->netdev;
+
+    kprintf("TCP on %s\r\n", dev->name);
+    while ( 1 ) {
+        n = dev->recvpkt(pkt, sizeof(pkt), dev);
+        if ( n < 0 ) {
+            continue;
+        }
+
+        struct ether_hdr *ehdr;
+        struct ip_hdr *iphdr;
+        struct tcp_hdr *tcphdr;
+
+        if ( n < sizeof(struct ether_hdr) ) {
+            continue;
+        }
+        ehdr = (struct ether_hdr *)pkt;
+        if ( bswap16(ehdr->type) != 0x0800 ) {
+            continue;
+        }
+        if ( n < sizeof(struct ether_hdr) + sizeof(struct ip_hdr) ) {
+            continue;
+        }
+        iphdr = (struct ip_hdr *)((u8 *)ehdr + sizeof(struct ether_hdr));
+        if ( n < sizeof(struct ether_hdr) + (iphdr->ihl * 4) ) {
+            continue;
+        }
+        if ( iphdr->version != 4 ) {
+            continue;
+        }
+        if ( iphdr->protocol != 6 ) {
+            continue;
+        }
+        if ( n < sizeof(struct ether_hdr) + bswap16(iphdr->length) ) {
+            continue;
+        }
+        if ( n < sizeof(struct ether_hdr) + (iphdr->ihl * 4)
+             + sizeof(struct tcp_hdr) ) {
+            continue;
+        }
+        tcphdr = (struct tcp_hdr *)((u8 *)iphdr + iphdr->ihl * 4);
+        if ( tcphdr->offset < 5 ) {
+            continue;
+        }
+        if ( n < sizeof(struct ether_hdr) + (iphdr->ihl * 4)
+             + tcphdr->offset * 4 ) {
+            continue;
+        }
+        plen = n - (sizeof(struct ether_hdr) + (iphdr->ihl * 4)
+                    + tcphdr->offset * 4);
+
+        /* Check destination port */
+        if ( sess->lport != bswap16(tcphdr->dport) ) {
+            continue;
+        }
+
+        if ( tcphdr->flag_syn ) {
+            /* SYN */
+            if ( TCP_CLOSED == sess->state ) {
+                /* Parse options */
+                u8 *tcpopts = (u8 *)tcphdr + sizeof(struct tcp_hdr);
+                u8 optkind;
+                u8 optlen;
+                int eool = 0;
+                sess->lipaddr = bswap16(iphdr->dstip);
+                sess->ripaddr = bswap16(iphdr->srcip);
+                sess->rport = bswap16(tcphdr->sport);
+                while ( !eool ) {
+                    optkind = *tcpopts;
+
+                    /* Check the header length */
+                    if ( tcpopts - (u8 *)tcphdr >= tcphdr->offset * 4 ) {
+                        eool = 1;
+                        break;
+                    }
+
+                    switch ( optkind ) {
+                    case 0:
+                        /* End of Option List */
+                        tcpopts++;
+                        eool = 1;
+                        break;
+                    case 1:
+                        /* NOP */
+                        tcpopts++;
+                        break;
+                    case 2:
+                        /* MSS */
+                        tcpopts++;
+                        optlen = *tcpopts;
+                        tcpopts++;
+                        if ( 4 == optlen ) {
+                            u16 optval = bswap16(*(u16 *)tcpopts);
+                            kprintf("MSS: %d\r\n", optval);
+                            sess->mss = optval;
+                        } else {
+                            kprintf("Invalid length (MSS)\r\n");
+                        }
+                        tcpopts += optlen - 2;
+                        break;
+                    case 3:
+                        /* Window scale */
+                        tcpopts++;
+                        optlen = *tcpopts;
+                        tcpopts++;
+                        if ( 3 == optlen ) {
+                            u8 optval = *tcpopts;
+                            sess->wscale = optval;
+                            kprintf("Window scale: %d\r\n", optval);
+                        } else {
+                            kprintf("Invalid length (Window scale)\r\n");
+                        }
+                        tcpopts += optlen - 2;
+                        break;
+                    default:
+                        tcpopts++;
+                        optlen = *tcpopts;
+                        tcpopts++;
+                        tcpopts += optlen - 2;
+                    }
+                }
+                sess->state = TCP_SYN_RECEIVED;
+
+#if 0
+                ehdr = (u8 *)pkt2;
+                dev->sendpkt(pkt2, 60, dev);
+#endif
+
+            } else {
+                /* Already in use */
+                kprintf("In use\r\n");
+            }
+        } else {
+            switch ( sess->state ) {
+            case TCP_CLOSED:
+                break;
+            }
+        }
+#if 0
+        kprintf("XXXX %x %x %x %x %x %x\r\n",
+                sizeof(struct ether_hdr) + (iphdr->ihl * 4),
+                tcphdr->offset, tcphdr->dport, tcphdr->offset,
+                tcphdr->flag_syn, plen);
+#endif
+    }
+
+
+    return 0;
+}
+
+
 
 void lapic_send_fixed_ipi(u8 vector);
 int this_cpu();
@@ -863,6 +1070,13 @@ _builtin_start(char *const argv[])
         t->main = &_routing_main;
         arch_set_next_task_other_cpu(t, id);
         kprintf("Launch routing @ CPU #%d\r\n", id);
+        lapic_send_ns_fixed_ipi(id, IV_IPI);
+    } else if ( 0 == kstrcmp("tcp", argv[1]) ) {
+        /* Start TCP testing process */
+        id = atoi(argv[2]);
+        t->main = &_tcp_test_main;
+        arch_set_next_task_other_cpu(t, id);
+        kprintf("Launch TCP @ CPU #%d\r\n", id);
         lapic_send_ns_fixed_ipi(id, IV_IPI);
     } else {
         ktask_free(t);
@@ -1081,8 +1295,9 @@ proc_shell(int argc, char *argv[])
     }
 
     for ( ;; ) {
-        //ret = read(fd, &c, 1);
-        ret = c = kbd_read();
+        c = 0;
+        ret = read(fd, &c, 1);
+        //ret = c = kbd_read();
         if ( ret > 0 ) {
             if ( c == 0x08 ) {
                 /* Backspace */

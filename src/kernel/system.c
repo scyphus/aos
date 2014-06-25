@@ -102,7 +102,7 @@ read(int fd, void *buf, size_t n)
             self->state = TASK_STATE_BLOCKED;
             /* Enable interrupts */
             arch_enable_interrupts();
-            /* FIXME: Invokes context switch  */
+            /* FIXME: Invokes a context switch  */
             __asm__ __volatile__ ("int $0x40");
         } else {
             if ( fds[fd].wpos > fds[fd].rpos ) {
@@ -137,31 +137,6 @@ read(int fd, void *buf, size_t n)
         /* pause */
     }
 
-
-    return -1;
-
-#if 0
-    /* Disable interrupts */
-    arch_disable_interrupts();
-
-    /* Get current task */
-    self = arch_get_current_task();
-
-    /* Get the source task */
-
-    if ( TASK_STATE_BLOCKED == src->state ) {
-        /* Change the state to ready */
-        //src->state = TASK_STATE_READY;
-    } else {
-        /* Change the state to blocked, and wait until the source writes here */
-        self->state = TASK_STATE_BLOCKED;
-    }
-
-    /* Enable interrupts */
-    arch_enable_interrupts();
-
-    //kmemcpy(buf, self->msg.u.data.buf, n);
-#endif
 
     return -1;
 }
