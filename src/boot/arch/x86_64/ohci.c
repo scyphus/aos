@@ -114,6 +114,16 @@ ohci_update_hw(void)
                 kprintf("EHCI MMIO: %x\r\n", mmio);
                 kprintf("EHCI Revision: %x\r\n", mmio_read32(mmio, 0x0));
 
+            } else if ( pci->device->progif == 0xd0 ) {
+                /* xHCI */
+                mmio = pci_read_mmio(pci->device->bus, pci->device->slot,
+                                     pci->device->func);
+                kprintf("* %x.%x.%x %.4x:%.4x\r\n", pci->device->bus,
+                        pci->device->slot, pci->device->func,
+                        pci->device->vendor_id, pci->device->device_id);
+                kprintf("XHCI MMIO: %x\r\n", mmio);
+                kprintf("XHCI Revision: %x\r\n", mmio_read32(mmio, 0x0));
+
             }
         }
         pci = pci->next;
