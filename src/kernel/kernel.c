@@ -112,7 +112,9 @@ kmain(void)
 
     /* FIXME */
     tcam = ptcam_init();
+#if DXR
     dxr = dxr_init();
+#endif
 
     syscall_init();
 

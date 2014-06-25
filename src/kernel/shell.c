@@ -502,7 +502,7 @@ _mgmt_operate(u8 *data)
         t1 = rdtsc();
         ret = t1 - t0;
 
-
+#if DXR
     } else if ( data[0] == 10 ) {
         /* Commit */
         kprintf("Commit start\r\n");
@@ -561,6 +561,7 @@ _mgmt_operate(u8 *data)
         globaldata = dxr_lookup(dxr, ipaddr);
         t1 = rdtsc();
         ret = t1 - t0;
+#endif
     } else {
         t0 = rdtsc();
         arch_busy_usleep(1000 * 1000);

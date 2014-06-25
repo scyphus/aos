@@ -22,7 +22,7 @@ xhci_update_hw(void)
 {
     struct pci *pci;
 
-    /* Search AHCI controller from PCI */
+    /* Search XHCI controller from PCI */
     pci = pci_list();
     while ( NULL != pci ) {
         switch ( pci->device->vendor_id ) {

@@ -33,17 +33,40 @@ ohci_update_hw(void)
     struct pci *pci;
     u64 mmio;
 
-    /* Search AHCI controller from PCI */
+    /* Search OHCI controller from PCI */
     pci = pci_list();
     while ( NULL != pci ) {
-        if ( pci->device->class == 0x0c  && pci->device->class == 0x03
-             && pci->device->class == 0x10 ) {
-            /* OHCI */
-            mmio = pci_read_mmio(pci->device->bus, pci->device->slot,
-                                 pci->device->func);
-            kprintf("MMIO: %x\r\n", mmio);
+        if ( pci->device->class == 0x0c && pci->device->subclass == 0x03 ) {
+            /* USB */
+            if ( pci->device->progif == 0x00 ) {
+                /* UHCI */
+                mmio = pci_read_mmio(pci->device->bus, pci->device->slot,
+                                     pci->device->func);
+                kprintf("* %x.%x.%x %.4x:%.4x\r\n", pci->device->bus,
+                        pci->device->slot, pci->device->func,
+                        pci->device->vendor_id, pci->device->device_id);
+                kprintf("UHCI MMIO: %x\r\n", mmio);
+                kprintf("UHCI Revision: %x\r\n", mmio_read32(mmio, 0x0));
+            } else if ( pci->device->progif == 0x10 ) {
+                /* OHCI */
+                mmio = pci_read_mmio(pci->device->bus, pci->device->slot,
+                                     pci->device->func);
+                kprintf("* %x.%x.%x %.4x:%.4x\r\n", pci->device->bus,
+                        pci->device->slot, pci->device->func,
+                        pci->device->vendor_id, pci->device->device_id);
+                kprintf("OHCI MMIO: %x\r\n", mmio);
+                kprintf("OHCI Revision: %x\r\n", mmio_read32(mmio, 0x0));
+            } else if ( pci->device->progif == 0x20 ) {
+                /* EHCI */
+                mmio = pci_read_mmio(pci->device->bus, pci->device->slot,
+                                     pci->device->func);
+                kprintf("* %x.%x.%x %.4x:%.4x\r\n", pci->device->bus,
+                        pci->device->slot, pci->device->func,
+                        pci->device->vendor_id, pci->device->device_id);
+                kprintf("EHCI MMIO: %x\r\n", mmio);
+                kprintf("EHCI Revision: %x\r\n", mmio_read32(mmio, 0x0));
 
-            kprintf("Revision: %x\r\n", mmio_read32(mmio, 0x0));
+            }
         }
         pci = pci->next;
     }
@@ -52,8 +75,9 @@ ohci_update_hw(void)
 void
 ohci_init(void)
 {
+    kprintf("Searching OHCI...\r\n");
     ohci_update_hw();
-    //halt64();
+    halt64();
 }
 
 /*
