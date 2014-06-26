@@ -17,7 +17,7 @@ bootx64.efi: ASFLAGS=-nostdlib -I./kernel/arch/$(ARCH)/
 bootx64.efi: CFLAGS=-Wall -mno-sse3 -fleading-underscore -nostdlib -m64
 kpack: ASFLAGS=-nostdlib -I./kernel/arch/$(ARCH)/
 kpack: CFLAGS=-I./include \
-	-Wall -fleading-underscore -O3 -nostdlib -m64
+	-Wall -fleading-underscore -nostdlib -O3 -m64
 
 ## MBR
 diskboot: boot/arch/$(ARCH)/diskboot.o
@@ -48,7 +48,6 @@ bootx64.efi: efi/arch/$(ARCH)/efi.o
 ## Kernel
 kpack: kernel/arch/$(ARCH)/asm.o \
 	kernel/kernel.o \
-	kernel/router.o \
 	kernel/util.o \
 	kernel/shell.o \
 	kernel/task.o \
@@ -79,6 +78,9 @@ kpack: kernel/arch/$(ARCH)/asm.o \
 	drivers/ahci/ahci.o \
 	drivers/pci/pci.o
 	$(LD) -N -e kstart64 -Ttext=0x10000 --oformat binary -o $@ $^
+
+#drivers/net/kuhash.o: CFLAGS=-I./include \
+#	-Wall -fleading-underscore -nostdlib -O0 -m64
 
 ## Dependencies
 kernel/kernel.o: kernel/kernel.h

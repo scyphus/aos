@@ -218,6 +218,31 @@ struct tcp_hdr {
 } __attribute__ ((packed));
 
 
+/* ARP */
+struct net_arp_entry {
+    u32 protoaddr;
+    u64 hwaddr;
+    u64 expire;
+    int state;
+    void *netif;
+};
+struct net_arp_table {
+    int sz;
+    struct net_arp_entry *entries;
+};
+
+/* ND */
+struct net_nd_entry {
+    u8 neighbor[16];
+    u8 linklayeraddr[6];
+    void *netif;
+    u64 expire;
+    int state;
+};
+struct net_nd_table {
+    int sz;
+    struct net_nd_entry *entries;
+};
 
 /* DRIVER */
 #define NETDEV_MAX_NAME 32
@@ -229,12 +254,23 @@ struct netdev {
 
     int (*sendpkt)(const u8 *pkt, u32 len, struct netdev *netdev);
     int (*recvpkt)(u8 *pkt, u32 len, struct netdev *netdev);
-
 };
 struct netdev_list {
     struct netdev *netdev;
     struct netdev_list *next;
 };
+struct net_port {
+    char *name;
+    struct netdev *netdev;
+};
+struct net_bridge {
+    struct net_port *underlay;
+    int vlan;
+};
+struct net_ipv4 {
+    struct net_arp_entry *arp;
+};
+
 
 struct peth {
     char name[NETDEV_MAX_NAME];

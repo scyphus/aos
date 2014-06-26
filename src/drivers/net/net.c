@@ -7,28 +7,15 @@
  *      Hirochika Asai  <asai@jar.jp>
  */
 
-/* $Id$ */
-
 #include <aos/const.h>
+#include "../../kernel/kernel.h"
 
 
-/* ARP */
-struct net_arp_entry {
-    u8 protoaddr[4];
-    u8 hwaddr[6];
-    u64 expire;
-    int state;
-    void *netif;
-};
 
-/* ND */
-struct net_nd_entry {
-    u8 neighbor[16];
-    u8 linklayeraddr[6];
-    void *netif;
-    u64 expire;
-    int state;
-};
+
+
+
+
 
 struct iphdr {
     u8 ip_vhl;
@@ -71,12 +58,17 @@ struct icmp6_hdr {
 
 #define ARP_LIFETIME 300 * 1000
 
+#define ARP_STATE_INVAL         -1
+#define ARP_STATE_DYNAMIC       1
+
 /*
  * Register an ARP entry
  */
 int
-net_register_arp(const u8 *ipaddr, const u8 *macaddr)
+net_register_arp(struct net_arp_table *t, const u32 ipaddr, const u64 macaddr,
+                 int flag)
 {
+    int i;
     u64 nowms;
     u64 expire;
 
@@ -84,9 +76,57 @@ net_register_arp(const u8 *ipaddr, const u8 *macaddr)
     nowms = arch_clock_get() / 1000 / 1000;
     expire = nowms + ARP_LIFETIME;
 
+    for ( i = 0; i < t->sz; i++ ) {
+        if ( t->entries[i].state >= 0 ) {
+            if ( t->entries[i].protoaddr == ipaddr ) {
+                /* Found the corresponding entry */
+                return 0;
+            }
+        }
+    }
+
+    /* Not found */
+    for ( i = 0; i < t->sz; i++ ) {
+        /* Search available entry */
+        if ( ARP_STATE_INVAL == t->entries[i].state ) {
+            t->entries[i].protoaddr = ipaddr;
+            t->entries[i].hwaddr = macaddr;
+            t->entries[i].state = ARP_STATE_DYNAMIC;
+            t->entries[i].expire = expire;
+
+            return 0;
+        }
+    }
 
     return -1;
 }
+
+int
+net_resolve_arp(struct net_arp_table *t, u32 ipaddr, u64 *macaddr)
+{
+    int i;
+
+    for ( i = 0; i < t->sz; i++ ) {
+        if ( t->entries[i].state >= 0 ) {
+            if ( ipaddr == t->entries[i].protoaddr ) {
+                /* Found the entry */
+                *macaddr = t->entries[i].hwaddr;
+                return 0;
+            }
+        }
+    }
+
+    return -1;
+}
+
+int
+net_unregister_arp(struct net_arp_table *t, const u32 ipaddr)
+{
+    return 0;
+}
+
+
+
 
 
 
