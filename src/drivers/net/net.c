@@ -62,7 +62,7 @@ struct icmp6_hdr {
 #define ARP_STATE_DYNAMIC       1
 
 /*
- * Register an ARP entry
+ * Register an ARP entry with an IPv4 address and a MAC address
  */
 int
 net_register_arp(struct net_arp_table *t, const u32 ipaddr, const u64 macaddr,
@@ -101,8 +101,11 @@ net_register_arp(struct net_arp_table *t, const u32 ipaddr, const u64 macaddr,
     return -1;
 }
 
+/*
+ * Resolve an ARP entry with an IPv4 address
+ */
 int
-net_resolve_arp(struct net_arp_table *t, u32 ipaddr, u64 *macaddr)
+net_arp_resolve(struct net_arp_table *t, u32 ipaddr, u64 *macaddr)
 {
     int i;
 
@@ -119,10 +122,25 @@ net_resolve_arp(struct net_arp_table *t, u32 ipaddr, u64 *macaddr)
     return -1;
 }
 
+/*
+ * Unregister an ARP entry
+ */
 int
-net_unregister_arp(struct net_arp_table *t, const u32 ipaddr)
+net_arp_unregister(struct net_arp_table *t, const u32 ipaddr)
 {
-    return 0;
+    int i;
+
+    for ( i = 0; i < t->sz; i++ ) {
+        if ( t->entries[i].state >= 0 ) {
+            if ( ipaddr == t->entries[i].protoaddr ) {
+                /* Found the entry */
+                t->entries[i].state = ARP_STATE_INVAL;
+                return 0;
+            }
+        }
+    }
+
+    return -1;
 }
 
 
