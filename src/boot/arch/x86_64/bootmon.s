@@ -640,7 +640,7 @@ dap:
 	.byte	0
 	.word	0x7f
 	.word	0x0,0x1000	/* offset:segment */
-	.quad	0xb1
+	.quad	0xb1		/* start */
 
 
 /* Messages */
