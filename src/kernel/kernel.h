@@ -224,7 +224,6 @@ struct net_arp_entry {
     u64 hwaddr;
     u64 expire;
     int state;
-    void *netif;
 };
 struct net_arp_table {
     int sz;
@@ -235,7 +234,6 @@ struct net_arp_table {
 struct net_nd_entry {
     u8 neighbor[16];
     u8 linklayeraddr[6];
-    void *netif;
     u64 expire;
     int state;
 };
@@ -268,7 +266,8 @@ struct net_bridge {
     int vlan;
 };
 struct net_ipv4 {
-    struct net_arp_entry *arp;
+    struct net_bridge *underlay;
+    struct net_arp_table arp;
 };
 
 

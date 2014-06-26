@@ -65,7 +65,7 @@ struct icmp6_hdr {
  * Register an ARP entry with an IPv4 address and a MAC address
  */
 int
-net_register_arp(struct net_arp_table *t, const u32 ipaddr, const u64 macaddr,
+net_arp_register(struct net_arp_table *t, const u32 ipaddr, const u64 macaddr,
                  int flag)
 {
     int i;
@@ -80,6 +80,10 @@ net_register_arp(struct net_arp_table *t, const u32 ipaddr, const u64 macaddr,
         if ( t->entries[i].state >= 0 ) {
             if ( t->entries[i].protoaddr == ipaddr ) {
                 /* Found the corresponding entry */
+                if ( ARP_STATE_DYNAMIC == t->entries[i].state ) {
+                    /* Update expiration time */
+                    t->entries[i].expire = expire;
+                }
                 return 0;
             }
         }
@@ -142,6 +146,9 @@ net_arp_unregister(struct net_arp_table *t, const u32 ipaddr)
 
     return -1;
 }
+
+
+
 
 
 
