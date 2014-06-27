@@ -206,6 +206,9 @@ static int
 _rx_bridge(struct net *net, struct net_bridge *bridge, u8 *pkt, int len,
            int type)
 {
+    /* Lookup FDB */
+
+
     switch ( type ) {
     case 0x0800:
         /* IPv4 */
@@ -222,6 +225,7 @@ _rx_bridge(struct net *net, struct net_bridge *bridge, u8 *pkt, int len,
     default:
         ;
     }
+
     return -1;
 }
 

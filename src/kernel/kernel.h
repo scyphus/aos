@@ -269,18 +269,42 @@ struct net_port {
     /* VLAN bridges */
     struct net_bridge *bridges[4096];
 };
-struct net_bridge {
+/* FDB */
+#define NET_FDB_INVAL   0
+#define NET_FDB_PORT    1
+#define NET_FDB_IPIF    2
+struct net_fdb_entry {
+    int type;
+    u64 macaddr;
+    union {
+        struct net_port *port;
+        struct net_ipif *ipif;
+    } u;
+};
+struct net_fdb {
     int nr;
-    struct net_port **underlay;
+    struct net_fdb_entry *entries;
+};
+struct net_bridge {
+    /* Lower layer information */
+    int nr;
+    struct net_port **ports;
     int vlan;
+    /* Upper layer information */
+    int nr_ipif;
+    struct net_ipif **ipifs;
+    /* FDB */
+};
+struct net_ipif {
+    u8 macaddr[6];
 };
 struct net_ipv4 {
-    struct net_bridge *underlay;
+    struct net_bridge *bridges;
     struct net_arp_table arp;
 };
 struct net_router {
     int nr;
-    struct net_ipv4 **underlay;
+    struct net_ipv4 **ipifs;
 };
 
 
