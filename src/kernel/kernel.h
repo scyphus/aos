@@ -270,9 +270,10 @@ struct net_port {
     struct net_bridge *bridges[4096];
 };
 /* FDB */
-#define NET_FDB_INVAL   0
-#define NET_FDB_PORT    1
-#define NET_FDB_IPIF    2
+#define NET_FDB_INVAL           0
+#define NET_FDB_PORT_DYNAMIC    1
+#define NET_FDB_PORT_STATIC     2
+#define NET_FDB_IPIF            3
 struct net_fdb_entry {
     int type;
     u64 macaddr;
@@ -288,8 +289,7 @@ struct net_fdb {
 struct net_bridge {
     /* Lower layer information */
     int nr;
-    struct net_port **ports;
-    int vlan;
+    struct net_port **ports; /* FIXME: outgoing VLAN tag/untagged */
     /* Upper layer information */
     int nr_ipif;
     struct net_ipif **ipifs;
