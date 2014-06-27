@@ -190,6 +190,13 @@ _rx_ipv6(struct net *net, struct net_bridge *bridge, u8 *pkt, int len)
     return -1;
 }
 
+static int
+_rx_arp(struct net *net, struct net_bridge *bridge, u8 *pkt, int len)
+{
+    return -1;
+}
+
+
 /*
  * 802.1Q
  */
@@ -221,8 +228,20 @@ _rx_802_1q(struct net *net, struct net_port *port, u8 *pkt, int len,
     case 0x0800:
         /* IPv4 */
         return _rx_ipv4(net, bridge, pkt + sizeof(struct ethhdr),
-            len - sizeof(struct ethhdr));
+                        len - sizeof(struct ethhdr));
         break;
+    case 0x0806:
+        /* ARP */
+        return _rx_arp(net, bridge, pkt + sizeof(struct ethhdr),
+                       len - sizeof(struct ethhdr));
+        break;
+    case 0x86dd:
+        /* IPv6 */
+        return _rx_ipv6(net, bridge, pkt + sizeof(struct ethhdr),
+                        len - sizeof(struct ethhdr));
+        break;
+    default:
+        ;
     }
 
     return -1;
@@ -261,6 +280,8 @@ net_rx(struct net *net, struct net_port *port, u8 *pkt, int len, int vlan)
         break;
     case 0x0806:
         /* ARP */
+        return _rx_arp(net, bridge, pkt + sizeof(struct ethhdr),
+            len - sizeof(struct ethhdr));
         break;
     case 0x8100:
         /* 802.1Q */
@@ -269,13 +290,15 @@ net_rx(struct net *net, struct net_port *port, u8 *pkt, int len, int vlan)
         break;
     case 0x86dd:
         /* IPv6 */
+        return _rx_ipv6(net, bridge, pkt + sizeof(struct ethhdr),
+            len - sizeof(struct ethhdr));
         break;
     default:
         /* Other */
         ;
     }
 
-    return 0;
+    return -1;
 }
 
 
@@ -285,7 +308,7 @@ net_rx(struct net *net, struct net_port *port, u8 *pkt, int len, int vlan)
 int
 net_tx(struct net *net, u8 *pkt, int len)
 {
-    return 0;
+    return -1;
 }
 
 
