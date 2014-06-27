@@ -190,12 +190,40 @@ _rx_ipv6(struct net *net, struct net_bridge *bridge, u8 *pkt, int len)
     return -1;
 }
 
+/*
+ * ARP
+ */
 static int
 _rx_arp(struct net *net, struct net_bridge *bridge, u8 *pkt, int len)
 {
     return -1;
 }
 
+/*
+ * Bridge
+ */
+static int
+_rx_bridge(struct net *net, struct net_bridge *bridge, u8 *pkt, int len,
+           int type)
+{
+    switch ( type ) {
+    case 0x0800:
+        /* IPv4 */
+        return _rx_ipv4(net, bridge, pkt, len);
+        break;
+    case 0x0806:
+        /* ARP */
+        return _rx_arp(net, bridge, pkt, len);
+        break;
+    case 0x86dd:
+        /* IPv6 */
+        return _rx_ipv6(net, bridge, pkt, len);
+        break;
+    default:
+        ;
+    }
+    return -1;
+}
 
 /*
  * 802.1Q
@@ -224,27 +252,8 @@ _rx_802_1q(struct net *net, struct net_port *port, u8 *pkt, int len,
     }
     bridge = port->bridges[vlan];
 
-    switch ( hdr->type ) {
-    case 0x0800:
-        /* IPv4 */
-        return _rx_ipv4(net, bridge, pkt + sizeof(struct ethhdr),
-                        len - sizeof(struct ethhdr));
-        break;
-    case 0x0806:
-        /* ARP */
-        return _rx_arp(net, bridge, pkt + sizeof(struct ethhdr),
-                       len - sizeof(struct ethhdr));
-        break;
-    case 0x86dd:
-        /* IPv6 */
-        return _rx_ipv6(net, bridge, pkt + sizeof(struct ethhdr),
-                        len - sizeof(struct ethhdr));
-        break;
-    default:
-        ;
-    }
-
-    return -1;
+    return _rx_bridge(net, bridge, pkt + sizeof(struct ethhdr1q),
+                      len - sizeof(struct ethhdr1q), bswap16(hdr->type));
 }
 
 /*
@@ -255,6 +264,7 @@ net_rx(struct net *net, struct net_port *port, u8 *pkt, int len, int vlan)
 {
     struct net_bridge *bridge;
     struct ethhdr *ehdr;
+    int type;
 
     /* Check the length first */
     if ( unlikely(len < sizeof(struct ethhdr)) ) {
@@ -272,33 +282,15 @@ net_rx(struct net *net, struct net_port *port, u8 *pkt, int len, int vlan)
 
     /* Check layer 2 information first */
     ehdr = (struct ethhdr *)pkt;
-    switch ( bswap16(ehdr->type) ) {
-    case 0x0800:
-        /* IPv4 */
-        return _rx_ipv4(net, bridge, pkt + sizeof(struct ethhdr),
-                        len - sizeof(struct ethhdr));
-        break;
-    case 0x0806:
-        /* ARP */
-        return _rx_arp(net, bridge, pkt + sizeof(struct ethhdr),
-                       len - sizeof(struct ethhdr));
-        break;
-    case 0x8100:
+    type = bswap16(ehdr->type);
+    if ( 0x8100 == type ) {
         /* 802.1Q */
         return _rx_802_1q(net, port, pkt + sizeof(struct ethhdr),
                           len - sizeof(struct ethhdr), vlan);
-        break;
-    case 0x86dd:
-        /* IPv6 */
-        return _rx_ipv6(net, bridge, pkt + sizeof(struct ethhdr),
-                        len - sizeof(struct ethhdr));
-        break;
-    default:
-        /* Other */
-        ;
+    } else {
+        return _rx_bridge(net, bridge, pkt + sizeof(struct ethhdr),
+                          len - sizeof(struct ethhdr), type);
     }
-
-    return -1;
 }
 
 
