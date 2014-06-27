@@ -276,22 +276,22 @@ net_rx(struct net *net, struct net_port *port, u8 *pkt, int len, int vlan)
     case 0x0800:
         /* IPv4 */
         return _rx_ipv4(net, bridge, pkt + sizeof(struct ethhdr),
-            len - sizeof(struct ethhdr));
+                        len - sizeof(struct ethhdr));
         break;
     case 0x0806:
         /* ARP */
         return _rx_arp(net, bridge, pkt + sizeof(struct ethhdr),
-            len - sizeof(struct ethhdr));
+                       len - sizeof(struct ethhdr));
         break;
     case 0x8100:
         /* 802.1Q */
         return _rx_802_1q(net, port, pkt + sizeof(struct ethhdr),
-            len - sizeof(struct ethhdr), vlan);
+                          len - sizeof(struct ethhdr), vlan);
         break;
     case 0x86dd:
         /* IPv6 */
         return _rx_ipv6(net, bridge, pkt + sizeof(struct ethhdr),
-            len - sizeof(struct ethhdr));
+                        len - sizeof(struct ethhdr));
         break;
     default:
         /* Other */
