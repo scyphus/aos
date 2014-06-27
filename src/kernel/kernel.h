@@ -242,6 +242,9 @@ struct net_nd_table {
     struct net_nd_entry *entries;
 };
 
+
+
+
 /* DRIVER */
 #define NETDEV_MAX_NAME 32
 struct netdev {
@@ -252,23 +255,44 @@ struct netdev {
 
     int (*sendpkt)(const u8 *pkt, u32 len, struct netdev *netdev);
     int (*recvpkt)(u8 *pkt, u32 len, struct netdev *netdev);
+
+    /* Bidirectional link */
+    struct net_port *port;
 };
 struct netdev_list {
     struct netdev *netdev;
     struct netdev_list *next;
 };
 struct net_port {
-    char *name;
+    /* Bidirectional link */
     struct netdev *netdev;
+    /* VLAN bridges */
+    struct net_bridge *bridges[4096];
 };
 struct net_bridge {
-    struct net_port *underlay;
+    int nr;
+    struct net_port **underlay;
     int vlan;
 };
 struct net_ipv4 {
     struct net_bridge *underlay;
     struct net_arp_table arp;
 };
+struct net_router {
+    int nr;
+    struct net_ipv4 **underlay;
+};
+
+
+struct net {
+    /*void *code;*/
+
+    struct netdev_list *devs;
+    struct net_bridge bridge;
+};
+
+
+
 
 
 struct peth {

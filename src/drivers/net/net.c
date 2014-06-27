@@ -10,12 +10,22 @@
 #include <aos/const.h>
 #include "../../kernel/kernel.h"
 
+#define likely(x)       __builtin_expect((x),1)
+#define unlikely(x)     __builtin_expect((x),0)
+
+u16 bswap16(u16);
+u32 bswap32(u32);
 
 
-
-
-
-
+struct ethhdr {
+    u8 dst[6];
+    u8 src[6];
+    u16 type;
+} __attribute__ ((packed));
+struct ethhdr1q {
+    u16 vlan;
+    u16 type;
+} __attribute__ ((packed));
 
 struct iphdr {
     u8 ip_vhl;
@@ -152,6 +162,131 @@ net_arp_unregister(struct net_arp_table *t, const u32 ipaddr)
 
 
 
+
+
+
+
+
+
+
+
+
+
+/*
+ * IPv4
+ */
+static int
+_rx_ipv4(struct net *net, struct net_bridge *bridge, u8 *pkt, int len)
+{
+    return -1;
+}
+
+/*
+ * IPv6
+ */
+static int
+_rx_ipv6(struct net *net, struct net_bridge *bridge, u8 *pkt, int len)
+{
+    return -1;
+}
+
+/*
+ * 802.1Q
+ */
+static int
+_rx_802_1q(struct net *net, struct net_port *port, u8 *pkt, int len,
+           int vlan)
+{
+    struct net_bridge *bridge;
+    struct ethhdr1q *hdr;
+
+    if ( unlikely(vlan > 0) ) {
+        /* VLAN is already specified */
+        return -1;
+    }
+
+    /* Check the length first */
+    if ( unlikely(len < sizeof(struct ethhdr1q)) ) {
+        return -1;
+    }
+
+    hdr = (struct ethhdr1q *)pkt;
+    vlan = hdr->vlan;
+    if ( vlan <= 0 || vlan >= 4096 ) {
+        return -1;
+    }
+    bridge = port->bridges[vlan];
+
+    switch ( hdr->type ) {
+    case 0x0800:
+        /* IPv4 */
+        return _rx_ipv4(net, bridge, pkt + sizeof(struct ethhdr),
+            len - sizeof(struct ethhdr));
+        break;
+    }
+
+    return -1;
+}
+
+/*
+ * Rx packet handler
+ */
+int
+net_rx(struct net *net, struct net_port *port, u8 *pkt, int len, int vlan)
+{
+    struct net_bridge *bridge;
+    struct ethhdr *ehdr;
+
+    /* Check the length first */
+    if ( unlikely(len < sizeof(struct ethhdr)) ) {
+        return -1;
+    }
+
+    /* Find out the corresponding bridge */
+    if ( vlan < 0 ) {
+        vlan = 0;
+    }
+    if ( vlan >= 4096 ) {
+        return -1;
+    }
+    bridge = port->bridges[vlan];
+
+    /* Check layer 2 information first */
+    ehdr = (struct ethhdr *)pkt;
+    switch ( bswap16(ehdr->type) ) {
+    case 0x0800:
+        /* IPv4 */
+        return _rx_ipv4(net, bridge, pkt + sizeof(struct ethhdr),
+            len - sizeof(struct ethhdr));
+        break;
+    case 0x0806:
+        /* ARP */
+        break;
+    case 0x8100:
+        /* 802.1Q */
+        return _rx_802_1q(net, port, pkt + sizeof(struct ethhdr),
+            len - sizeof(struct ethhdr), vlan);
+        break;
+    case 0x86dd:
+        /* IPv6 */
+        break;
+    default:
+        /* Other */
+        ;
+    }
+
+    return 0;
+}
+
+
+/*
+ * Tx packet handler
+ */
+int
+net_tx(struct net *net, u8 *pkt, int len)
+{
+    return 0;
+}
 
 
 
