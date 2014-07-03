@@ -838,6 +838,8 @@ _tx_main(int argc, char *argv[])
 
     return 0;
 }
+int net_init(struct net *);
+int net_rx(struct net *, struct net_port *, u8 *, int, int);
 int
 _tcp_test_main(int argc, char *argv[])
 {
@@ -852,6 +854,58 @@ _tcp_test_main(int argc, char *argv[])
     int n;
     int plen;
     u64 ret;
+    struct net net;
+    struct net_port port;
+    struct net_bridge bridge;
+    struct net_ipif ipif;
+    struct net_ipv4 ipv4;
+    int i;
+
+    net_init(&net);
+
+    /* FIXME: Choose the first interface for management */
+    list = netdev_head;
+    dev = list->netdev;
+
+    bridge.nr = 1;
+    bridge.ports = kmalloc(sizeof(struct net_port *) * bridge.nr);
+    bridge.ports[0] = &port;
+    bridge.nr_ipif = 1;
+    bridge.ipifs = kmalloc(sizeof(struct net_ipif *) * bridge.nr_ipif);
+    bridge.ipifs[0] = &ipif;
+    bridge.fdb.nr = 4096;
+    bridge.fdb.entries = kmalloc(sizeof(struct net_fdb_entry) * bridge.fdb.nr);
+    for ( i = 0; i < bridge.fdb.nr; i++ ) {
+        bridge.fdb.entries[i].type = NET_FDB_INVAL;
+    }
+
+    ipif.mac = 0;
+    kmemcpy(&ipif.mac, dev->macaddr, 6);
+    ipif.bridge = &bridge;
+    ipif.ipv4 = &ipv4;
+
+    ipv4.addr = bswap32(0xc0a83803);
+    ipv4.ipif = &ipif;
+    ipv4.arp.sz = 4096;
+    ipv4.arp.entries = kmalloc(sizeof(struct net_arp_entry) * ipv4.arp.sz);
+    for ( i = 0; i < ipv4.arp.sz; i++ ) {
+        ipv4.arp.entries[i].state = -1;
+    }
+
+    port.netdev = dev;
+    kmemset(port.bridges, 0, sizeof(struct net_bridge *) * 4096);
+    port.bridges[0] = &bridge;
+
+    kprintf("ARP on %s\r\n", port.netdev->name);
+    while ( 1 ) {
+        n = port.netdev->recvpkt(pkt, sizeof(pkt), port.netdev);
+        if ( n <= 0 ) {
+            continue;
+        }
+        net_rx(&net, &port, pkt, n, -1);
+    }
+
+    return 0;
 
 
     struct tcp_session *sess;

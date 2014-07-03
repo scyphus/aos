@@ -218,6 +218,32 @@ struct tcp_hdr {
 } __attribute__ ((packed));
 
 
+/* ARP */
+struct net_arp_entry {
+    u32 protoaddr;
+    u64 hwaddr;
+    u64 expire;
+    int state;
+};
+struct net_arp_table {
+    int sz;
+    struct net_arp_entry *entries;
+};
+
+/* ND */
+struct net_nd_entry {
+    u8 neighbor[16];
+    u8 linklayeraddr[6];
+    u64 expire;
+    int state;
+};
+struct net_nd_table {
+    int sz;
+    struct net_nd_entry *entries;
+};
+
+
+
 
 /* DRIVER */
 #define NETDEV_MAX_NAME 32
@@ -230,11 +256,73 @@ struct netdev {
     int (*sendpkt)(const u8 *pkt, u32 len, struct netdev *netdev);
     int (*recvpkt)(u8 *pkt, u32 len, struct netdev *netdev);
 
+    /* Bidirectional link */
+    struct net_port *port;
 };
 struct netdev_list {
     struct netdev *netdev;
     struct netdev_list *next;
 };
+struct net_port {
+    /* Bidirectional link */
+    struct netdev *netdev;
+    /* VLAN bridges */
+    struct net_bridge *bridges[4096];
+};
+/* FDB */
+#define NET_FDB_INVAL           0
+#define NET_FDB_PORT_DYNAMIC    1
+#define NET_FDB_PORT_STATIC     2
+#define NET_FDB_IPIF            3
+struct net_fdb_entry {
+    int type;
+    u64 macaddr; /* Stored in the network order */
+    union {
+        struct net_port *port;
+        struct net_ipif *ipif;
+    } u;
+};
+struct net_fdb {
+    int nr;
+    struct net_fdb_entry *entries;
+};
+struct net_bridge {
+    /* Lower layer information */
+    int nr;
+    struct net_port **ports; /* FIXME: outgoing VLAN tag/untagged */
+    /* Upper layer information */
+    int nr_ipif;
+    struct net_ipif **ipifs;
+    /* FDB */
+    struct net_fdb fdb;
+};
+struct net_ipif {
+    u64 mac;
+    struct net_bridge *bridge;
+    struct net_ipv4 *ipv4;
+};
+struct net_ipv4 {
+    u32 addr; /* Stored in the network order */
+    struct net_ipif *ipif;
+    struct net_arp_table arp;
+};
+struct net_router {
+    int nr;
+    struct net_ipv4 **ipifs;
+};
+
+struct net {
+    int sys_mtu;
+
+    /*void *code;*/
+
+    //struct netdev_list *devs;
+    //struct net_bridge bridge;
+};
+
+
+
+
 
 struct peth {
     char name[NETDEV_MAX_NAME];
