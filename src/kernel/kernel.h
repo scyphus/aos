@@ -276,7 +276,7 @@ struct net_port {
 #define NET_FDB_IPIF            3
 struct net_fdb_entry {
     int type;
-    u64 macaddr;
+    u64 macaddr; /* Stored in the network order */
     union {
         struct net_port *port;
         struct net_ipif *ipif;
@@ -294,12 +294,16 @@ struct net_bridge {
     int nr_ipif;
     struct net_ipif **ipifs;
     /* FDB */
+    struct net_fdb fdb;
 };
 struct net_ipif {
-    u8 macaddr[6];
+    u64 mac;
+    struct net_bridge *bridge;
+    struct net_ipv4 *ipv4;
 };
 struct net_ipv4 {
-    struct net_bridge *bridges;
+    u32 addr; /* Stored in the network order */
+    struct net_ipif *ipif;
     struct net_arp_table arp;
 };
 struct net_router {
@@ -307,12 +311,13 @@ struct net_router {
     struct net_ipv4 **ipifs;
 };
 
-
 struct net {
+    int sys_mtu;
+
     /*void *code;*/
 
-    struct netdev_list *devs;
-    struct net_bridge bridge;
+    //struct netdev_list *devs;
+    //struct net_bridge bridge;
 };
 
 
