@@ -349,9 +349,11 @@ _tx_bridge(struct net *net, struct net_bridge *bridge, u8 *pkt, int len,
  * ICMP
  */
 static int
-_rx_icmp(struct net *net, struct net_ipif *ipif, u8 *pkt, int len)
+_rx_icmp(struct net *net, struct net_ipif *ipif, u8 *pkt, int len,
+         struct iphdr *iphdr)
 {
     struct icmp_hdr *hdr;
+    u8 *rpkt;
 
     /* Check the length first */
     if ( unlikely(len < sizeof(struct icmp_hdr)) ) {
@@ -362,7 +364,11 @@ _rx_icmp(struct net *net, struct net_ipif *ipif, u8 *pkt, int len)
     switch ( hdr->type ) {
     case 8:
         /* ICMP echo request */
-        kprintf("YYY %d\r\n", len);
+        rpkt = alloca(len + sizeof(struct iphdr) + sizeof(struct ethhdr));
+        if ( NULL == rpkt ) {
+            return -1;
+        }
+
         break;
     default:
         ;
@@ -423,11 +429,10 @@ _rx_ipv4(struct net *net, struct net_ipif *ipif, u8 *pkt, int len)
     }
     payload = pkt + hdrlen;
 
-
     switch ( hdr->ip_proto ) {
     case 0x01:
         /* ICMP */
-        return _rx_icmp(net, ipif, payload, iplen - hdrlen);
+        return _rx_icmp(net, ipif, payload, iplen - hdrlen, hdr);
     case 0x06:
         /* TCP */
         return _rx_tcp(net, ipif, payload, iplen - hdrlen);
@@ -438,7 +443,6 @@ _rx_ipv4(struct net *net, struct net_ipif *ipif, u8 *pkt, int len)
         /* Unsupported */
         ;
     }
-
 
     return -1;
 }

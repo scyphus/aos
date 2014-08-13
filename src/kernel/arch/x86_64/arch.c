@@ -75,22 +75,11 @@ arch_bsp_init(void)
 
     /* Initialize VGA display */
     vga_init();
-    //u16 *ptr = (u16 *)0x000b8000;
-    //*ptr = (0x07 << 8) | 'a';
-    //kprintf("a");
-    //kprintf(s, "a", *(u32 *)(0x13600), 15);
-    //__asm__ __volatile__ ("1: cli; hlt; jmp 1b");
 
     /* Find configuration using ACPI */
     acpi_load();
-    //__asm__ __volatile__ ( "1:hlt;jmp 1b;" );
 
     /* Initialize the clock */
-    //__asm__ ("mov %%rax,%%dr3" :: "a"(0x1234));
-    //u64 *pt = 0x13600 - 0x10;
-    //char str[] = "%llx %llx %llx %llx %llx %llx %llx %llx\r\n";
-    //kprintf(str, *pt, *(pt+1), *(pt+2), *(pt+3), *(pt+4), *(pt+5), *(pt+6), *(pt+7));
-    //halt();
     clock_init();
 
     /* Print a message */
@@ -178,12 +167,6 @@ arch_bsp_init(void)
     ioapic_map_intr(IV_IRQ32, 32, acpi_ioapic_base); /* IRQ32 */
     ioapic_init();
 
-#if 0
-    u64 ptr = 0x80000000;
-    *(u64 *)(ptr + 0x00200000) = 0xfe123456;
-    kprintf("DEBUG: %.8x %.8x\r\n", *(u64 *)(ptr), *(u64 *)(ptr + 0x00200000));
-#endif
-
     lldt(0);
 
     /* Initialize TSS and load it */
@@ -269,7 +252,6 @@ arch_bsp_init(void)
     __asm__ __volatile__ ("wrmsr" :: "a"(pmc), "c"(msr), "d"(zero) );
 
     //IA32_PERF_GLOBAL_CTRL = 0x38f
-    u64 cc = 0;
     u64 aa = 0;
     u64 dd = 0;
     u64 bb;
