@@ -907,7 +907,7 @@ _tcp_test_main(int argc, char *argv[])
 
     return 0;
 
-
+#if 0
     struct tcp_session *sess;
 
     /* Allocate */
@@ -1072,6 +1072,7 @@ _tcp_test_main(int argc, char *argv[])
 #endif
     }
 
+#endif
 
     return 0;
 }

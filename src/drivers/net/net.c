@@ -28,7 +28,8 @@ struct ethhdr1q {
 } __attribute__ ((packed));
 
 struct iphdr {
-    u8 ip_vhl;
+    u8 ip_ihl:4;
+    u8 ip_version:4;
     u8 ip_tos;
     u16 ip_len;
     u16 ip_id;
@@ -36,8 +37,8 @@ struct iphdr {
     u8 ip_ttl;
     u8 ip_proto;
     u16 ip_sum;
-    u8 ip_src[4];
-    u8 ip_dst[4];
+    u32 ip_src;
+    u32 ip_dst;
 } __attribute__ ((packed));
 
 struct icmp_hdr {
@@ -183,6 +184,98 @@ net_arp_unregister(struct net_arp_table *t, const u32 ipaddr)
 
 
 
+/*
+ * Compute checksum
+ */
+static u16
+_checksum(const u8 *buf, int len)
+{
+    int nleft;
+    u32 sum;
+    const u16 *cur;
+    union {
+        u16 us;
+        u8 uc[2];
+    } last;
+    u16 ret;
+
+    nleft = len;
+    sum = 0;
+    cur = (const u16 *)buf;
+
+    while ( nleft > 1 ) {
+        sum += *cur;
+        cur += 1;
+        nleft -= 2;
+    }
+    if ( 1 == nleft ) {
+        last.uc[0] = *(const u8 *)cur;
+        last.uc[1] = 0;
+        sum += last.us;
+    }
+    sum = (sum >> 16) + (sum & 0xffff);
+    sum += (sum >> 16);
+    ret = ~sum;
+
+    return ret;
+}
+/*
+ * Comput ICMPv6 checksum
+ */
+static u16
+_icmpv6_checksum(const u8 *src, const u8 *dst, u32 len, const u8 *data)
+{
+    u8 phdr[40];
+    int nleft;
+    u32 sum;
+    const u16 *cur;
+    union {
+        u16 us;
+        u8 uc[2];
+    } last;
+    u16 ret;
+    int i;
+
+    kmemcpy(phdr, src, 16);
+    kmemcpy(phdr+16, dst, 16);
+    phdr[32] = (len >> 24) & 0xff;
+    phdr[33] = (len >> 16) & 0xff;
+    phdr[34] = (len >> 8) & 0xff;
+    phdr[35] = len & 0xff;
+    phdr[36] = 0;
+    phdr[37] = 0;
+    phdr[38] = 0;
+    phdr[39] = 58;
+
+    sum = 0;
+    for ( i = 0; i < 20; i++ ) {
+        sum += *(const u16 *)(phdr + i * 2);
+    }
+
+    nleft = len;
+    cur = (const u16 *)data;
+    while ( nleft > 1 ) {
+        sum += *cur;
+        cur += 1;
+        nleft -= 2;
+    }
+    if ( 1 == nleft ) {
+        last.uc[0] = *(const u8 *)cur;
+        last.uc[1] = 0;
+        sum += last.us;
+    }
+
+    sum = (sum >> 16) + (sum & 0xffff);
+    sum += (sum >> 16);
+    ret = ~sum;
+
+    return ret;
+}
+
+
+
+
+
 
 
 /*
@@ -252,9 +345,48 @@ _tx_bridge(struct net *net, struct net_bridge *bridge, u8 *pkt, int len,
 
 
 
+/*
+ * ICMP
+ */
+static int
+_rx_icmp(struct net *net, struct net_ipif *ipif, u8 *pkt, int len,
+         struct iphdr *iphdr)
+{
+    struct icmp_hdr *hdr;
+    u8 *rpkt;
+
+    /* Check the length first */
+    if ( unlikely(len < sizeof(struct icmp_hdr)) ) {
+        return -1;
+    }
+    hdr = (struct icmp_hdr *)pkt;
+
+    switch ( hdr->type ) {
+    case 8:
+        /* ICMP echo request */
+        rpkt = alloca(len + sizeof(struct iphdr) + sizeof(struct ethhdr));
+        if ( NULL == rpkt ) {
+            return -1;
+        }
+
+        break;
+    default:
+        ;
+    }
+
+    return -1;
+}
 
 
 
+/*
+ * TCP
+ */
+static int
+_rx_tcp(struct net *net, struct net_ipif *ipif, u8 *pkt, int len)
+{
+    return -1;
+}
 
 
 /*
@@ -263,6 +395,55 @@ _tx_bridge(struct net *net, struct net_bridge *bridge, u8 *pkt, int len,
 static int
 _rx_ipv4(struct net *net, struct net_ipif *ipif, u8 *pkt, int len)
 {
+    struct iphdr *hdr;
+    int hdrlen;
+    int iplen;
+    u8 *payload;
+
+    /* FIXME: Should support multiple IP addresses on a single interface */
+    if ( unlikely(NULL == ipif->ipv4) ) {
+        return -1;
+    }
+
+    /* Check the length first */
+    if ( unlikely(len < sizeof(struct iphdr)) ) {
+        return -1;
+    }
+    hdr = (struct iphdr *)pkt;
+
+    /* Check the version */
+    if ( unlikely(4 != hdr->ip_version) ) {
+        return -1;
+    }
+
+    /* Header length */
+    hdrlen = hdr->ip_ihl * 4;
+    iplen = bswap16(hdr->ip_len);
+    if ( unlikely(len < iplen) ) {
+        return -1;
+    }
+
+    /* Check the destination */
+    if ( ipif->ipv4->addr != hdr->ip_dst ) {
+        return -1;
+    }
+    payload = pkt + hdrlen;
+
+    switch ( hdr->ip_proto ) {
+    case 0x01:
+        /* ICMP */
+        return _rx_icmp(net, ipif, payload, iplen - hdrlen, hdr);
+    case 0x06:
+        /* TCP */
+        return _rx_tcp(net, ipif, payload, iplen - hdrlen);
+    case 0x11:
+        /* UDP */
+        break;
+    default:
+        /* Unsupported */
+        ;
+    }
+
     return -1;
 }
 
@@ -272,6 +453,7 @@ _rx_ipv4(struct net *net, struct net_ipif *ipif, u8 *pkt, int len)
 static int
 _rx_ipv6(struct net *net, struct net_ipif *ipif, u8 *pkt, int len)
 {
+
     return -1;
 }
 
@@ -308,7 +490,7 @@ _rx_arp(struct net *net, struct net_ipif *ipif, u8 *pkt, int len)
     }
 
     /* FIXME: Should support multiple IP addresses on a single interface */
-    if ( NULL == ipif->ipv4 ) {
+    if ( unlikely(NULL == ipif->ipv4) ) {
         return -1;
     }
 
