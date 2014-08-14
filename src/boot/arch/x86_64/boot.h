@@ -1,14 +1,17 @@
 /*_
- * Copyright 2014 Scyphus Solutions Co. Ltd.  All rights reserved.
+ * Copyright (c) 2014 Hirochika Asai
+ * All rights reserved.
  *
  * Authors:
- *      Hirochika Asai  <asai@scyphus.co.jp>
+ *      Hirochika Asai  <asai@jar.jp>
  */
 
 #ifndef _BOOT_H
 #define _BOOT_H
 
 #include <aos/const.h>
+
+#define BOOTINFO_ADDR           0x00008000
 
 #define PAGESIZE                4096
 #define PHYS_MEM_FREE_ADDR      0x2000000

@@ -1,8 +1,10 @@
 /*_
- * Copyright 2014 Scyphus Solutions Co. Ltd.  All rights reserved.
+ * Copyright (c) 2013 Scyphus Solutions Co. Ltd.
+ * Copyright (c) 2014 Hirochika Asai
+ * All rights reserved.
  *
  * Authors:
- *      Hirochika Asai  <asai@scyphus.co.jp>
+ *      Hirochika Asai  <asai@jar.jp>
  */
 
 #include "boot.h"
@@ -18,7 +20,7 @@ cboot(void)
     blkdev_head = NULL;
 
     /* Initialize PCI */
-    memory_init((struct bootinfo *)0x00008000);
+    memory_init((struct bootinfo *)BOOTINFO_ADDR);
     pci_init();
     ahci_init();
 
@@ -27,11 +29,9 @@ cboot(void)
     if ( NULL != blkdev_head ) {
         fat_load_kernel(blkdev_head->blkdev, 0x10000);
     }
-    //halt64();
 
     /* Long jump */
     ljmp64((void *)0x10000);
-    //halt64();
 }
 
 /*

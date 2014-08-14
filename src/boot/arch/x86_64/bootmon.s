@@ -1,8 +1,10 @@
 /*_
- * Copyright 2013-2014 Scyphus Solutions Co. Ltd.  All rights reserved.
+ * Copyright (c) 2013 Scyphus Solutions Co. Ltd.
+ * Copyright (c) 2014 Hirochika Asai
+ * All rights reserved.
  *
  * Authors:
- *      Hirochika Asai  <asai@scyphus.co.jp>
+ *      Hirochika Asai  <asai@jar.jp>
  */
 
 	.set	KERNEL_LBA,0x21		/* Kernel is located at LBA 33 */
@@ -28,7 +30,7 @@
 	.code16			/* 16bit real mode */
 
 /*
- * Boot monitor
+ * Boot monitor (from BIOS)
  *   %cs:%ip=0x0900:0x0000 (=0x9000)
  *   %ss:%sp=0x0000:0x7c00 (=0x7c00)
  *   %dl: drive
@@ -134,7 +136,7 @@ boot:
 	call	load_mm		/* Load system address map to %es:%di */
 	movw	%ax,(BOOTINFO_BASE)
 
-	/* Load the kernel: Load 0x80 sectors (64KiB) from LBA #33 */
+	/* Load the kernel: Load 0x38 sectors (28KiB) from LBA #33 */
 	movb	drive,%dl
 	testb	$0x80,%dl
 	//jz	rd.floopy
@@ -145,39 +147,7 @@ rd.hd:
 	movb	$0x42,%ah
 	movb	drive,%dl
 	int	$0x13
-	////jc	read.fail	/* Fail (%cf=1) */
-	//jc	rd.floppy
-	//ljmp	$(KERNEL_SEG),$entry16
 	jmp	entry16
-
-	movw	$0x1000,%ax
-	movw	%ax,%es
-	movb	drive,%dl
-	movb	$0x77,%al
-	movb	$0x0,%ch
-	movb	$0xa,%cl
-	movb	$0x0,%dh
-	movl	$0x0,%ebx
-	movb	$0x02,%ah
-	int	$0x13
-	jc	read.fail	/* Fail (%cf=1) */
-	cmpb	$0x77,%al
-	jne	read.fail
-	ljmp	$(KERNEL_SEG),$0
-	movw	$0x16c0,%ax
-	movw	%ax,%es
-	movb	drive,%dl
-	movb	$63,%al
-	movb	$0x0,%ch
-	movb	$0x1,%cl
-	movb	$0x1,%dh
-	movl	$0x0,%ebx
-	movb	$0x02,%ah
-	int	$0x13
-	jc	read.fail	/* Fail (%cf=1) */
-	cmpb	$63,%al
-	jne	read.fail
-	ljmp	$(KERNEL_SEG),$0
 
 rd.floppy:
 	movb	drive,%dl
@@ -636,11 +606,11 @@ drive:
 
 /* DAP: Disk Address Packet */
 dap:
-	.byte	0x10
+	.byte	0x10		/* size of DAP */
 	.byte	0
-	.word	0x7f
+	.word	0x38		/* # of sectors to be read */
 	.word	0x0,0x1000	/* offset:segment */
-	.quad	0xb1		/* start */
+	.quad	0xb1		/* start of the sectors to be read */
 
 
 /* Messages */
