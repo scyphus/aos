@@ -5,7 +5,10 @@
     + arch
       + x86_64
         - bootmon.s: Boot monitor (initial loader)
-
+	- entry16.s: Real mode code jumping to protected mode
+	- entry32.s: Protected mode code jumping to long mode
+	- entry64.s: Long mode code jumping to cboot in boot.c
+	- boot.c: Entry point to C code
 
 
 
