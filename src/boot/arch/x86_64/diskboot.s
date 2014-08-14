@@ -242,11 +242,11 @@ drive:
 
 /* DAP: Disk Address Packet */
 dap:
-	.byte	0x1
+	.byte	0x10		/* size of DAP */
 	.byte	0
-	.word	0x7f
+	.word	0x38		/* # of sectors to be read */
 	.word	0x0,0x0900	/* offset:segment */
-	.quad	0x20
+	.quad	0x20		/* start of the sectors to be read */
 
 
 /* State and set of characters for twiddle function */

@@ -608,7 +608,7 @@ drive:
 dap:
 	.byte	0x10		/* size of DAP */
 	.byte	0
-	.word	0x38		/* # of sectors to be read */
+	.word	0x7f		/* # of sectors to be read */
 	.word	0x0,0x1000	/* offset:segment */
 	.quad	0xb1		/* start of the sectors to be read */
 
