@@ -53,16 +53,16 @@ start:
 
 
 /* Check partition table */
-	movl	$0x1be,%eax
-	cmpb	$0xee,4(%eax)
-	je	gpt
-/* MBR */
+	movl	$0x1be,%eax	/* Partition entry #1 */
+	cmpb	$0xee,4(%eax)	/* Partition type: EE = GPT protective MBR */
+	je	load_gpt
+/* Otherwise, MBR */
 	movw	$1,%ax
 	jmp	load_bootmon
-/* GPT */
-gpt:
-	movw	$34,%ax
 
+/* GPT */
+load_gpt:
+	movw	$34,%ax		/* Read from LBA 34 (Entry 1) */
 
 	pushw	%ds
 	pushw	%es

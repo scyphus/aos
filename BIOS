@@ -1,0 +1,25 @@
+
+
+
+
+* int 0x13
+
+** Extended read sectors from drive (ah = 0x42)
+Input
+ah	0x42
+dl	drive index
+ds:si	segment:offset pointer to DAP
+
+Output
+cf	set on error, clear if no error
+ah	return code
+
+
+
+DAP: Disk Address Packet
+Offset	Size	Description
+0	1	sizeof DAP
+1	1	zero
+2	2	# of sectors to be read (<= 127)
+4	4	segment:offset pointer of destination
+8	8	absolute number of the start of the sectors to be read
