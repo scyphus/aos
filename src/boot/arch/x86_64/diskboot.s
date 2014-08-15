@@ -55,13 +55,13 @@ start:
 /* Check partition table */
 	movl	$0x1be,%eax	/* Partition entry #1 */
 	cmpb	$0xee,4(%eax)	/* Partition type: EE = GPT protective MBR */
-	je	load_gpt
+	je	load_bootmon_gpt
 /* Otherwise, MBR */
 	movw	$1,%ax
-	jmp	load_bootmon
+	jmp	load_bootmon_mbr
 
 /* GPT */
-load_gpt:
+load_bootmon_gpt:
 	movw	$34,%ax		/* Read from LBA 34 (Entry 1) */
 
 	pushw	%ds
@@ -76,7 +76,7 @@ load_gpt:
 	ljmp	$BOOTMON_SEG,$BOOTMON_OFF
 
 /* Read the boot monitor */
-load_bootmon:
+load_bootmon_mbr:
 /* Load 0x8 sectors (4KiB) from the sector next to MBR */
 	pushw	%es
 	movw	$BOOTMON_SEG,%ax

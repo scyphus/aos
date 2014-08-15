@@ -4,13 +4,29 @@
 
 * int 0x13
 
+** Read sectors from drive (ah = 0x02)
+Input
+ah	0x02
+al	sectors to read count
+ah	cylinder
+cl	sector
+dh	head
+dl	drive
+es:bx	buffer address pointer
+
+Results
+cf	set on error, clear if no error
+ah	return code
+al	actual sectors read count
+
+
 ** Extended read sectors from drive (ah = 0x42)
 Input
 ah	0x42
 dl	drive index
 ds:si	segment:offset pointer to DAP
 
-Output
+Results
 cf	set on error, clear if no error
 ah	return code
 
@@ -23,3 +39,10 @@ Offset	Size	Description
 2	2	# of sectors to be read (<= 127)
 4	4	segment:offset pointer of destination
 8	8	absolute number of the start of the sectors to be read
+
+
+
+
+
+
+
