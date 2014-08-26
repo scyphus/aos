@@ -43,6 +43,11 @@ Offset	Size	Description
 
 
 
+MBR
+ Stage 2 ==> LBA 1
+
+GPT
+ Stage 2 ==> Partition entry #1 ==> GPT entry #1
 
 
 

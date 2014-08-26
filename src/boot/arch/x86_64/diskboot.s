@@ -1,8 +1,10 @@
 /*_
- * Copyright 2013 Scyphus Solutions Co. Ltd.  All rights reserved.
+ * Copyright (c) 2013 Scyphus Solutions Co. Ltd.
+ * Copyright (c) 2014 Hirochika Asai
+ * All rights reserved.
  *
  * Authors:
- *      Hirochika Asai  <asai@scyphus.co.jp>
+ *      Hirochika Asai  <asai@jar.jp>
  */
 
 	.set	BOOTMON_SEG,0x0900	/* Memory where to load kernel loader */
@@ -57,8 +59,20 @@ start:
 	cmpb	$0xee,4(%eax)	/* Partition type: EE = GPT protective MBR */
 	je	load_bootmon_gpt
 /* Otherwise, MBR */
-	movw	$1,%ax
-	jmp	load_bootmon_mbr
+	//jmp	load_bootmon_mbr
+load_bootmon_mbr_:
+	pushw	%es
+	movw	$BOOTMON_SEG,%ax
+	movw	%ax,%es
+	movw	$BOOTMON_OFF,%bx
+	movb	$BOOTMON_SIZE,%dh
+	movw	$0x1,%ax		/* from LBA 1 */
+	call	read
+	popw	%es
+/* Parameters to boot monitor */
+	movb	drive,%dl
+	ljmp	$BOOTMON_SEG,$BOOTMON_OFF
+
 
 /* GPT */
 load_bootmon_gpt:
