@@ -64,6 +64,7 @@ bootmon:
 	movw	$(IVT_IRQ0),%bx
 	call	setup_inthandler
 
+/* Setup the keyboard interrupt handler */
 	xorw	%ax,%ax
 	movw	%ax,%es
 	movw	$intr_int33,%ax
