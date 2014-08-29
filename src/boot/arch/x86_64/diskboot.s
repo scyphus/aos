@@ -53,6 +53,14 @@ start:
 	movw	$msg_welcome,%si	/* %ds:(%si) -> welcome message */
 	call	putstr
 
+/* Drive information */
+	xorw	%ax,%ax
+	movw	%ax,%es
+	movw	%ax,%di
+	movb	$0x08,%ah
+	movb	drive,%dl
+	int	$0x13
+	jc	read.error
 
 /* Check partition table */
 	movl	$0x1be,%eax	/* Partition entry #1 */

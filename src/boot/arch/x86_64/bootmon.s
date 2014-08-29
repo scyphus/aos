@@ -140,6 +140,17 @@ boot:
 	call	load_mm		/* Load system address map to %es:%di */
 	movw	%ax,(BOOTINFO_BASE)
 
+	/* Drive information */
+	xorw	%ax,%ax
+	movw	%ax,%es
+	movw	%ax,%di
+	movb	$0x08,%ah
+	movb	drive,%dl
+	int	$0x13
+	jc	halt16
+	//jmp	halt16
+
+
 	/* Load the kernel: Load 0x38 sectors (28KiB) from LBA #33 */
 	movb	drive,%dl
 	testb	$0x80,%dl
