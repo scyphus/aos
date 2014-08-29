@@ -26,6 +26,7 @@
 	.code16			/* 16bit real mode */
 	.globl	start		/* Entry point */
 
+/* Start = 0x7c00 */
 start:
 /* Setup the stack and segment registers */
 	cld			/* Clear direction flag */
@@ -54,7 +55,6 @@ start:
 	call	putstr
 
 /* Drive information */
-	pushw	%es
 	xorw	%ax,%ax
 	movw	%ax,%es
 	movw	%ax,%di
@@ -71,7 +71,6 @@ start:
 	andb	$0x3,%cl
 	movb	%cl,%ah
 	movw	%ax,cylinders
-	popw	%es
 
 /* Check partition table */
 	movl	$0x1be,%eax	/* Partition entry #1 */
@@ -94,7 +93,7 @@ load_bootmon_mbr:
 /* Jump to the kernel loader */
 	ljmp	$BOOTMON_SEG,$BOOTMON_OFF
 
-/* GPT */
+/* Read from GPT partition */
 load_bootmon_gpt:
 	movw	$34,%ax		/* Read from LBA 34 (Entry 1) */
 
