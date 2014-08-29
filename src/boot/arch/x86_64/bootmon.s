@@ -15,6 +15,8 @@
 	.set	NUM_RETRIES,3		/* Number of times to retry to read */
 	.set	ERRCODE_TIMEOUT,0x80	/* Error code: timeout */
 
+	.set	BOOT_COUNTER,30*10	/* Counter before boot (3 sec) */
+
 	/* Include other constant values */
 	.include	"asmconst.h"
 
@@ -72,10 +74,10 @@ bootmon:
 	call	setup_inthandler
 
 /* Reset counter */
-	movw	$300,%ax /* 3 seconds */
+	movw	$BOOT_COUNTER,%ax
 	movw	%ax,counter
 	movw	$0,%ax
-	movw	%ax,bootmode
+	movw	%ax,bootmode	/* Reset boot mode */
 
 /* Print out boot message */
 	movw	$0,%ax
