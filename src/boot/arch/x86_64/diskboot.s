@@ -54,6 +54,7 @@ start:
 	call	putstr
 
 /* Drive information */
+	pushw	%es
 	xorw	%ax,%ax
 	movw	%ax,%es
 	movw	%ax,%di
@@ -61,26 +62,37 @@ start:
 	movb	drive,%dl
 	int	$0x13
 	jc	read.error
+	movb	%dh,heads
+	movb	%cl,%al
+	andb	$0x3f,%al
+	movb	%al,sectors
+	movb	%ch,%al
+	shrb	$6,%cl
+	andb	$0x3,%cl
+	movb	%cl,%ah
+	movw	%ax,cylinders
+	popw	%es
 
 /* Check partition table */
 	movl	$0x1be,%eax	/* Partition entry #1 */
 	cmpb	$0xee,4(%eax)	/* Partition type: EE = GPT protective MBR */
 	je	load_bootmon_gpt
-/* Otherwise, MBR */
-	//jmp	load_bootmon_mbr
-load_bootmon_mbr_:
+
+/* Otherwise, read from MBR */
+load_bootmon_mbr:
 	pushw	%es
 	movw	$BOOTMON_SEG,%ax
 	movw	%ax,%es
 	movw	$BOOTMON_OFF,%bx
 	movb	$BOOTMON_SIZE,%dh
 	movw	$0x1,%ax		/* from LBA 1 */
+	movb	drive,%dl
 	call	read
 	popw	%es
 /* Parameters to boot monitor */
 	movb	drive,%dl
+/* Jump to the kernel loader */
 	ljmp	$BOOTMON_SEG,$BOOTMON_OFF
-
 
 /* GPT */
 load_bootmon_gpt:
@@ -95,22 +107,6 @@ load_bootmon_gpt:
 	int	$0x13
 	popw	%es
 	popw	%ds
-	ljmp	$BOOTMON_SEG,$BOOTMON_OFF
-
-/* Read the boot monitor */
-load_bootmon_mbr:
-/* Load 0x8 sectors (4KiB) from the sector next to MBR */
-	pushw	%es
-	movw	$BOOTMON_SEG,%ax
-	movw	%ax,%es
-	movw	$BOOTMON_OFF,%bx
-	movb	$BOOTMON_SIZE,%dh
-	movw	$0x1,%ax		/* from LBA 1 */
-	call	read
-	popw	%es
-/* Parameters to boot monitor */
-	movb	drive,%dl
-/* Jump to the kernel loader */
 	ljmp	$BOOTMON_SEG,$BOOTMON_OFF
 
 /* Read %dh sectors starting at LBA (logical block address) %ax on drive %dl
@@ -258,8 +254,14 @@ hex8.1:
 /* Data section */
 	.data
 
-/* Saved boot drive */
+/* Saved boot drive information */
 drive:
+	.byte	0
+sectors:
+	.byte	0
+cylinders:
+	.word	0
+heads:
 	.byte	0
 
 /* DAP: Disk Address Packet */
