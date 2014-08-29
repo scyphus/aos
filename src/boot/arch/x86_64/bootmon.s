@@ -57,6 +57,7 @@ bootmon:
 /* Disable interrupt */
 	cli
 
+/* Setup the timer interrupt handler */
 	xorw	%ax,%ax
 	movw	%ax,%es
 	movw	$intr_int32,%ax
