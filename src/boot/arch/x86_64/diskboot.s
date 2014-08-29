@@ -26,7 +26,10 @@
 	.code16			/* 16bit real mode */
 	.globl	start		/* Entry point */
 
-/* Start = 0x7c00 */
+/* Start
+ *   %cs:%ip=0x0000:0x7c00
+ *   %dl: drive
+ */
 start:
 /* Setup the stack and segment registers */
 	cld			/* Clear direction flag */
