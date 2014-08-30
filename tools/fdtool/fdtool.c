@@ -16,7 +16,7 @@
 /* 14.4MiB */
 #define FLOPPY_SIZE 1474560
 #define MBR_SIZE 512
-#define IPL_SIZE 446
+#define IPL_SIZE 442
 #define LOADER_SIZE 4096 * 8
 #define BUFFER_SIZE 512
 
@@ -27,7 +27,7 @@ usage(const char *prog)
             "Usage: %s output-image-file ipl loader kernel\r\n"
             "\tAlign and merge `ipl', `loader', and kernel to"
             " `output-image-file'.\r\n"
-            "\tThe size of `ipl' must be less than or equal to 446 bytes.\r\n"
+            "\tThe size of `ipl' must be less than or equal to 442 bytes.\r\n"
             "\tThe size of `loader' must be less than or equal to 32KiB"
             " bytes.\r\n"
             "\tThe overall size must be less than or equal to 14.4MiB.\r\n",
@@ -111,7 +111,7 @@ main(int argc, const char *const argv[])
 
     /* Check the IPL size: 2 bytes for boot signature */
     if ( iplsize > IPL_SIZE ) {
-        fprintf(stderr, "Invalid IPL size (IPL must be in 446 bytes)\n");
+        fprintf(stderr, "Invalid IPL size (IPL must be in 442 bytes)\n");
         return EXIT_FAILURE;
     }
 
@@ -132,11 +132,24 @@ main(int argc, const char *const argv[])
 
     /* Padding with 0 */
     (void)memset(buf, 0, sizeof(buf));
-    while ( cur < 446 ) {
+    while ( cur < IPL_SIZE ) {
         /* Note: Enough buffer size to write */
-        nw = fwrite(buf, 1, 446 - cur, imgfp);
+        nw = fwrite(buf, 1, IPL_SIZE - cur, imgfp);
         cur += nw;
     }
+
+    /* Stage 2 information */
+    buf[0] = 1;
+    buf[1] = 0;
+    buf[2] = 1;
+    buf[3] = 0;
+    done = 0;
+    while ( done < 4 ) {
+        /* Note: Enough buffer size to write */
+        nw = fwrite(buf+done, 1, 4 - done, imgfp);
+        done += nw;
+    }
+    cur += 4;
 
     /* Partition entry #1 */
     /*(1023, 255, 63) for GPT*/
