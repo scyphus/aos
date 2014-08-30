@@ -10,8 +10,6 @@
 	.set	KERNEL_LBA,0x21		/* Kernel is located at LBA 33 */
 	.set	KERNEL_SIZE,0x40	/* 64 sectors (32KiB) */
 	/* Disk information */
-	.set	HEAD_SIZE,18            /* 18 sectors per head/track */
-	.set	CYLINDER_SIZE,2         /* 2 heads per cylinder */
 	.set	NUM_RETRIES,3		/* Number of times to retry to read */
 	.set	ERRCODE_TIMEOUT,0x80	/* Error code: timeout */
 
@@ -47,6 +45,26 @@ bootmon:
 /* Save descriptor table registers */
 	sidt	idtr16
 	sgdt	gdtr16
+
+/* Drive information */
+	xorw	%ax,%ax
+	movw	%ax,%es
+	movw	%ax,%di
+	movb	$0x08,%ah
+	movb	drive,%dl
+	int	$0x13
+	jc	read.error
+	incb	%dh
+	movb	%dh,heads
+	movb	%cl,%al
+	andb	$0x3f,%al
+	movb	%al,sectors
+	movb	%ch,%al
+	shrb	$6,%cl
+	andb	$0x3,%cl
+	movb	%cl,%ah
+	incw	%ax
+	movw	%ax,cylinders
 
 /* Enable A20 address line */
 	call    enable_a20
@@ -523,14 +541,14 @@ lba2chs:
 	pushw	%dx
 /* Compute sector */
 	xorw	%dx,%dx
-	movw	$HEAD_SIZE,%bx
+	movw	sectors,%bx
 	mov	%eax,%dr0
 	divw	%bx		/* %dx:%ax / %bx; %ax:quotient, %dx:remainder */
 	incb	%dl
 	movb	%dl,%cl		/* Sector */
 /* Compute head and track */
 	xorw	%dx,%dx
-	movw	$CYLINDER_SIZE,%bx
+	movw	heads,%bx
 	divw	%bx		/* %dx:%ax / %bx */
 	movw	%dx,%bx		/* Save the remainder to %bx */
 	popw	%dx		/* Restore %dx*/
@@ -617,6 +635,12 @@ gdtr16:
 
 /* Saved boot drive */
 drive:
+	.byte	0
+sectors:
+	.byte	0
+cylinders:
+	.word	0
+heads:
 	.byte	0
 
 /* DAP: Disk Address Packet */
