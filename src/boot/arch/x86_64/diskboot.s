@@ -77,6 +77,13 @@ start:
 	movb	%cl,%ah
 	movw	%ax,cylinders
 
+/* Check the stage 2 information */
+	movw	$start,%bp
+	movw	STAGE2_LBA(%bp),%ax
+	movw	STAGE2_LBA+2(%bp),%cx
+	jmp	halt
+
+
 /* Check partition table */
 	movl	$0x1be,%eax	/* Partition entry #1 */
 	cmpb	$0xee,4(%eax)	/* Partition type: EE = GPT protective MBR */
@@ -102,15 +109,15 @@ load_bootmon_mbr:
 load_bootmon_gpt:
 	movw	$34,%ax		/* Read from LBA 34 (Entry 1) */
 
-	pushw	%ds
-	pushw	%es
-	movw	%ax,%ds
-	movw	$dap,%si
-	movb	$0x42,%ah
-	movb	drive,%dl
-	int	$0x13
-	popw	%es
-	popw	%ds
+	//pushw	%ds
+	//pushw	%es
+	//movw	%ax,%ds
+	//movw	$dap,%si
+	//movb	$0x42,%ah
+	//movb	drive,%dl
+	//int	$0x13
+	//popw	%es
+	//popw	%ds
 	ljmp	$BOOTMON_SEG,$BOOTMON_OFF
 
 /* Read %dh sectors starting at LBA (logical block address) %ax on drive %dl
