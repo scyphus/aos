@@ -50,7 +50,7 @@ start:
 	int	$0x10
 /* For Intel Core i7-3770K processor */
 	.rept 10
-	//nop
+	nop
 	.endr
 /* Display the welcome message */
 	movw	$msg_welcome,%si	/* %ds:(%si) -> welcome message */
