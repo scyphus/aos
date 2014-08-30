@@ -18,6 +18,8 @@
 	.set	ERRCODE_TIMEOUT,0x80	/* Error code: timeout */
 	.set	ERRCODE_CONTROLLER,0x20	/* Error code: controller failure */
 
+	.set	STAGE2_LBA,442		/* Stage 2 LBA info (lba, size) */
+
 	.file	"diskboot.s"
 
 /* Text section */
@@ -39,10 +41,10 @@ start:
 	cli
 	movw	%ax,%ss
 	movw	$start,%sp
-	sti
 /* Setup data segments (%ds=0, %es=0) */
 	movw	%ax,%ds
 	movw	%ax,%es
+	sti
 /* Save BIOS boot drive */
 	movb	%dl,drive
 /* Set VGA mode to 16bit color text mode */
@@ -59,8 +61,8 @@ start:
 
 /* Drive information */
 	xorw	%ax,%ax
-	movw	%ax,%es
-	movw	%ax,%di
+	//movw	%ax,%es
+	//movw	%ax,%di
 	movb	$0x08,%ah
 	movb	drive,%dl
 	int	$0x13
