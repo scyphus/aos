@@ -92,25 +92,24 @@ load_stage2:
 	movw	$BOOTMON_SEG,%ax
 	movw	%ax,%es
 	movw	$BOOTMON_OFF,%bx
-	movw	-2(%bp),%ax
-	movb	-4(%bp),%dh
+	movb	$1,%dh
 	movb	drive,%dl
 1:
+	movw	-2(%bp),%ax
 	call	read
-	pushw	%ax
+	incw	%ax
+	movw	%ax,-2(%bp)
 	movw	%es,%ax
 	addw	$0x20,%ax
 	movw	%ax,%es
-	popw	%ax
-	decb	%dh
-	incw	%ax
-	testb	%dh,%dh
+	movw	-4(%bp),%ax
+	decw	%ax
+	movw	%ax,-4(%bp)
+	testw	%ax,%ax
 	jnz	1b
 
-/* Restore registers */
-	movw	-4(%bp),%cx
-	movw	-2(%bp),%ax
-	movw	%bp,%sp		/* Restore the stack pointer and base pointer */
+/* Restore the stack pointer and base pointer */
+	movw	%bp,%sp
 	popw	%bp
 
 	ljmp	$BOOTMON_SEG,$BOOTMON_OFF

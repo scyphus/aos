@@ -167,8 +167,125 @@ boot:
 	int	$0x13
 	jc	halt16
 
-
 /* Load kernel and initial package */
+	movw	$0x1000,%ax
+	movw	%ax,%es
+	xorw	%bx,%bx
+	movb	drive,%dl
+	movw	$0x80,%cx
+	movw	$0xb1,%ax
+	call	read
+	jmp	entry16
+
+
+/* Load the kernel: Load 0x38 sectors (28KiB) from LBA #33 */
+	//xorw	%ax,%ax
+	//movw	%ax,%ds
+	//movw	$dap,%si
+	//movb	$0x42,%ah
+	//movb	drive,%dl
+	//int	$0x13
+	//jmp	entry16
+
+/* Read %cx sectors starting at LBA (logical block address) %ax on drive %dl
+   into %es:[%bx] */
+read:
+	pushw	%bp		/* Save the base pointer */
+	movw	%sp,%bp		/* Copy the stack pointer to the base pointer */
+
+/* Save registers */
+	movw	%ax,-2(%bp)
+	movw	%cx,-4(%bp)
+	movw	%ax,-6(%bp)
+	movw	%cx,-8(%bp)
+	movw	%dx,-10(%bp)
+	subw	$10,%sp
+
+/* To the arguments for readn */
+	movb	$1,%dh
+	movb	drive,%dl
+1:
+	movw	-2(%bp),%ax
+	call	readn
+	incw	%ax
+	movw	%ax,-2(%bp)
+	movw	%es,%ax
+	addw	$0x20,%ax
+	movw	%ax,%es
+	movw	-4(%bp),%ax
+	decw	%ax
+	movw	%ax,-4(%bp)
+	testw	%ax,%ax
+	jnz	1b
+
+/* Restore registers */
+	movw	-10(%bp),%dx
+	movw	-8(%bp),%cx
+	movw	-6(%bp),%ax
+	movw	%bp,%sp		/* Restore the stack pointer and base pointer */
+	popw	%bp
+
+	ret
+
+
+/* Read %dh sectors starting at LBA (logical block address) %ax on drive %dl
+   into %es:[%bx] */
+readn:
+	pushw	%bp		/* Save the base pointer */
+	movw	%sp,%bp		/* Copy the stack pointer to the base pointer */
+/* Save registers */
+	movw	%ax,-2(%bp)
+	movw	%bx,-4(%bp)
+	movw	%cx,-6(%bp)
+	movw	%dx,-8(%bp)
+	/* u16 track:sector -10(%bp) */
+	/* u16 counter -12(%bp) */
+	subw	$12,%sp
+
+/* Convert LBA to CHS */
+	call	lba2chs		/* Convert LBA %ax to CHS (%ch,%dh,%cl) */
+	movw	%cx,-10(%bp)	/* Save %cx to the stack */
+/* Restore %bx */
+	movw	-4(%bp),%bx
+/* Reset counter */
+	xorw	%cx,%cx
+	movw	%cx,-12(%bp)
+read.retry:
+	movw	-8(%bp),%ax	/* Get the saved %dx from the stack */
+	movb	%ah,%al		/*  (Note: same as movb -7(%bp),%al */
+	movb	$0x02,%ah       /* BIOS: Read sectors from drive */
+	movw	-10(%bp),%cx	/* Get the saved %cx from the stack */
+	int	$0x13		/* CHS=%ch,%dh,%cl, drive=%dl, count=%al */
+				/*  to %es:[%bx] (results in %ax,%cf) */
+	jc	read.fail	/* Fail (%cf=1) */
+
+/* Restore registers */
+	movw	-8(%bp),%dx
+	movw	-6(%bp),%cx
+	movw	-4(%bp),%bx
+	movw	-2(%bp),%ax
+	movw	%bp,%sp		/* Restore the stack pointer and base pointer */
+	popw	%bp
+	ret
+read.fail:
+	movw	-12(%bp),%cx
+	incw	%cx
+	movw	%cx,-12(%bp)
+	cmpw	$NUM_RETRIES,%cx
+	ja	read.error		/* Exceed retries */
+	cmpb	$ERRCODE_TIMEOUT,%ah	/* Timeout? */
+	je	read.retry		/* Yes, then retry */
+read.error:				/* We do not restore the stack */
+	movb	%ah,%al			/* Save error */
+	movw	$hex_error,%di		/* Format it as hex */
+	xorw	%bx,%bx
+	movw	%bx,%es
+	call	hex8
+	movw	$msg_readerror,%si	/* Display the read error message */
+	jmp	readerror
+
+
+
 
 
 	/* Load the kernel: Load 0x38 sectors (28KiB) from LBA #33 */
@@ -183,47 +300,6 @@ rd.hd:
 	movb	drive,%dl
 	int	$0x13
 	jmp	entry16
-
-rd.floppy:
-	movb	drive,%dl
-	movw	$0x1000,%ax
-	movw	%ax,%es
-	movl	$0x0,%ebx
-	movb	$0x1b,%dh
-	movw	$33,%ax	/* from LBA 33 */
-	call	read
-	movb	drive,%dl
-	movw	$0x1360,%ax
-	movw	%ax,%es
-	movl	$0x0,%ebx
-	movb	$0x24,%dh
-	movw	$0x24,%ax
-	call	read
-	movb	drive,%dl
-	movw	$0x17e0,%ax
-	movw	%ax,%es
-	movl	$0x0,%ebx
-	movb	$0x24,%dh
-	movw	$0x48,%ax
-	call	read
-	movb	drive,%dl
-	movw	$0x1c60,%ax
-	movw	%ax,%es
-	movl	$0x0,%ebx
-	movb	$0x12,%dh
-	movw	$0x6c,%ax
-	call	read
-	//ljmp	$(KERNEL_SEG),$0
-	jmp	entry16
-
-	movw	$KERNEL_SEG,%ax
-	movw	%ax,%es
-	movl	$(KERNEL_SEG<<4),%ebx
-	movb	$KERNEL_SIZE,%dh
-	movw	$KERNEL_LBA,%ax	/* from LBA 33 */
-	call	read
-
-	ljmp	$(KERNEL_SEG),$0
 
 
 /* Display CPU error message */
@@ -481,61 +557,6 @@ putc:
 	ret
 
 
-/* Read %dh sectors starting at LBA (logical block address) %ax on drive %dl
-   into %es:[%bx] */
-read:
-	pushw	%bp		/* Save the base pointer */
-	movw	%sp,%bp		/* Copy the stack pointer to the base pointer */
-/* Save registers */
-	movw	%ax,-2(%bp)
-	movw	%bx,-4(%bp)
-	movw	%cx,-6(%bp)
-	movw	%dx,-8(%bp)
-	/* u16 track:sector -10(%bp) */
-	/* u16 counter -12(%bp) */
-	subw	$12,%sp
-
-/* Convert LBA to CHS */
-	call	lba2chs		/* Convert LBA %ax to CHS (%ch,%dh,%cl) */
-	movw	%cx,-10(%bp)	/* Save %cx to the stack */
-/* Restore %bx */
-	movw	-4(%bp),%bx
-/* Reset counter */
-	xorw	%cx,%cx
-	movw	%cx,-12(%bp)
-read.retry:
-	movw	-8(%bp),%ax	/* Get the saved %dx from the stack */
-	movb	%ah,%al		/*  (Note: same as movb -7(%bp),%al */
-	movb	$0x02,%ah       /* BIOS: Read sectors from drive */
-	movw	-10(%bp),%cx	/* Get the saved %cx from the stack */
-	int	$0x13		/* CHS=%ch,%dh,%cl, drive=%dl, count=%al */
-				/*  to %es:[%bx] (results in %ax,%cf) */
-	jc	read.fail	/* Fail (%cf=1) */
-
-/* Restore registers */
-	movw	-8(%bp),%dx
-	movw	-6(%bp),%cx
-	movw	-4(%bp),%bx
-	movw	-2(%bp),%ax
-	movw	%bp,%sp		/* Restore the stack pointer and base pointer */
-	popw	%bp
-	ret
-read.fail:
-	movw	-12(%bp),%cx
-	incw	%cx
-	movw	%cx,-12(%bp)
-	cmpw	$NUM_RETRIES,%cx
-	ja	read.error		/* Exceed retries */
-	cmpb	$ERRCODE_TIMEOUT,%ah	/* Timeout? */
-	je	read.retry		/* Yes, then retry */
-read.error:				/* We do not restore the stack */
-	movb	%ah,%al			/* Save error */
-	movw	$hex_error,%di		/* Format it as hex */
-	xorw	%bx,%bx
-	movw	%bx,%es
-	call	hex8
-	movw	$msg_readerror,%si	/* Display the read error message */
-	jmp	readerror
 
 /* LBA: %ax into CHS %ch,%dh,%cl */
 lba2chs:
@@ -543,8 +564,8 @@ lba2chs:
 	pushw	%dx
 /* Compute sector */
 	xorw	%dx,%dx
-	movw	sectors,%bx
-	mov	%eax,%dr0
+	movw	%dx,%bx
+	movb	sectors,%bl
 	divw	%bx		/* %dx:%ax / %bx; %ax:quotient, %dx:remainder */
 	incb	%dl
 	movb	%dl,%cl		/* Sector */
