@@ -8,7 +8,7 @@
 Input
 ah	0x02
 al	sectors to read count
-ah	cylinder
+ch	cylinder
 cl	sector
 dh	head
 dl	drive

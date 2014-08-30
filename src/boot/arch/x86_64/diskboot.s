@@ -9,11 +9,8 @@
 
 	.set	BOOTMON_SEG,0x0900	/* Memory where to load kernel loader */
 	.set	BOOTMON_OFF,0x0000	/*  segment and offset [0900:0000] */
-	.set	BOOTMON_SIZE,0x40	/* Size of kernel loader in sectors */
 
 	/* Disk information */
-	.set	HEAD_SIZE,18            /* 18 sectors per head/track */
-	.set	CYLINDER_SIZE,2         /* 2 heads per cylinder */
 	.set	NUM_RETRIES,3		/* Number of times to retry to read */
 	.set	ERRCODE_TIMEOUT,0x80	/* Error code: timeout */
 	.set	ERRCODE_CONTROLLER,0x20	/* Error code: controller failure */
@@ -53,7 +50,7 @@ start:
 	int	$0x10
 /* For Intel Core i7-3770K processor */
 	.rept 10
-	nop
+	//nop
 	.endr
 /* Display the welcome message */
 	movw	$msg_welcome,%si	/* %ds:(%si) -> welcome message */
@@ -67,6 +64,7 @@ start:
 	movb	drive,%dl
 	int	$0x13
 	jc	read.error
+	incb	%dh
 	movb	%dh,heads
 	movb	%cl,%al
 	andb	$0x3f,%al
@@ -75,39 +73,75 @@ start:
 	shrb	$6,%cl
 	andb	$0x3,%cl
 	movb	%cl,%ah
+	incw	%ax
 	movw	%ax,cylinders
 
 /* Check the stage 2 information */
 	movw	$start,%bp
 	movw	STAGE2_LBA(%bp),%ax
 	movw	STAGE2_LBA+2(%bp),%cx
-	jmp	halt
 
+load_stage2:
+	pushw	%bp		/* Save the base pointer */
+	movw	%sp,%bp		/* Copy the stack pointer to the base pointer */
+/* Save registers */
+	movw	%ax,-2(%bp)
+	movw	%cx,-4(%bp)
+	subw	$6,%sp
 
-/* Check partition table */
-	movl	$0x1be,%eax	/* Partition entry #1 */
-	cmpb	$0xee,4(%eax)	/* Partition type: EE = GPT protective MBR */
-	je	load_bootmon_gpt
-
-/* Otherwise, read from MBR */
-load_bootmon_mbr:
-	pushw	%es
 	movw	$BOOTMON_SEG,%ax
 	movw	%ax,%es
 	movw	$BOOTMON_OFF,%bx
-	movb	$BOOTMON_SIZE,%dh
-	movw	$0x1,%ax		/* from LBA 1 */
+	movw	-2(%bp),%ax
+	movb	-4(%bp),%dh
 	movb	drive,%dl
+1:
+	//cmpb	$0x02,%dh
+	//jz	halt
 	call	read
-	popw	%es
-/* Parameters to boot monitor */
-	movb	drive,%dl
-/* Jump to the kernel loader */
+	pushw	%ax
+	movw	%es,%ax
+	addw	$2,%ax
+	movw	%ax,%es
+	popw	%ax
+	decb	%dh
+	incw	%ax
+	testb	%dh,%dh
+	jnz	1b
+
+/* Restore registers */
+	movw	-4(%bp),%cx
+	movw	-2(%bp),%ax
+	movw	%bp,%sp		/* Restore the stack pointer and base pointer */
+	popw	%bp
+
 	ljmp	$BOOTMON_SEG,$BOOTMON_OFF
+
+
+/* Check partition table */
+	//movl	$0x1be,%eax	/* Partition entry #1 */
+	//cmpb	$0xee,4(%eax)	/* Partition type: EE = GPT protective MBR */
+	//je	load_bootmon_gpt
+
+/* Otherwise, read from MBR */
+load_bootmon_mbr:
+	//pushw	%es
+	//movw	$BOOTMON_SEG,%ax
+	//movw	%ax,%es
+	//movw	$BOOTMON_OFF,%bx
+	//movb	$BOOTMON_SIZE,%dh
+	//movw	$0x1,%ax		/* from LBA 1 */
+	//movb	drive,%dl
+	//call	read
+	//popw	%es
+/* Parameters to boot monitor */
+	//movb	drive,%dl
+/* Jump to the kernel loader */
+	//ljmp	$BOOTMON_SEG,$BOOTMON_OFF
 
 /* Read from GPT partition */
 load_bootmon_gpt:
-	movw	$34,%ax		/* Read from LBA 34 (Entry 1) */
+	//movw	$34,%ax		/* Read from LBA 34 (Entry 1) */
 
 	//pushw	%ds
 	//pushw	%es
@@ -118,7 +152,7 @@ load_bootmon_gpt:
 	//int	$0x13
 	//popw	%es
 	//popw	%ds
-	ljmp	$BOOTMON_SEG,$BOOTMON_OFF
+	//ljmp	$BOOTMON_SEG,$BOOTMON_OFF
 
 /* Read %dh sectors starting at LBA (logical block address) %ax on drive %dl
    into %es:[%bx] */
@@ -179,23 +213,31 @@ read.error:				/* We do not restore the stack */
 
 /* LBA: %ax into CHS %ch,%dh,%cl */
 lba2chs:
+	pushw	%ax
 	pushw	%bx		/* Save */
 	pushw	%dx
 /* Compute sector */
 	xorw	%dx,%dx
-	movw	$HEAD_SIZE,%bx
+	movw	sectors,%bx
 	divw	%bx		/* %dx:%ax / %bx; %ax:quotient, %dx:remainder */
 	incb	%dl
 	movb	%dl,%cl		/* Sector */
 /* Compute head and track */
 	xorw	%dx,%dx
-	movw	$CYLINDER_SIZE,%bx
+	movw	heads,%bx
 	divw	%bx		/* %dx:%ax / %bx */
 	movw	%dx,%bx		/* Save the remainder to %bx */
 	popw	%dx		/* Restore %dx*/
 	movb	%bl,%dh		/* Head */
 	movb	%bl,%ch		/* Track */
 	popw	%bx		/* Restore %bx */
+
+	popw	%ax
+
+	///FIXME
+	cmpw	$0x3d,%ax
+	jz	halt
+
 	ret
 
 
@@ -274,15 +316,6 @@ cylinders:
 	.word	0
 heads:
 	.byte	0
-
-/* DAP: Disk Address Packet */
-dap:
-	.byte	0x10		/* size of DAP */
-	.byte	0
-	.word	0x38		/* # of sectors to be read */
-	.word	0x0,0x0900	/* offset:segment */
-	.quad	0x20		/* start of the sectors to be read */
-
 
 /* State and set of characters for twiddle function */
 twiddle_index:
