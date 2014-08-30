@@ -96,12 +96,10 @@ load_stage2:
 	movb	-4(%bp),%dh
 	movb	drive,%dl
 1:
-	//cmpb	$0x02,%dh
-	//jz	halt
 	call	read
 	pushw	%ax
 	movw	%es,%ax
-	addw	$2,%ax
+	addw	$0x20,%ax
 	movw	%ax,%es
 	popw	%ax
 	decb	%dh
@@ -213,12 +211,12 @@ read.error:				/* We do not restore the stack */
 
 /* LBA: %ax into CHS %ch,%dh,%cl */
 lba2chs:
-	pushw	%ax
 	pushw	%bx		/* Save */
 	pushw	%dx
 /* Compute sector */
 	xorw	%dx,%dx
-	movw	sectors,%bx
+	movw	%dx,%bx
+	movb	sectors,%bl
 	divw	%bx		/* %dx:%ax / %bx; %ax:quotient, %dx:remainder */
 	incb	%dl
 	movb	%dl,%cl		/* Sector */
@@ -229,14 +227,8 @@ lba2chs:
 	movw	%dx,%bx		/* Save the remainder to %bx */
 	popw	%dx		/* Restore %dx*/
 	movb	%bl,%dh		/* Head */
-	movb	%bl,%ch		/* Track */
+	movb	%al,%ch		/* Track */
 	popw	%bx		/* Restore %bx */
-
-	popw	%ax
-
-	///FIXME
-	cmpw	$0x3d,%ax
-	jz	halt
 
 	ret
 

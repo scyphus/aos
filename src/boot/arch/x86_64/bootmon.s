@@ -50,7 +50,7 @@ bootmon:
 
 /* Enable A20 address line */
 	call    enable_a20
-
+	
 /* Set VGA mode to 16bit color text mode */
 	movb	$VGA_TEXT_COLOR_80x25,%al
 	movb	$0x00,%ah
