@@ -166,7 +166,9 @@ boot:
 	movb	drive,%dl
 	int	$0x13
 	jc	halt16
-	//jmp	halt16
+
+
+/* Load kernel and initial package */
 
 
 	/* Load the kernel: Load 0x38 sectors (28KiB) from LBA #33 */

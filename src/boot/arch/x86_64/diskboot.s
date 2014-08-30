@@ -87,7 +87,7 @@ load_stage2:
 /* Save registers */
 	movw	%ax,-2(%bp)
 	movw	%cx,-4(%bp)
-	subw	$6,%sp
+	subw	$4,%sp
 
 	movw	$BOOTMON_SEG,%ax
 	movw	%ax,%es
