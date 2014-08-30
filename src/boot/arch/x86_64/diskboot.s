@@ -116,42 +116,6 @@ load_stage2:
 	ljmp	$BOOTMON_SEG,$BOOTMON_OFF
 
 
-/* Check partition table */
-	//movl	$0x1be,%eax	/* Partition entry #1 */
-	//cmpb	$0xee,4(%eax)	/* Partition type: EE = GPT protective MBR */
-	//je	load_bootmon_gpt
-
-/* Otherwise, read from MBR */
-load_bootmon_mbr:
-	//pushw	%es
-	//movw	$BOOTMON_SEG,%ax
-	//movw	%ax,%es
-	//movw	$BOOTMON_OFF,%bx
-	//movb	$BOOTMON_SIZE,%dh
-	//movw	$0x1,%ax		/* from LBA 1 */
-	//movb	drive,%dl
-	//call	read
-	//popw	%es
-/* Parameters to boot monitor */
-	//movb	drive,%dl
-/* Jump to the kernel loader */
-	//ljmp	$BOOTMON_SEG,$BOOTMON_OFF
-
-/* Read from GPT partition */
-load_bootmon_gpt:
-	//movw	$34,%ax		/* Read from LBA 34 (Entry 1) */
-
-	//pushw	%ds
-	//pushw	%es
-	//movw	%ax,%ds
-	//movw	$dap,%si
-	//movb	$0x42,%ah
-	//movb	drive,%dl
-	//int	$0x13
-	//popw	%es
-	//popw	%ds
-	//ljmp	$BOOTMON_SEG,$BOOTMON_OFF
-
 /* Read %dh sectors starting at LBA (logical block address) %ax on drive %dl
    into %es:[%bx] */
 read:
