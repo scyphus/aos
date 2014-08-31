@@ -192,12 +192,13 @@ boot_fat:
 	movl	0xc(%ebx),%ecx	/* # of sectors */
 
 /* Load kernel and initial package */
+boot_kernel:
 	movw	$0x1000,%ax
 	movw	%ax,%es
 	xorw	%bx,%bx
 	movb	drive,%dl
 	movw	$0x80,%cx
-	movw	$0xb1,%ax
+	movw	$0xb1,%ax	/* FIXME: Resolved from FAT */
 	call	read
 	jmp	entry16
 
