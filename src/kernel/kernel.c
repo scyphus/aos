@@ -58,36 +58,9 @@ kmain(void)
     arch_busy_usleep(10000);
 
     /* Initialize processor table */
-    int i;
-    int npr;
-    struct ktask *t;
-    npr = 0;
-    for ( i = 0; i < MAX_PROCESSORS; i++ ) {
-        if ( arch_cpu_active(i) ) {
-            npr++;
-        }
-    }
-    processors = kmalloc(sizeof(struct processor_table));
-    processors->n = npr;
-    processors->prs = kmalloc(sizeof(struct processor) * npr);
-    npr = 0;
-    for ( i = 0; i < MAX_PROCESSORS; i++ ) {
-        if ( arch_cpu_active(i) ) {
-            if ( processors->n <= npr ) {
-                /* Error */
-                kprintf("Error on processor initialization\r\n");
-                return;
-            }
-            processors->prs[npr].id = i;
-            if ( i == 0 ) {
-                processors->prs[npr].type = PROCESSOR_BSP;
-            } else {
-                processors->prs[npr].type = PROCESSOR_AP_TICKLESS;
-            }
-            processors->map[i] = npr;
-
-            npr++;
-        }
+    if ( processor_init() < 0 ) {
+        kprintf("Error on processor initialization\r\n");
+        return;
     }
 
     /* Initialize the scheduler */
@@ -119,6 +92,9 @@ kmain(void)
     syscall_init();
 
     e1000_init();
+
+    int i;
+    struct ktask *t;
 
     for ( i = 0; i < processors->n; i++ ) {
         t = ktask_alloc(TASK_POLICY_KERNEL);

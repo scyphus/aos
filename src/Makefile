@@ -41,6 +41,7 @@ bootx64.efi: efi/arch/$(ARCH)/efi.o
 ## Kernel
 kpack: kernel/arch/$(ARCH)/asm.o \
 	kernel/kernel.o \
+	kernel/processor.o \
 	kernel/util.o \
 	kernel/shell.o \
 	kernel/task.o \
