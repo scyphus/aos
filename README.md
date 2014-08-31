@@ -49,9 +49,8 @@ Hirochika Asai
     00008000 00008fff  boot information
     00009000 0000ffff  free
     ----------------------------------------------------------
-    00010000 00017fff  kernel
-    00018000 0001ffff  free (reserved for kernel)
-    00020000 00078fff  free
+    00010000 0001ffff  kernel
+    00020000 00078fff  initpack (ramfs)
     00070000 00073fff  trampoline (16KiB)
     00074000 00077fff  GDT, IDT (20KiB)
     00078000 00079fff  free
@@ -92,16 +91,16 @@ Hirochika Asai
     ----------------------------------------------------------
     00000000 000001ff  LBA 0
     00000200 000043ff  LBA 1-34
-    00004400 0000ffff  Partition 1: Stage 2
-    00010000 --------  Partition 2: Filesystem
+    00004400 0000ffff  Partition 1: Stage 2 (binary)
+    00010000 --------  Partition 2: Filesystem (FAT)
     ----------------------------------------------------------
 
 ### MBR
     Start    End       Description
     ----------------------------------------------------------
     00000000 000001ff  MBR
-    00000200 0000ffff  Stage 2
-    00010000 --------  Partition 1: Filesystem
+    00000200 0000ffff  Stage 2 (binary)
+    00010000 --------  Partition 1: Filesystem (FAT)
     ----------------------------------------------------------
 
 

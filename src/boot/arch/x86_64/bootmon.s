@@ -14,6 +14,8 @@
 	.set	ERRCODE_TIMEOUT,0x80	/* Error code: timeout */
 
 	.set	BOOT_COUNTER,30*10	/* Counter before boot (3 sec) */
+	.set	MBR_BASE,0x7c00
+	
 
 	/* Include other constant values */
 	.include	"asmconst.h"
@@ -158,14 +160,36 @@ boot:
 	call	load_mm		/* Load system address map to %es:%di */
 	movw	%ax,(BOOTINFO_BASE)
 
-	/* Drive information */
-	xorw	%ax,%ax
-	movw	%ax,%es
-	movw	%ax,%di
-	movb	$0x08,%ah
-	movb	drive,%dl
-	int	$0x13
-	jc	halt16
+
+/* Search the boot partition */
+	movl	$MBR_BASE,%ebx
+	/* #1 */
+	addl	$0x1be,%ebx
+	movb	0(%ebx),%al
+	testb	$0x80,%al
+	jnz	boot_fat
+	/* #2 */
+	addl	$16,%ebx
+	movb	0(%ebx),%al
+	testb	$0x80,%al
+	jnz	boot_fat
+	/* #3 */
+	addl	$16,%ebx
+	movb	0(%ebx),%al
+	testb	$0x80,%al
+	jnz	boot_fat
+	/* #4 */
+	addl	$16,%ebx
+	movb	0(%ebx),%al
+	testb	$0x80,%al
+	jnz	boot_fat
+	/* Cannot find a valid boot partition */
+	jmp	parterror
+
+/* Boot from FAT (ToDo: GPT support) */
+boot_fat:
+	movl	0x8(%ebx),%eax	/* LBA */
+	movl	0xc(%ebx),%ecx	/* # of sectors */
 
 /* Load kernel and initial package */
 	movw	$0x1000,%ax
@@ -307,6 +331,14 @@ cpuerror:
 	movw	$0,%ax
 	movw	%ax,%ds
 	movw	$msg_cpuerror,%si
+	call	putstr
+	jmp	halt16
+
+/* Display partition error message */
+parterror:
+	movw	$0,%ax
+	movw	%ax,%ds
+	movw	$msg_parterror,%si
 	call	putstr
 	jmp	halt16
 
@@ -684,6 +716,9 @@ msg_bootopt:
 
 msg_cpuerror:
 	.asciz	"\r\n\nUnsupported CPU.\r\n\n"
+
+msg_parterror:
+	.asciz	"\r\n\nInvalid partition table.\r\n\n"
 
 msg_countdown:
 	.ascii	"AOS will boot in "
