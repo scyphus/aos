@@ -10,14 +10,18 @@
 #include <aos/const.h>
 #include "kernel.h"
 
-extern struct processor_table *processors;
+struct processor_table *processors;
 
+/*
+ * Initialize the processor table
+ */
 int
 processor_init(void)
 {
     int i;
     int npr;
 
+    /* Count the number of processors */
     npr = 0;
     for ( i = 0; i < MAX_PROCESSORS; i++ ) {
         if ( arch_cpu_active(i) ) {

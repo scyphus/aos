@@ -570,6 +570,9 @@ int sched_ktask_enqueue(struct ktask_queue_entry *);
 struct ktask_queue_entry * sched_ktask_dequeue(void);
 struct ktask_queue_entry * ktask_queue_entry_new(struct ktask *);
 
+/* in processor.c */
+int processor_init(void);
+
 
 /* in shell.c */
 int proc_shell(int, char *[]);

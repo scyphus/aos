@@ -189,6 +189,19 @@ ktask_init(void)
     char **argv;
     int ret;
 
+    int i;
+    struct ktask *t;
+
+    for ( i = 0; i < processors->n; i++ ) {
+        t = ktask_alloc(TASK_POLICY_KERNEL);
+        t->main = &ktask_idle_main;
+        t->id = -1;
+        t->name = "[idle]";
+        t->argv = NULL;
+        t->state = TASK_STATE_READY;
+        processors->prs[i].idle = t;
+    }
+
     /* Allocate memory for new task */
     ktasks = kmalloc(sizeof(struct ktask_table));
     if ( NULL == ktasks ) {

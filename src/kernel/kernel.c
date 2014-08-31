@@ -11,7 +11,7 @@
 #include "kernel.h"
 
 static volatile int lock;
-struct processor_table *processors;
+extern struct processor_table *processors;
 
 struct syscall *syscall_table;
 
@@ -66,16 +66,9 @@ kmain(void)
     /* Initialize the scheduler */
     sched_init();
 
-    /* Initialize random number generator */
+    /* Initialize the random number generator */
     rng_init();
     rng_stir();
-
-#if 0
-    int i;
-    for ( i = 0; i < 16; i++ ) {
-        kprintf("RNG: %.8x\r\n", rng_random());
-    }
-#endif
 
     /* Initialize IRQ handlers */
     irq_handler_table_init();
@@ -93,21 +86,7 @@ kmain(void)
 
     e1000_init();
 
-    int i;
-    struct ktask *t;
-
-    for ( i = 0; i < processors->n; i++ ) {
-        t = ktask_alloc(TASK_POLICY_KERNEL);
-        t->main = &ktask_idle_main;
-        t->id = -1;
-        t->name = "[idle]";
-        t->argv = NULL;
-        t->state = TASK_STATE_READY;
-        processors->prs[i].idle = t;
-    }
     ktask_init();
-
-    //sched_ktask_enqueue(ktask_queue_entry_new(processors->prs[processors->map[this_cpu()]].idle));
 
     sched();
     task_restart();
