@@ -197,11 +197,10 @@ boot_kernel:
 	movw	%ax,%es
 	xorw	%bx,%bx
 	movb	drive,%dl
-	movw	$0x80,%cx
+	movw	$0x180,%cx
 	movw	$0xb1,%ax	/* FIXME: Resolved from FAT */
 	call	read
 	jmp	entry16
-
 
 /* Load the kernel: Load 0x38 sectors (28KiB) from LBA #33 */
 	//xorw	%ax,%ax
