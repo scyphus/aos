@@ -32,14 +32,7 @@ bootmon: boot/arch/$(ARCH)/bootmon.o \
 	boot/arch/$(ARCH)/entry16.o \
 	boot/arch/$(ARCH)/entry32.o \
 	boot/arch/$(ARCH)/entry64.o \
-	boot/arch/$(ARCH)/boot.o \
-	boot/arch/$(ARCH)/memory.o \
-	boot/arch/$(ARCH)/vga.o \
-	boot/arch/$(ARCH)/pci.o \
-	boot/arch/$(ARCH)/ahci.o \
-	boot/arch/$(ARCH)/ohci.o \
-	boot/arch/$(ARCH)/xhci.o \
-	boot/arch/$(ARCH)/fat.o
+	boot/arch/$(ARCH)/boot.o
 	$(LD) -N -e bootmon -Ttext=0x09000 --oformat binary -o $@ $^
 
 bootx64.efi: efi/arch/$(ARCH)/efi.o
