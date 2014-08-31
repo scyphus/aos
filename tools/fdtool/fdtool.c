@@ -141,7 +141,7 @@ main(int argc, const char *const argv[])
     /* Stage 2 information */
     buf[0] = 1;
     buf[1] = 0;
-    buf[2] = 0x40;
+    buf[2] = 0x38;
     buf[3] = 0;
     done = 0;
     while ( done < 4 ) {
