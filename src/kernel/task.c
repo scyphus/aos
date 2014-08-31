@@ -192,6 +192,7 @@ ktask_init(void)
     int i;
     struct ktask *t;
 
+    /* Idle process */
     for ( i = 0; i < processors->n; i++ ) {
         t = ktask_alloc(TASK_POLICY_KERNEL);
         t->main = &ktask_idle_main;

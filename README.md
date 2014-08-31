@@ -182,4 +182,10 @@ Hirochika Asai
     8086:1e02 Intel Corporation 7 Series/C210 Series Chipset Family 6-port SATA Controller
     8086:8c02 Intel Corporation 8 Series/C220 Series Chipset Family 6-port SATA Controller
 
+## Task tree
 
+* (-1) idle
+* (0) kmain (kernel)
+* (1) launchd
+** driver
+** shell
