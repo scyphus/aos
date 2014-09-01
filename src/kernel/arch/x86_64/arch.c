@@ -228,16 +228,8 @@ arch_bsp_init(void)
 
     /* ToDo: Synchronize all processors */
 
-    /* Print out the running processors */
-#if 1
-    for ( i = 0; i < MAX_PROCESSORS; i++ ) {
-        pdata = (struct p_data *)((u64)P_DATA_BASE + i * P_DATA_SIZE);
-        if ( pdata->flags & 1 ) {
-            arch_dbg_printf("Processor #%d is running.\r\n", i);
-        }
-    }
-#endif
-
+#if 0
+    /* Performance monitoring registers */
     //IA32_PMCx
     //IA32_PERFEVTSEL0: 0x186
     // LLC cache misses: Event 2E, unmask 41H
@@ -273,6 +265,7 @@ arch_bsp_init(void)
     arch_busy_usleep(10);
     //__asm__ __volatile__ ("rdpmc" : "=a"(aa), "=d"(dd)  : "c"(cc) );
     //kprintf("Cycles: %.8x%.8x\r\n", dd, aa);
+#endif
 
     /* Initialize local APIC counter */
     lapic_start_timer(LAPIC_HZ, IV_LOC_TMR);

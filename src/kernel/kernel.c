@@ -109,7 +109,6 @@ apmain(void)
 }
 
 
-
 #define SYSCALL_MAX_NR  0x10
 #define SYSCALL_HLT     1
 #define SYSCALL_READ    2
