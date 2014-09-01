@@ -65,6 +65,15 @@ processor_this(void)
 }
 
 /*
+ * Get the specified processor structure
+ */
+struct processor *
+processor_get(u8 id)
+{
+    return &processors->prs[processors->map[id]];
+}
+
+/*
  * Local variables:
  * tab-width: 4
  * c-basic-offset: 4

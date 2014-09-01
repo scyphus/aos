@@ -1130,7 +1130,6 @@ _builtin_start(char *const argv[])
 
     return 0;
 }
-extern struct processor_table *processors;
 int
 _builtin_stop(char *const argv[])
 {
@@ -1139,8 +1138,8 @@ _builtin_stop(char *const argv[])
     id = atoi(argv[1]);
     if ( 0 != id ) {
         /* Stop command */
-        processors->prs[processors->map[id]].idle->cred = 16;
-        arch_set_next_task_other_cpu(processors->prs[processors->map[id]].idle, id);
+        processor_get(id)->idle->cred = 16;
+        arch_set_next_task_other_cpu(processor_get(id)->idle, id);
         /* IPI */
         lapic_send_ns_fixed_ipi(id, IV_IPI);
     } else {

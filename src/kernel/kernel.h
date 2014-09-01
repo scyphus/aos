@@ -576,6 +576,7 @@ int ktask_fork_execv(int, int (*)(int, char *[]), char **);
 /* in processor.c */
 int processor_init(void);
 struct processor * processor_this(void);
+struct processor * processor_get(u8);
 
 
 /* in shell.c */
