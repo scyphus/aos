@@ -1079,8 +1079,6 @@ _tcp_test_main(int argc, char *argv[])
 
 
 
-void lapic_send_fixed_ipi(u8 vector);
-int this_cpu();
 int
 _builtin_start(char *const argv[])
 {
@@ -1099,20 +1097,11 @@ _builtin_start(char *const argv[])
     /* Start command */
     if ( 0 == kstrcmp("mgmt", argv[1]) ) {
         /* Start management process */
-#if 0
-        struct netdev_list *list;
-        list = netdev_head;
-        kfree(t);
-        u8 pkt[4096];
-        list->netdev->recvpkt(pkt, 4096, list->netdev);
-#endif
-#if 1
         id = atoi(argv[2]);
         t->main = &_mgmt_main;
         arch_set_next_task_other_cpu(t, id);
         kprintf("Launch mgmt @ CPU #%d\r\n", id);
         lapic_send_ns_fixed_ipi(id, IV_IPI);
-#endif
     } else if ( 0 == kstrcmp("tx", argv[1]) ) {
         /* Start Tx */
         id = atoi(argv[2]);
