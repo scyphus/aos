@@ -183,7 +183,6 @@ net_arp_unregister(struct net_arp_table *t, const u32 ipaddr)
 }
 
 
-
 /*
  * Compute checksum
  */
@@ -769,8 +768,9 @@ net_rx(struct net *net, struct net_port *port, u8 *pkt, int len, int vlan)
 }
 
 
-
-
+/*
+ * Initialize the network driver
+ */
 int
 net_init(struct net *net)
 {
