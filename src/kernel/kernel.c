@@ -104,7 +104,7 @@ apmain(void)
     arch_ap_init();
 
     //sched();
-    arch_set_next_task(processors->prs[processors->map[this_cpu()]].idle);
+    arch_set_next_task(processor_this()->idle);
     task_restart();
 }
 

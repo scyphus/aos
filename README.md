@@ -186,6 +186,6 @@ Hirochika Asai
 
 * (-1) idle
 * (0) kmain (kernel)
-* (1) launchd
+* (1) init (launcher)
 ** driver
 ** shell

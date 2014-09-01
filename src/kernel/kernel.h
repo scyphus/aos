@@ -571,9 +571,11 @@ void sched(void);
 int sched_ktask_enqueue(struct ktask_queue_entry *);
 struct ktask_queue_entry * sched_ktask_dequeue(void);
 struct ktask_queue_entry * ktask_queue_entry_new(struct ktask *);
+int ktask_fork_execv(int, int (*)(int, char *[]), char **);
 
 /* in processor.c */
 int processor_init(void);
+struct processor * processor_this(void);
 
 
 /* in shell.c */

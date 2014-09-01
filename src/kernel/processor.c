@@ -12,6 +12,8 @@
 
 struct processor_table *processors;
 
+int this_cpu(void);
+
 /*
  * Initialize the processor table
  */
@@ -53,6 +55,14 @@ processor_init(void)
     return 0;
 }
 
+/*
+ * Get this processor structure
+ */
+struct processor *
+processor_this(void)
+{
+    return &processors->prs[processors->map[this_cpu()]];
+}
 
 /*
  * Local variables:

@@ -19,7 +19,6 @@ static struct ktask_table *ktasks;
 
 int ktask_idle_main(int argc, char *argv[]);
 int ktask_init_main(int argc, char *argv[]);
-int ktask_fork_execv(int, int (*)(int, char *[]), char **);
 void ktask_free(struct ktask *);
 
 /* FIXME: To be moved to somewhere else */
@@ -71,7 +70,7 @@ sched(void)
     /* Check if the next task is already scheduled */
     t = arch_get_next_task();
     if ( NULL != t ) {
-        /* Already scheduled */
+        /* Already scheduled, then task_restart() will run the scheduled task */
         return;
     }
 
@@ -79,9 +78,9 @@ sched(void)
     e = sched_ktask_dequeue();
     if ( NULL == e ) {
         if ( NULL == arch_get_current_task() ) {
-            /* No task is running, then schedule idle process */
-            processors->prs[processors->map[this_cpu()]].idle->cred = DEFAULT_CREDIT;
-            arch_set_next_task(processors->prs[processors->map[this_cpu()]].idle);
+            /* No task is running, then schedule the idle process */
+            processor_this()->idle->cred = DEFAULT_CREDIT;
+            arch_set_next_task(processor_this()->idle);
             return;
         } else {
             /* No task to be scheduled */
@@ -91,14 +90,13 @@ sched(void)
 
     /* If the task is not ready, enqueue it and dequeue another one. */
     t = arch_get_current_task();
-    //kprintf("[%d %d]\r\n", t->id, t->state);
     while ( TASK_STATE_READY != e->ktask->state ) {
         /* Schedule it again */
         sched_ktask_enqueue(e);
         if ( t == e->ktask ) {
             /* Loop detected */
-            processors->prs[processors->map[this_cpu()]].idle->cred = DEFAULT_CREDIT;
-            arch_set_next_task(processors->prs[processors->map[this_cpu()]].idle);
+            processor_this()->idle->cred = DEFAULT_CREDIT;
+            arch_set_next_task(processor_this()->idle);
             return;
         }
         e = sched_ktask_dequeue();
@@ -108,7 +106,6 @@ sched(void)
     e->ktask->cred = DEFAULT_CREDIT;
     arch_set_next_task(e->ktask);
     sched_ktask_enqueue(e);
-    //kprintf("[%d %d]\r\n", arch_get_current_task()->id, e->ktask->id);
 }
 
 /*
@@ -377,7 +374,7 @@ ktask_destroy(struct ktask *t)
 
 
 /*
- * Init
+ * Kernel main task
  */
 int
 ktask_kernel_main(int argc, char *argv[])
@@ -385,7 +382,7 @@ ktask_kernel_main(int argc, char *argv[])
     int tid;
 
     /* Keyboard */
-    tid = ktask_fork_execv(TASK_POLICY_KERNEL, &kbd_driver_main, NULL);
+    tid = ktask_fork_execv(TASK_POLICY_DRIVER, &kbd_driver_main, NULL);
     if ( tid < 0 ) {
         kprintf("Cannot fork-exec keyboard driver.\r\n");
     }
@@ -394,7 +391,6 @@ ktask_kernel_main(int argc, char *argv[])
     if ( tid < 0 ) {
         kprintf("Cannot fork-exec a shell.\r\n");
     }
-
 
 #if 0
     /* Notify to all processors except for BSP */
@@ -427,7 +423,10 @@ ktask_init_main(int argc, char *argv[])
 int
 ktask_idle_main(int argc, char *argv[])
 {
-    arch_idle();
+    for ( ;; ) {
+        /* Execute the architecture-specific idle procedure */
+        arch_idle();
+    }
 
     return 0;
 }
