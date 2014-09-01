@@ -179,7 +179,6 @@ ktask_queue_entry_new(struct ktask *t)
     return e;
 }
 
-
 /*
  * Kernel task
  */
@@ -188,11 +187,10 @@ ktask_init(void)
 {
     char **argv;
     int ret;
-
     int i;
     struct ktask *t;
 
-    /* Idle process */
+    /* Assign an idle task to each processor */
     for ( i = 0; i < processors->n; i++ ) {
         t = ktask_alloc(TASK_POLICY_KERNEL);
         t->main = &ktask_idle_main;
@@ -203,16 +201,14 @@ ktask_init(void)
         processors->prs[i].idle = t;
     }
 
-    /* Allocate memory for new task */
+    /* Allocate and initialize the task table */
     ktasks = kmalloc(sizeof(struct ktask_table));
     if ( NULL == ktasks ) {
         return -1;
     }
-
-    /* Initialize task table */
     (void)kmemset(ktasks->tasks, 0, sizeof(struct ktask *) * TASK_TABLE_SIZE);
 
-    /* Prepare arguments */
+    /* Initialize the kernel main task */
     argv = kmalloc(sizeof(char *) * 2);
     if ( NULL == argv ) {
         kfree(ktasks);
@@ -225,7 +221,6 @@ ktask_init(void)
         kfree(ktasks);
         return -1;
     }
-
     ret = ktask_fork_execv(TASK_POLICY_KERNEL, &ktask_kernel_main, argv);
     if ( ret < 0 ) {
         kfree(argv[0]);

@@ -17,7 +17,9 @@ struct syscall *syscall_table;
 
 /* FIXME */
 struct ptcam *tcam;
+#if DXR
 struct dxr *dxr;
+#endif
 
 /*
  * Temporary: Keyboard drivers
