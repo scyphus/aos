@@ -158,7 +158,7 @@ kbd_driver_main(int argc, char *argv[])
 {
     /* Hold keyboard stats and buffer */
     struct kbd_status stat;
-    int c;
+    //int c;
 
     /* Initialize the keyboard status */
     stat.lshift = 0;

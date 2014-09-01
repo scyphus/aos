@@ -1159,6 +1159,9 @@ _builtin_stop(char *const argv[])
     }
 }
 
+/*
+ * Display help
+ */
 int
 _builtin_help(char *const argv[])
 {
@@ -1169,6 +1172,8 @@ _builtin_help(char *const argv[])
     kprintf("    off     Power off\r\n");
     kprintf("    start   Start a daemon\r\n");
     kprintf("    stop    Stop a daemon\r\n");
+
+    return 0;
 }
 
 
@@ -1277,6 +1282,7 @@ _exec_cmd(struct kshell *kshell)
 {
     char **argv;
     char **tmp;
+    int ret;
 
     /* Parse the command */
     argv = _parse_cmd(kshell->cmdbuf);
@@ -1294,25 +1300,25 @@ _exec_cmd(struct kshell *kshell)
     }
 
     if ( 0 == kstrcmp("?", argv[0]) ) {
-        _builtin_help(argv);
+        ret = _builtin_help(argv);
     } else if ( 0 == kstrcmp("upa", argv[0]) ) {
-        _builtin_panic(argv);
+        ret = _builtin_panic(argv);
     } else if ( 0 == kstrcmp("off", argv[0]) ) {
-        _builtin_off(argv);
+        ret =_builtin_off(argv);
     } else if ( 0 == kstrcmp("uptime", argv[0]) ) {
-        _builtin_uptime(argv);
+        ret = _builtin_uptime(argv);
     } else if ( 0 == kstrcmp("show", argv[0])
                 || 0 == kstrcmp("sh", argv[0])
                 || 0 == kstrcmp("sho", argv[0]) ) {
-        _builtin_show(argv);
+        ret =_builtin_show(argv);
     } else if ( 0 == kstrcmp("start", argv[0]) ) {
-        _builtin_start(argv);
+        ret =_builtin_start(argv);
     } else if ( 0 == kstrcmp("stop", argv[0]) ) {
-        _builtin_stop(argv);
+        ret = _builtin_stop(argv);
     } else if ( 0 == kstrcmp("test", argv[0]) ) {
-        _builtin_test(argv);
+        ret = _builtin_test(argv);
     } else if ( 0 == kstrcmp("test2", argv[0]) ) {
-        _builtin_test2(argv);
+        ret = _builtin_test2(argv);
     } else {
         kprintf("%s: Command not found.\r\n", argv[0]);
     }
@@ -1329,6 +1335,7 @@ _exec_cmd(struct kshell *kshell)
     kshell->pos = 0;
     kshell->cmdbuf[0] = 0;
 }
+
 
 /*
  * Shell process
