@@ -34,28 +34,6 @@ struct kcmd {
     char **cmds;
 };
 
-
-
-static u16
-_checksum(u8 *data, int len)
-{
-    /* Compute checksum */
-    u16 *tmp;
-    u32 cs;
-    int i;
-
-    tmp = (u16 *)data;
-    cs = 0;
-    for ( i = 0; i < len / 2; i++ ) {
-        cs += (u32)tmp[i];
-        cs = (cs & 0xffff) + (cs >> 16);
-    }
-    cs = 0xffff - cs;
-
-    return cs;
-}
-
-
 /* Clear */
 static void
 _init(struct kshell *kshell)
@@ -1079,6 +1057,9 @@ _tcp_test_main(int argc, char *argv[])
 
 
 
+/*
+ * Start a process
+ */
 int
 _builtin_start(char *const argv[])
 {
@@ -1130,6 +1111,10 @@ _builtin_start(char *const argv[])
 
     return 0;
 }
+
+/*
+ * Stop a process
+ */
 int
 _builtin_stop(char *const argv[])
 {

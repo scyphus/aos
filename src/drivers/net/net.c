@@ -219,6 +219,27 @@ _checksum(const u8 *buf, int len)
 
     return ret;
 }
+#if 0
+static u16
+_checksum(u8 *data, int len)
+{
+    /* Compute checksum */
+    u16 *tmp;
+    u32 cs;
+    int i;
+
+    tmp = (u16 *)data;
+    cs = 0;
+    for ( i = 0; i < len / 2; i++ ) {
+        cs += (u32)tmp[i];
+        cs = (cs & 0xffff) + (cs >> 16);
+    }
+    cs = 0xffff - cs;
+
+    return cs;
+}
+#endif
+
 /*
  * Comput ICMPv6 checksum
  */
