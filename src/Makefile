@@ -15,6 +15,7 @@ bootmon: CFLAGS=-I./include \
 	-Wall -mno-sse3 -fleading-underscore -nostdlib -m64
 bootx64.efi: ASFLAGS=-nostdlib -I./kernel/arch/$(ARCH)/
 bootx64.efi: CFLAGS=-Wall -mno-sse3 -fleading-underscore -nostdlib -m64
+pxeboot: ASFLAGS=-nostdlib -I./boot/arch/$(ARCH)/
 kpack: ASFLAGS=-nostdlib -I./kernel/arch/$(ARCH)/
 kpack: CFLAGS=-I./include \
 	-Wall -fleading-underscore -nostdlib -O3 -m64
@@ -37,6 +38,11 @@ bootmon: boot/arch/$(ARCH)/bootmon.o \
 
 bootx64.efi: efi/arch/$(ARCH)/efi.o
 	$(LD) -N -e efimain -Ttext=0x7000 --oformat binary -o $@ $^
+
+
+## PXE boot
+pxeboot: boot/arch/$(ARCH)/pxeboot.o
+	$(LD) -N -e pxeboot -Ttext=0x7c00 --oformat binary -o $@ $^
 
 ## Kernel
 kpack: kernel/arch/$(ARCH)/asm.o \
