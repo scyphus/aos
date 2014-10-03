@@ -22,6 +22,7 @@ fdimage:
 	make -C src diskboot
 	make -C src bootmon
 	make -C src bootx64.efi
+	make -C src pxeboot
 	make -C src kpack
 	./tools/fdtool/fdtool ./aos.img src/diskboot src/bootmon src/kpack
 	./tools/efitool/efitool ./aos.efi ./src/bootx64.efi
