@@ -74,7 +74,7 @@ _builtin_uptime(char *const argv[])
     u64 x;
 
     x = arch_clock_get();
-    kprintf("uptime: %llu.%.9llu sec\r\n", x / 1000000000, x % 1000000000);
+    kprintf("Uptime: %llu.%.9llu sec\r\n", x / 1000000000, x % 1000000000);
 
     return 0;
 }
@@ -130,6 +130,25 @@ _builtin_show(char *const argv[])
 
     } else {
         kprintf("show <interfaces|pci|processors>\r\n");
+    }
+
+    return 0;
+}
+
+/*
+ * request
+ */
+int
+_builtin_request(char *const argv[])
+{
+    if ( 0 == kstrcmp("system", argv[1]) ) {
+        if ( 0 == kstrcmp("power-off", argv[2]) ) {
+            arch_poweroff();
+        } else {
+            kprintf("request system <power-off>\r\n");
+        }
+    } else {
+        kprintf("request <system>\r\n");
     }
 
     return 0;
@@ -818,8 +837,9 @@ _tx_main(int argc, char *argv[])
 }
 int net_init(struct net *);
 int net_rx(struct net *, struct net_port *, u8 *, int, int);
+int net_sc_rx_ether(struct net *, u8 *, int, void *);
 int
-_tcp_test_main(int argc, char *argv[])
+_net_test_main(int argc, char *argv[])
 {
     /* Search network device for management */
     struct netdev_list *list;
@@ -832,12 +852,15 @@ _tcp_test_main(int argc, char *argv[])
     int n;
     int plen;
     u64 ret;
+    int i;
+    /* Network */
     struct net net;
     struct net_port port;
     struct net_bridge bridge;
     struct net_ipif ipif;
     struct net_ipv4 ipv4;
-    int i;
+    struct net_router router;
+    struct net_rib4 rib4;
 
     net_init(&net);
 
@@ -845,6 +868,10 @@ _tcp_test_main(int argc, char *argv[])
     list = netdev_head;
     dev = list->netdev;
 
+    //net_l3if_register(&net);
+
+
+    /* Bridge */
     bridge.nr = 1;
     bridge.ports = kmalloc(sizeof(struct net_port *) * bridge.nr);
     bridge.ports[0] = &port;
@@ -857,11 +884,11 @@ _tcp_test_main(int argc, char *argv[])
         bridge.fdb.entries[i].type = NET_FDB_INVAL;
     }
 
+    /* L3 interface */
     ipif.mac = 0;
     kmemcpy(&ipif.mac, dev->macaddr, 6);
     ipif.bridge = &bridge;
     ipif.ipv4 = &ipv4;
-
     ipv4.addr = bswap32(0xc0a83803);
     ipv4.ipif = &ipif;
     ipv4.arp.sz = 4096;
@@ -870,9 +897,26 @@ _tcp_test_main(int argc, char *argv[])
         ipv4.arp.entries[i].state = -1;
     }
 
+    /* Port */
     port.netdev = dev;
+    port.next = net_sc_rx_ether;
     kmemset(port.bridges, 0, sizeof(struct net_bridge *) * 4096);
     port.bridges[0] = &bridge;
+
+    /* Router */
+    router.nr = 1;
+    router.ipv4s = kmalloc(sizeof(struct net_ipv4 *) * router.nr);
+    router.ipv4s[0] = &ipv4;
+    ipv4.router = &router;
+    router.rib4 = &rib4;
+
+    /* RIB */
+    rib4.nr = 1;
+    rib4.entries = kmalloc(sizeof(struct net_rib4_entry) * rib4.nr);
+    rib4.entries[0].prefix = 0;
+    rib4.entries[0].length = 0;
+    rib4.entries[0].nexthop = 0xc0a83801;
+
 
     kprintf("ARP on %s\r\n", port.netdev->name);
     while ( 1 ) {
@@ -880,7 +924,8 @@ _tcp_test_main(int argc, char *argv[])
         if ( n <= 0 ) {
             continue;
         }
-        net_rx(&net, &port, pkt, n, -1);
+        port.next(&net, pkt, n, NULL);
+        //net_rx(&net, &port, pkt, n, -1);
     }
 
     return 0;
@@ -1097,10 +1142,10 @@ _builtin_start(char *const argv[])
         arch_set_next_task_other_cpu(t, id);
         kprintf("Launch routing @ CPU #%d\r\n", id);
         lapic_send_ns_fixed_ipi(id, IV_IPI);
-    } else if ( 0 == kstrcmp("tcp", argv[1]) ) {
+    } else if ( 0 == kstrcmp("net", argv[1]) ) {
         /* Start TCP testing process */
         id = atoi(argv[2]);
-        t->main = &_tcp_test_main;
+        t->main = &_net_test_main;
         arch_set_next_task_other_cpu(t, id);
         kprintf("Launch TCP @ CPU #%d\r\n", id);
         lapic_send_ns_fixed_ipi(id, IV_IPI);
@@ -1145,6 +1190,7 @@ _builtin_help(char *const argv[])
     kprintf("    off     Power off\r\n");
     kprintf("    start   Start a daemon\r\n");
     kprintf("    stop    Stop a daemon\r\n");
+    kprintf("    request Request a command\r\n");
 
     return 0;
 }
@@ -1284,6 +1330,8 @@ _exec_cmd(struct kshell *kshell)
                 || 0 == kstrcmp("sh", argv[0])
                 || 0 == kstrcmp("sho", argv[0]) ) {
         ret =_builtin_show(argv);
+    } else if ( 0 == kstrcmp("request", argv[0]) ) {
+        ret = _builtin_request(argv);
     } else if ( 0 == kstrcmp("start", argv[0]) ) {
         ret =_builtin_start(argv);
     } else if ( 0 == kstrcmp("stop", argv[0]) ) {
@@ -1320,6 +1368,32 @@ proc_shell(int argc, char *argv[])
     volatile int c;
     volatile int ret;
     int fd;
+
+    /* Print the logo */
+    kprintf("\r\n"
+            "                               iiii                           \r\n"
+            "                              ii  ii                          \r\n"
+            "                               iiii                           \r\n"
+            "            ppppp                                             \r\n"
+            "    ppp  ppppppppppp           i  i       xxxx          xxxx  \r\n"
+            "    pppppppp     ppppp         iiii        xxxx        xxxx   \r\n"
+            "    pppppp         ppppp       iiii         xxxxx    xxxxx    \r\n"
+            "    pppp            ppppp      iiii          xxxxx  xxxx      \r\n"
+            "    ppp              pppp      iiii            xxxxxxxx       \r\n"
+            "    ppp               ppp      iiii              xxxxx        \r\n"
+            "    ppp              pppp      iiii            xxxxxxxx       \r\n"
+            "    ppp              pppp      iiii           xxxx  xxxx      \r\n"
+            "    ppppp           ppppp      iiii         xxxxx    xxxxx    \r\n"
+            "    ppppppp       ppppp        iiii        xxxx        xxxx   \r\n"
+            "    pppppppppppppppppp         iiii       xxxx          xxxx  \r\n"
+            "    ppp    pppppppp             ii                            \r\n"
+            "    ppp                                                       \r\n"
+            "    ppp                                                       \r\n"
+            "    ppp                                                       \r\n"
+            "    ppp                                                       \r\n"
+            "    pp                                                        \r\n"
+            "\r\n");
+
 
     _init(&kshell);
 

@@ -263,12 +263,18 @@ struct netdev_list {
     struct netdev *netdev;
     struct netdev_list *next;
 };
-struct net_port {
-    /* Bidirectional link */
-    struct netdev *netdev;
-    /* VLAN bridges */
-    struct net_bridge *bridges[4096];
+/* Router */
+struct net_rib4_entry {
+    u32 prefix;
+    int length;
+    u32 nexthop;
 };
+struct net_rib4 {
+    int nr;
+    struct net_rib4_entry *entries;
+};
+
+
 /* FDB */
 #define NET_FDB_INVAL           0
 #define NET_FDB_PORT_DYNAMIC    1
@@ -286,6 +292,39 @@ struct net_fdb {
     int nr;
     struct net_fdb_entry *entries;
 };
+
+
+
+/*
+ * Switch
+ */
+struct net_switch {
+    /* Forwarding database */
+    struct net_fdb fdb;
+};
+
+
+
+/*
+ * IP interface
+ */
+struct net_ip {
+
+};
+
+
+
+/*
+ * L2 interface
+ */
+struct net_l2if {
+    int type;
+    union {
+        struct net_port *port;
+        struct net_l3if *l3if;
+    } u;
+};
+
 struct net_bridge {
     /* Lower layer information */
     int nr;
@@ -305,22 +344,50 @@ struct net_ipv4 {
     u32 addr; /* Stored in the network order */
     struct net_ipif *ipif;
     struct net_arp_table arp;
+    struct net_router *router;
 };
 struct net_router {
     int nr;
-    struct net_ipv4 **ipifs;
+    struct net_ipv4 **ipv4s;
+    struct net_rib4 *rib4;
 };
 
+
+/*
+ * Global network structure
+ */
 struct net {
     int sys_mtu;
-
     /*void *code;*/
-
     //struct netdev_list *devs;
     //struct net_bridge bridge;
 };
 
+/*
+ * Stack
+ */
+typedef int (*net_stack_chain_f)(struct net *, u8 *, int, void *);
 
+
+/*
+ * Port
+ */
+struct net_port {
+    /* Bidirectional link */
+    struct netdev *netdev;
+    /* Chain */
+    net_stack_chain_f next;
+
+
+    /* VLAN bridges */
+    struct net_bridge *bridges[4096];
+};
+
+
+struct net_stack_chain_next {
+    net_stack_chain_f next;
+    void *db;
+};
 
 
 

@@ -126,7 +126,7 @@ kbd_irq_handler(int irq, void *user)
         switch ( scan_code ) {
         case 0x9d:
             /* Left ctrl */
-            stat->rctrl = 0;
+            stat->lctrl = 0;
             break;
         case 0xaa:
             /* Left shift */

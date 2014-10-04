@@ -9,6 +9,7 @@
 
 #include <aos/const.h>
 #include "../../kernel/kernel.h"
+#include "net.h"
 
 #define likely(x)       __builtin_expect((x),1)
 #define unlikely(x)     __builtin_expect((x),0)
@@ -95,6 +96,7 @@ static int _rx_ipif(struct net *, struct net_ipif *, u8 *, int, struct ether *);
 
 #define ARP_STATE_INVAL         -1
 #define ARP_STATE_DYNAMIC       1
+
 
 /*
  * Register an ARP entry with an IPv4 address and a MAC address
@@ -389,6 +391,13 @@ _rx_icmp(struct net *net, struct net_ipif *ipif, u8 *pkt, int len,
             return -1;
         }
 
+#if 0
+        /* Search port */
+        _tx_bridge(net, ipif->bridge, rpkt,
+                   sizeof(struct ethhdr) + sizeof(struct ip_arp),
+                   dstmac, ipif, 0);
+#endif
+
         break;
     default:
         ;
@@ -582,13 +591,13 @@ _rx_ipif(struct net *net, struct net_ipif *ipif, u8 *pkt, int len,
          struct ether *eth)
 {
     switch ( eth->type ) {
-    case 0x0800:
+    case ETHERTYPE_IPV4:
         /* IPv4 */
         return _rx_ipv4(net, ipif, pkt, len);
-    case 0x0806:
+    case ETHERTYPE_ARP:
         /* ARP */
         return _rx_arp(net, ipif, pkt, len);
-    case 0x86dd:
+    case ETHERTYPE_IPV6:
         /* IPv6 */
         return _rx_ipv6(net, ipif, pkt, len);
     default:
@@ -727,6 +736,60 @@ _rx_802_1q(struct net *net, struct net_port *port, u8 *pkt, int len,
                       len - sizeof(struct ethhdr1q), eth, port, 1);
 }
 
+
+
+/*
+ * Rx IP
+ */
+int
+net_sc_rx_ip(struct net *net, u8 *pkt, int len, void *data)
+{
+    return 0;
+}
+
+/*
+ * Rx ethernet (called from driver)
+ */
+int
+net_sc_rx_ether(struct net *net, u8 *pkt, int len, void *data)
+{
+    struct ether eth;
+    struct ethhdr *ehdr;
+    int ret;
+
+    /* Check the length first */
+    if ( unlikely(len < sizeof(struct ethhdr)) ) {
+        return -1;
+    }
+
+    if ( NULL != data ) {
+        /* To be supported */
+        return -1;
+    }
+
+    /* Check layer 2 information first */
+    ehdr = (struct ethhdr *)pkt;
+    eth.type = bswap16(ehdr->type);
+    eth.dstmac = ehdr->dst;
+    eth.srcmac = ehdr->src;
+
+    ret = net_sc_rx_ether(net, pkt + sizeof(struct ethhdr),
+                          len - sizeof(struct ethhdr), &eth);
+
+    /* Check by type */
+    if ( ETHERTYPE_8021Q == eth.type ) {
+        /* 802.1Q: Not supported */
+        return -1;
+    } else {
+        /* Ether */
+        kprintf("XXXX\r\n");
+
+
+    }
+
+    return ret;
+}
+
 /*
  * Rx packet handler
  */
@@ -736,6 +799,7 @@ net_rx(struct net *net, struct net_port *port, u8 *pkt, int len, int vlan)
     struct ether eth;
     struct net_bridge *bridge;
     struct ethhdr *ehdr;
+    int ret;
 
     /* Check the length first */
     if ( unlikely(len < sizeof(struct ethhdr)) ) {
@@ -748,8 +812,22 @@ net_rx(struct net *net, struct net_port *port, u8 *pkt, int len, int vlan)
         eth.vlan = 0;
     }
     if ( eth.vlan >= 4096 ) {
+        /* Invalid VLAN ID */
         return -1;
     }
+
+    /* Check layer 2 information first */
+    ehdr = (struct ethhdr *)pkt;
+    eth.type = bswap16(ehdr->type);
+    eth.dstmac = ehdr->dst;
+    eth.srcmac = ehdr->src;
+
+    ret = net_sc_rx_ether(net, pkt + sizeof(struct ethhdr),
+                          len - sizeof(struct ethhdr), &eth);
+
+    return ret;
+
+#if 0
     bridge = port->bridges[eth.vlan];
 
     /* Check layer 2 information first */
@@ -757,7 +835,7 @@ net_rx(struct net *net, struct net_port *port, u8 *pkt, int len, int vlan)
     eth.type = bswap16(ehdr->type);
     eth.dstmac = ehdr->dst;
     eth.srcmac = ehdr->src;
-    if ( 0x8100 == eth.type ) {
+    if ( ETHERTYPE_8021Q == eth.type ) {
         /* 802.1Q */
         return _rx_802_1q(net, port, pkt + sizeof(struct ethhdr),
                           len - sizeof(struct ethhdr), &eth);
@@ -765,8 +843,8 @@ net_rx(struct net *net, struct net_port *port, u8 *pkt, int len, int vlan)
         return _rx_bridge(net, bridge, pkt + sizeof(struct ethhdr),
                           len - sizeof(struct ethhdr), &eth, port, 1);
     }
+#endif
 }
-
 
 /*
  * Initialize the network driver
@@ -774,10 +852,63 @@ net_rx(struct net *net, struct net_port *port, u8 *pkt, int len, int vlan)
 int
 net_init(struct net *net)
 {
-    net->sys_mtu = 9000;
+    /* Set the system MTU */
+    net->sys_mtu = 9216;
 
     return 0;
 }
+
+
+/*
+ * Lookup forwarding database
+ */
+struct net_fdb_entry *
+net_switch_fdb_lookup(struct net_switch *sw)
+{
+    return NULL;
+}
+
+
+
+/*
+ * Register L3 interface
+ */
+int
+net_l3if_register(struct net *net)
+{
+    return 0;
+}
+
+/*
+ * Unregister L3 interface
+ */
+int
+net_l3if_unregister(struct net *net, struct net_l3if *l3if)
+{
+    return 0;
+}
+
+/*
+ * Add an IP address to a L3 interface
+ */
+int
+net_l3if_ipv4_addr_add(struct net *net)
+{
+    return 0;
+}
+
+/*
+ * Delete an IP address from a L3 interface
+ */
+int
+net_l3if_ipv4_addr_delete(struct net *net)
+{
+    return 0;
+}
+
+
+
+
 
 
 /*
