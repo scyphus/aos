@@ -34,6 +34,31 @@ struct kcmd {
     char **cmds;
 };
 
+
+struct cmd {
+    char *s;
+    char *desc;
+    int (*f)(char *const []);
+};
+
+struct cmd cmds[] = {
+    { .s = "show", .desc = "Show information", .f = NULL },
+    { .s = "set", .desc = "Set a configuration", .f = NULL },
+    { .s = "unset", .desc = "Set a configuration", .f = NULL },
+    { .s = "request", .desc = "Request a command", .f = NULL },
+};
+
+
+
+
+
+
+
+
+
+
+
+
 /* Clear */
 static void
 _init(struct kshell *kshell)
@@ -838,6 +863,8 @@ _tx_main(int argc, char *argv[])
 int net_init(struct net *);
 int net_rx(struct net *, struct net_port *, u8 *, int, int);
 int net_sc_rx_ether(struct net *, u8 *, int, void *);
+int net_sc_rx_port_host(struct net *, u8 *, int, void *);
+u32 bswap32(u32);
 int
 _net_test_main(int argc, char *argv[])
 {
@@ -845,22 +872,11 @@ _net_test_main(int argc, char *argv[])
     struct netdev_list *list;
     struct netdev *dev;
     u8 pkt[1518];
-    u8 pkt2[1518];
-    u8 *ip;
-    u8 *udp;
-    u8 *data;
     int n;
-    int plen;
-    u64 ret;
-    int i;
     /* Network */
     struct net net;
     struct net_port port;
-    struct net_bridge bridge;
-    struct net_ipif ipif;
-    struct net_ipv4 ipv4;
-    struct net_router router;
-    struct net_rib4 rib4;
+    struct net_port_host hport;
 
     net_init(&net);
 
@@ -868,8 +884,53 @@ _net_test_main(int argc, char *argv[])
     list = netdev_head;
     dev = list->netdev;
 
+    /* Port */
+    kmemcpy(hport.macaddr, dev->macaddr, 6);
+    hport.ip4addr.nr = 1;
+    hport.ip4addr.addrs = kmalloc(sizeof(u32) * 1);
+    if ( NULL == hport.ip4addr.addrs ){
+        return -1;
+    }
+    hport.ip4addr.addrs[0] = bswap32(0xc0a83803UL);
+    hport.ip6addr.nr = 0;
+    hport.port = &port;
+    port.netdev = dev;
+    port.data = (void *)&hport;
+    port.next = net_sc_rx_port_host;
+
+    kprintf("ARP on %s\r\n", port.netdev->name);
+    while ( 1 ) {
+        n = port.netdev->recvpkt(pkt, sizeof(pkt), port.netdev);
+        if ( n <= 0 ) {
+            continue;
+        }
+        port.next(&net, pkt, n, port.data);
+        //net_rx(&net, &port, pkt, n, -1);
+    }
+
+    return 0;
+
+
+
+
+
+
+
     //net_l3if_register(&net);
 
+#if 0
+    u8 pkt2[1518];
+    u8 *ip;
+    u8 *udp;
+    u8 *data;
+    int plen;
+    u64 ret;
+    int i;
+    struct net_bridge bridge;
+    struct net_ipif ipif;
+    struct net_ipv4 ipv4;
+    struct net_router router;
+    struct net_rib4 rib4;
 
     /* Bridge */
     bridge.nr = 1;
@@ -929,6 +990,7 @@ _net_test_main(int argc, char *argv[])
     }
 
     return 0;
+#endif
 
 #if 0
     struct tcp_session *sess;

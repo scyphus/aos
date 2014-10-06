@@ -369,6 +369,46 @@ struct net {
 typedef int (*net_stack_chain_f)(struct net *, u8 *, int, void *);
 
 
+
+
+
+
+/*
+ * IPv4 address
+ */
+struct net_ip4addr {
+    int nr;
+    u32 *addrs;
+};
+/*
+ * IPv6 address
+ */
+struct net_ip6addr {
+    int nr;
+    u8 *addrs;
+};
+
+/*
+ * Host L3 port
+ */
+struct net_port_host {
+    /* MAC address */
+    u8 macaddr[6];
+    /* IPv4 address */
+    struct net_ip4addr ip4addr;
+    /* ARP */
+    struct net_arp_table arp;
+    /* IPv6 address */
+    struct net_ip6addr ip6addr;
+    /* ND */
+    struct net_nd_table nd;
+
+    struct net_port *port;
+
+    /* TX function */
+    net_stack_chain_f tx;
+};
+
 /*
  * Port
  */
@@ -377,7 +417,7 @@ struct net_port {
     struct netdev *netdev;
     /* Chain */
     net_stack_chain_f next;
-
+    void *data;
 
     /* VLAN bridges */
     struct net_bridge *bridges[4096];

@@ -783,9 +783,129 @@ net_sc_rx_ether(struct net *net, u8 *pkt, int len, void *data)
     } else {
         /* Ether */
         kprintf("XXXX\r\n");
-
-
     }
+
+    return ret;
+}
+
+
+
+/*
+ * Host L3 port stack chain
+ */
+int
+net_sc_rx_port_host(struct net *net, u8 *pkt, int len, void *data)
+{
+    struct ether eth;
+    struct ethhdr *ehdr;
+    struct net_port_host *hport;
+    struct ip_arp *arp;
+    u32 ipaddr;
+    int ret;
+    int i;
+
+    /* Check the length first */
+    if ( unlikely(len < sizeof(struct ethhdr)) ) {
+        return -1;
+    }
+
+    if ( NULL == data ) {
+        return -1;
+    }
+    hport = (struct net_port_host *)data;
+
+    /* Check layer 2 information first */
+    ehdr = (struct ethhdr *)pkt;
+    eth.type = bswap16(ehdr->type);
+    eth.dstmac = ehdr->dst;
+    eth.srcmac = ehdr->src;
+
+    if ( 0xffffffffffffULL == eth.dstmac ) {
+        /* Broadcast */
+        switch ( eth.type ) {
+        case ETHERTYPE_ARP:
+            /* Check the length first */
+            if ( unlikely(len - sizeof(struct ethhdr)
+                          < sizeof(struct ip_arp)) ) {
+                return -1;
+            }
+            arp = (struct ip_arp *)(pkt + sizeof(struct ethhdr));
+            if ( 1 != bswap16(arp->hw_type) ) {
+                /* Invalid ARP */
+                return -1;
+            }
+            if ( 0x0800 != bswap16(arp->protocol) ) {
+                /* Invalid ARP */
+                return -1;
+            }
+            if ( 0x06 != arp->hlen ) {
+                /* Invalid ARP */
+                return -1;
+            }
+            if ( 0x04 != arp->plen ) {
+                /* Invalid ARP */
+                return -1;
+            }
+            /* Check the destination IP address */
+            switch ( bswap16(arp->opcode) ) {
+            case 1:
+                /* ARP request */
+                ret = -1;
+                for ( i = 0; i < hport->ip4addr.nr; i++ ) {
+                    if ( arp->dst_ip == hport->ip4addr.addrs[i] ) {
+                        /* Found */
+                        ret = 0;
+                        ipaddr = hport->ip4addr.addrs[i];
+                        /* Register the entry */
+                        net_arp_register(&hport->arp, arp->src_ip,
+                                         arp->src_mac, 0);
+                        break;
+                    }
+                }
+                if ( ret < 0 ) {
+                    return ret;
+                }
+                /* Send an ARP reply */
+                u64 srcmac;
+                kmemcpy(&srcmac, hport->macaddr, 6);
+                u64 dstmac = arp->src_mac;
+                u64 srcip = ipaddr;
+                u64 dstip = arp->src_ip;
+                u8 *rpkt;
+                rpkt = alloca(net->sys_mtu);
+                struct ethhdr *ehdr = (struct ethhdr *)rpkt;
+                ehdr->src = srcmac;
+                ehdr->dst = dstmac;
+                ehdr->type = bswap16(ETHERTYPE_ARP);
+                struct ip_arp *arp2 = (struct ip_arp *)
+                    (rpkt + sizeof(struct ethhdr));
+                arp2->hw_type = bswap16(1);
+                arp2->protocol = bswap16(0x0800);
+                arp2->hlen = 0x06;
+                arp2->plen = 0x04;
+                arp2->opcode = bswap16(2);
+                arp2->src_mac = srcmac;
+                arp2->src_ip = srcip;
+                arp2->dst_mac = dstmac;
+                arp2->dst_ip = dstip;
+
+                hport->port->netdev->sendpkt(rpkt,
+                                             sizeof(struct ethhdr)
+                                             + sizeof(struct ip_arp),
+                                             hport->port->netdev);
+                break;
+            }
+            break;
+        }
+
+    } else if ( 0 == kmemcmp(hport->macaddr, &eth.dstmac, 6) ) {
+        /* Unicast */
+        kprintf("u\r\n");
+    }
+
+
+    /* Ether */
+    kprintf("x\r\n");
 
     return ret;
 }
@@ -905,6 +1025,8 @@ net_l3if_ipv4_addr_delete(struct net *net)
 {
     return 0;
 }
+
+
 
 
 
