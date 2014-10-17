@@ -911,7 +911,9 @@ net_sc_rx_ether(struct net *net, u8 *pkt, int len, void *data)
 
 
 
-
+/*
+ * ICMP echo request handler
+ */
 static int
 _ipv4_icmp_echo_request(struct net *net, struct net_stack_chain_next *tx,
                         struct iphdr *iphdr, struct icmp_hdr *icmpreq, u8 *pkt,
@@ -946,6 +948,9 @@ _ipv4_icmp_echo_request(struct net *net, struct net_stack_chain_next *tx,
                                      len + sizeof(struct icmp_hdr));
 }
 
+/*
+ * IPv4 ICMP handler
+ */
 static int
 _ipv4_icmp(struct net *net, struct net_stack_chain_next *tx,
            struct iphdr *iphdr, u8 *pkt, int len)
