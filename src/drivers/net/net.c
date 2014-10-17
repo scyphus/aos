@@ -810,7 +810,28 @@ net_hps_host_port_ip_pre(struct net *net, void *data, u8 *buf, int len, u8 **p)
     /* Lookup MAC address table */
     ret = net_arp_resolve(&mdata->hport->arp, nh, &macaddr);
     if ( ret < 0 ) {
-        /* No entry found. FIXME: To send an ARP request */
+        /* No entry found. */
+        u8 abuf[1024];
+        struct ip_arp *arp;
+        ehdr = (struct ethhdr *)abuf;
+        ehdr->dst = 0xffffffffffffULL;
+        kmemcpy(&macaddr, mdata->hport->macaddr, 6);
+        ehdr->src = macaddr;
+        ehdr->type = bswap16(ETHERTYPE_ARP);
+        arp = (struct ip_arp *)(abuf + sizeof(struct ethhdr));
+        arp->hw_type = bswap16(1);
+        arp->protocol = bswap16(0x0800);
+        arp->hlen = 0x06;
+        arp->plen = 0x04;
+        arp->opcode = bswap16(ARP_REQUEST);
+        arp->src_mac = macaddr;
+        arp->src_ip = mdata->saddr;
+        arp->dst_mac = 0;
+        arp->dst_ip = nh;
+        mdata->hport->port->netdev->sendpkt(abuf,
+                                            sizeof(struct ethhdr)
+                                            + sizeof(struct ip_arp),
+                                            mdata->hport->port->netdev);
         return ret;
     }
 
