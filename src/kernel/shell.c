@@ -864,6 +864,8 @@ int net_init(struct net *);
 int net_rx(struct net *, struct net_port *, u8 *, int, int);
 int net_sc_rx_ether(struct net *, u8 *, int, void *);
 int net_sc_rx_port_host(struct net *, u8 *, int, void *);
+int net_sc_tx_port(struct net *, u8 *, int, void *);
+int net_rib4_add(struct net_rib4 *, const u32, int, u32);
 u32 bswap32(u32);
 int
 _net_test_main(int argc, char *argv[])
@@ -877,6 +879,7 @@ _net_test_main(int argc, char *argv[])
     struct net net;
     struct net_port port;
     struct net_port_host hport;
+    int i;
 
     net_init(&net);
 
@@ -892,19 +895,32 @@ _net_test_main(int argc, char *argv[])
         return -1;
     }
     hport.ip4addr.addrs[0] = bswap32(0xc0a83803UL);
+    hport.arp.sz = 4096;
+    hport.arp.entries = kmalloc(sizeof(struct net_arp_entry) * hport.arp.sz);
+    for ( i = 0; i < hport.arp.sz; i++ ) {
+        hport.arp.entries[i].state = -1;
+    }
     hport.ip6addr.nr = 0;
     hport.port = &port;
     port.netdev = dev;
-    port.data = (void *)&hport;
-    port.next = net_sc_rx_port_host;
+    port.next.data = (void *)&hport;
+    port.next.func = net_sc_rx_port_host;
+    hport.tx.func = net_sc_tx_port;
+    hport.tx.data = (void *)&port;
 
-    kprintf("ARP on %s\r\n", port.netdev->name);
+    /* Routing table */
+    hport.rib4.nr = 0;
+    hport.rib4.entries = NULL;
+    net_rib4_add(&hport.rib4, bswap32(0xc0a83800UL), 24, 0);
+    net_rib4_add(&hport.rib4, 0, 0, bswap32(0xc0a83802UL));
+
+    kprintf("Start network on %s\r\n", port.netdev->name);
     while ( 1 ) {
         n = port.netdev->recvpkt(pkt, sizeof(pkt), port.netdev);
         if ( n <= 0 ) {
             continue;
         }
-        port.next(&net, pkt, n, port.data);
+        port.next.func(&net, pkt, n, port.next.data);
         //net_rx(&net, &port, pkt, n, -1);
     }
 

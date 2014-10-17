@@ -92,6 +92,23 @@ struct ether {
 static int _rx_ipif(struct net *, struct net_ipif *, u8 *, int, struct ether *);
 
 
+
+static int
+rdrand(u64 *x)
+{
+    u64 r;
+    u64 f;
+
+    __asm__ __volatile__ ("rdrand %%rbx;"
+                          "pushfq;"
+                          "popq %%rax": "=b"(r), "=a"(f));
+    *x = r;
+
+    /* Return carry flag */
+    return (f & 0x1) - 1;
+}
+
+
 #define ARP_LIFETIME 300 * 1000
 
 #define ARP_STATE_INVAL         -1
@@ -184,6 +201,93 @@ net_arp_unregister(struct net_arp_table *t, const u32 ipaddr)
     return -1;
 }
 
+/*
+ * RIB
+ */
+int
+net_rib4_add(struct net_rib4 *r, u32 pf, int l, u32 nh)
+{
+    int i;
+    int nr;
+    struct net_rib4_entry *entries;
+
+    for ( i = 0; i < r->nr; i++ ) {
+        if ( r->entries[i].prefix == pf && r->entries[i].length == l ) {
+            /* The entry for this prefix already exists */
+            return -1;
+        }
+    }
+
+    /* Not found */
+    nr = r->nr + 1;
+    entries = kmalloc(sizeof(struct net_rib4_entry) * nr);
+    if ( NULL != r->entries ) {
+        if ( NULL == entries ) {
+            /* Memory error */
+            return -1;
+        }
+        kmemcpy(entries, r->entries, sizeof(struct net_rib4_entry) * (nr - 1));
+        kfree(r->entries);
+    }
+    entries[nr-1].prefix = pf;
+    entries[nr-1].length = l;
+    entries[nr-1].nexthop = nh;
+    r->entries = entries;
+    r->nr = nr;
+
+    return 0;
+}
+int
+net_rib4_lookup(struct net_rib4 *r, u32 addr, u32 *nh)
+{
+    u32 pf;
+    int l;
+    u32 cand;
+    int i;
+    u32 mask;
+
+    l = -1;
+    for ( i = 0; i < r->nr; i++ ) {
+        if ( r->entries[i].length != 32 ) {
+            mask = 0xffffffffULL >> (32 - r->entries[i].length);
+        } else {
+            mask = 0xffffffffULL;
+        }
+        if ( r->entries[i].prefix == (addr & mask) ) {
+            /* Found */
+            if ( l < r->entries[i].length ) {
+                pf = r->entries[i].prefix;
+                l = r->entries[i].length;
+                cand = r->entries[i].nexthop;
+            }
+        }
+    }
+
+    if ( l < 0 ) {
+        return -1;
+    }
+    *nh = cand;
+
+    return 0;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /*
  * Compute checksum
@@ -220,9 +324,9 @@ _checksum(const u8 *buf, int len)
 
     return ret;
 }
-#if 0
+
 static u16
-_checksum(u8 *data, int len)
+_ip_checksum(const u8 *data, int len)
 {
     /* Compute checksum */
     u16 *tmp;
@@ -239,7 +343,23 @@ _checksum(u8 *data, int len)
 
     return cs;
 }
-#endif
+
+
+/*
+ * Compute IPv4 checksum
+ */
+static u16
+_ipv4_checksum(struct iphdr *iphdr)
+{
+    return _checksum((u8 *)iphdr, (int)iphdr->ip_ihl * 4);
+}
+
+
+
+
+
+
+
 
 /*
  * Comput ICMPv6 checksum
@@ -790,6 +910,226 @@ net_sc_rx_ether(struct net *net, u8 *pkt, int len, void *data)
 
 
 
+
+
+
+static int
+_ipv4_icmp(struct net *net, struct net_stack_chain_next *tx,
+           struct iphdr *iphdr, u8 *pkt, int len)
+{
+    //struct icmp_hdr *icmp = (struct icmp_hdr *)(pkt+14+ip_hdrlen);
+    int ret;
+    u8 buf[4096];
+    u8 *p;
+    struct net_hps_host_port_ip_data mdata;
+    mdata.hport = ((struct net_port *)(tx->data))->next.data;
+    mdata.saddr = bswap32(0xc0a83803ULL);
+    mdata.daddr = iphdr->ip_src;
+
+    ret = net_hps_host_port_ip_pre(net, &mdata, buf, 4096, &p);
+    kprintf("XXX %llx\r\n", ret);
+    if ( ret < 0 ) {
+        return -1;
+    }
+    p[0] = 0xfe;
+    kprintf("ping %x, %llx\r\n", ret, *(u32 *)buf);
+    net_hps_host_pore_ip_post(net, &mdata, buf, 1);
+
+    return 0;
+}
+
+
+/*
+ * Process an IPv4 packet
+ */
+static int
+_ipv4(struct net *net, struct net_stack_chain_next *tx, u8 *pkt, int len,
+      struct net_ip4addr *ip4)
+{
+    struct iphdr *hdr;
+    int hdrlen;
+    int iplen;
+    u8 *payload;
+    int ret;
+    int i;
+
+    /* Check the length first */
+    if ( unlikely(len < sizeof(struct iphdr)) ) {
+        return -1;
+    }
+    hdr = (struct iphdr *)pkt;
+
+    /* Check the version */
+    if ( unlikely(4 != hdr->ip_version) ) {
+        return -1;
+    }
+
+    /* Header length */
+    hdrlen = hdr->ip_ihl * 4;
+    iplen = bswap16(hdr->ip_len);
+    if ( unlikely(len < iplen) ) {
+        return -1;
+    }
+
+    /* Check the destination */
+    ret = -1;
+    for ( i = 0; i < ip4->nr; i++ ) {
+        if ( hdr->ip_dst == ip4->addrs[i] ) {
+            /* Found */
+            ret = 0;
+            break;
+        }
+    }
+    if ( ret < 0 ) {
+        /* FIXME: Accept multicast should be specified by arguments */
+        if ( bswap32(0xe0000001) == hdr->ip_dst ) {
+            /* All node multicast */
+            ret = 0;
+        } else if ( bswap32(0xe0000002) == hdr->ip_dst ) {
+            /* All router multicast */
+            ret = 0;
+        } else {
+            return ret;
+        }
+    }
+
+    /* Take its payload */
+    payload = pkt + hdrlen;
+
+    switch ( hdr->ip_proto ) {
+    case IP_ICMP:
+        /* ICMP */
+        return _ipv4_icmp(net, tx, hdr, payload, iplen);
+    case IP_TCP:
+        /* TCP */
+        return -1;
+    case IP_UDP:
+        /* UDP */
+        break;
+    default:
+        /* Unsupported */
+        ;
+    }
+
+    return -1;
+}
+
+
+/*
+ * Process an ARP request
+ */
+static int
+_arp_request(struct net *net, struct net_stack_chain_next *tx,
+             struct ip_arp *arp, u64 macaddr, struct net_ip4addr *ip4,
+             struct net_arp_table *atbl)
+{
+    int i;
+    int ret;
+    u32 ipaddr;
+
+    /* ARP request */
+    ret = -1;
+    for ( i = 0; i < ip4->nr; i++ ) {
+        if ( arp->dst_ip == ip4->addrs[i] ) {
+            /* Found */
+            ret = 0;
+            ipaddr = ip4->addrs[i];
+            /* Register the entry */
+            net_arp_register(atbl, arp->src_ip, arp->src_mac, 0);
+            break;
+        }
+    }
+    if ( ret < 0 ) {
+        return ret;
+    }
+    /* Send an ARP reply */
+    u64 srcmac = macaddr;;
+    u64 dstmac = arp->src_mac;
+    u64 srcip = ipaddr;
+    u64 dstip = arp->src_ip;
+    u8 *rpkt;
+    rpkt = alloca(net->sys_mtu);
+    struct ethhdr *ehdr = (struct ethhdr *)rpkt;
+    ehdr->src = srcmac;
+    ehdr->dst = dstmac;
+    ehdr->type = bswap16(ETHERTYPE_ARP);
+    struct ip_arp *arp2 = (struct ip_arp *)
+        (rpkt + sizeof(struct ethhdr));
+    arp2->hw_type = bswap16(1);
+    arp2->protocol = bswap16(0x0800);
+    arp2->hlen = 0x06;
+    arp2->plen = 0x04;
+    arp2->opcode = bswap16(2);
+    arp2->src_mac = srcmac;
+    arp2->src_ip = srcip;
+    arp2->dst_mac = dstmac;
+    arp2->dst_ip = dstip;
+
+    return tx->func(net, rpkt, sizeof(struct ethhdr) + sizeof(struct ip_arp),
+                    tx->data);
+}
+
+/*
+ * Process an ARP reply packet
+ */
+static int
+_arp_reply(struct net *net, struct net_stack_chain_next *tx,
+           struct ip_arp *arp, u64 macaddr, struct net_ip4addr *ip4,
+           struct net_arp_table *atbl)
+{
+    int i;
+    int ret;
+    u32 ipaddr;
+
+    /* ARP reply */
+    if ( arp->dst_mac != macaddr ) {
+        return -1;
+    }
+
+    ret = -1;
+    for ( i = 0; i < ip4->nr; i++ ) {
+        if ( arp->dst_ip == ip4->addrs[i] ) {
+            /* Found */
+            ret = 0;
+            ipaddr = ip4->addrs[i];
+            /* Register the entry */
+            net_arp_register(atbl, arp->src_ip, arp->src_mac, 0);
+            break;
+        }
+    }
+    if ( ret < 0 ) {
+        return ret;
+    }
+
+    return -1;
+}
+
+/*
+ * Basic MAC address filter
+ */
+static int
+_mac_addr_filter_basic(u64 mac, struct net_macaddr *addrs)
+{
+    int i;
+
+    for ( i = 0; i < addrs->nr; i++ ) {
+        if ( mac == addrs->addrs[i] ) {
+            /* Unicast */
+            return 0;
+        }
+    }
+    if ( 0xffffffffffffULL == mac ) {
+        /* Broadcast */
+        return 0;
+    } else if ( mac & 0x010000000000 ) {
+        /* Multicast */
+        return 0;
+    }
+
+    /* Not found */
+    return -1;
+}
+
 /*
  * Host L3 port stack chain
  */
@@ -800,19 +1140,25 @@ net_sc_rx_port_host(struct net *net, u8 *pkt, int len, void *data)
     struct ethhdr *ehdr;
     struct net_port_host *hport;
     struct ip_arp *arp;
-    u32 ipaddr;
+    u64 macaddr;
     int ret;
-    int i;
+    struct net_macaddr mac;
 
-    /* Check the length first */
-    if ( unlikely(len < sizeof(struct ethhdr)) ) {
+    /* Check the length and data first */
+    if ( unlikely( len < sizeof(struct ethhdr) ) ) {
+        return -1;
+    }
+    if ( unlikely( NULL == data ) ) {
         return -1;
     }
 
-    if ( NULL == data ) {
-        return -1;
-    }
+    /* Stack chain data */
     hport = (struct net_port_host *)data;
+
+    /* Get the MAC address of this port */
+    kmemcpy(&macaddr, hport->macaddr, 6);
+    mac.nr = 1;
+    mac.addrs = &macaddr;
 
     /* Check layer 2 information first */
     ehdr = (struct ethhdr *)pkt;
@@ -820,151 +1166,199 @@ net_sc_rx_port_host(struct net *net, u8 *pkt, int len, void *data)
     eth.dstmac = ehdr->dst;
     eth.srcmac = ehdr->src;
 
-    if ( 0xffffffffffffULL == eth.dstmac ) {
-        /* Broadcast */
-        switch ( eth.type ) {
-        case ETHERTYPE_ARP:
-            /* Check the length first */
-            if ( unlikely(len - sizeof(struct ethhdr)
-                          < sizeof(struct ip_arp)) ) {
-                return -1;
-            }
-            arp = (struct ip_arp *)(pkt + sizeof(struct ethhdr));
-            if ( 1 != bswap16(arp->hw_type) ) {
-                /* Invalid ARP */
-                return -1;
-            }
-            if ( 0x0800 != bswap16(arp->protocol) ) {
-                /* Invalid ARP */
-                return -1;
-            }
-            if ( 0x06 != arp->hlen ) {
-                /* Invalid ARP */
-                return -1;
-            }
-            if ( 0x04 != arp->plen ) {
-                /* Invalid ARP */
-                return -1;
-            }
-            /* Check the destination IP address */
-            switch ( bswap16(arp->opcode) ) {
-            case 1:
-                /* ARP request */
-                ret = -1;
-                for ( i = 0; i < hport->ip4addr.nr; i++ ) {
-                    if ( arp->dst_ip == hport->ip4addr.addrs[i] ) {
-                        /* Found */
-                        ret = 0;
-                        ipaddr = hport->ip4addr.addrs[i];
-                        /* Register the entry */
-                        net_arp_register(&hport->arp, arp->src_ip,
-                                         arp->src_mac, 0);
-                        break;
-                    }
-                }
-                if ( ret < 0 ) {
-                    return ret;
-                }
-                /* Send an ARP reply */
-                u64 srcmac;
-                kmemcpy(&srcmac, hport->macaddr, 6);
-                u64 dstmac = arp->src_mac;
-                u64 srcip = ipaddr;
-                u64 dstip = arp->src_ip;
-                u8 *rpkt;
-                rpkt = alloca(net->sys_mtu);
-                struct ethhdr *ehdr = (struct ethhdr *)rpkt;
-                ehdr->src = srcmac;
-                ehdr->dst = dstmac;
-                ehdr->type = bswap16(ETHERTYPE_ARP);
-                struct ip_arp *arp2 = (struct ip_arp *)
-                    (rpkt + sizeof(struct ethhdr));
-                arp2->hw_type = bswap16(1);
-                arp2->protocol = bswap16(0x0800);
-                arp2->hlen = 0x06;
-                arp2->plen = 0x04;
-                arp2->opcode = bswap16(2);
-                arp2->src_mac = srcmac;
-                arp2->src_ip = srcip;
-                arp2->dst_mac = dstmac;
-                arp2->dst_ip = dstip;
-
-                hport->port->netdev->sendpkt(rpkt,
-                                             sizeof(struct ethhdr)
-                                             + sizeof(struct ip_arp),
-                                             hport->port->netdev);
-                break;
-            }
-            break;
-        }
-
-    } else if ( 0 == kmemcmp(hport->macaddr, &eth.dstmac, 6) ) {
-        /* Unicast */
-        kprintf("u\r\n");
+    /* Filter */
+    if ( _mac_addr_filter_basic(eth.dstmac, &mac) < 0 ) {
+        /* The destination MAC address doesn't mache this port */
+        return -1;
     }
 
+    /* Check the ethernet type */
+    switch ( eth.type ) {
+    case ETHERTYPE_ARP:
+        /* Check the length first */
+        if ( unlikely(len - sizeof(struct ethhdr) < sizeof(struct ip_arp)) ) {
+            return -1;
+        }
+        arp = (struct ip_arp *)(pkt + sizeof(struct ethhdr));
+        /* Validate the ARP packet */
+        if ( 1 != bswap16(arp->hw_type) ) {
+            /* Invalid ARP */
+            return -1;
+        }
+        if ( 0x0800 != bswap16(arp->protocol) ) {
+            /* Invalid ARP */
+            return -1;
+        }
+        if ( 0x06 != arp->hlen ) {
+            /* Invalid ARP */
+            return -1;
+        }
+        if ( 0x04 != arp->plen ) {
+            /* Invalid ARP */
+            return -1;
+        }
 
-    /* Ether */
-    kprintf("x\r\n");
+        /* Check the destination IP address */
+        switch ( bswap16(arp->opcode) ) {
+        case ARP_REQUEST:
+            /* ARP request */
+            ret = _arp_request(net, &hport->tx, arp, macaddr, &hport->ip4addr,
+                               &hport->arp);
+            break;
+        case ARP_REPLY:
+            /* ARP reply */
+            ret = _arp_reply(net, &hport->tx, arp, macaddr, &hport->ip4addr,
+                             &hport->arp);
+            break;
+        case RARP_REQUEST:
+        case RARP_REPLY:
+            /* Not supported */
+            ret = -1;
+            break;
+        }
+        break;
+    case ETHERTYPE_IPV4:
+        /* IPv4 */
+        ret = _ipv4(net, &hport->tx, pkt + sizeof(struct ethhdr),
+                    len - sizeof(struct ethhdr), &hport->ip4addr);
+        break;
+    default:
+        /* To support other protocols */
+        ret = -1;
+    }
 
     return ret;
+}
+
+
+/*
+ * Host L3 port stack chain for transmission
+ */
+int
+net_sc_tx_port(struct net *net, u8 *pkt, int len, void *data)
+{
+    struct net_port *port;
+
+    port = (struct net_port *)data;
+
+    return port->netdev->sendpkt(pkt, len, port->netdev);
 }
 
 /*
- * Rx packet handler
+ * Host L3 port stack chain (header/payload separation)
  */
 int
-net_rx(struct net *net, struct net_port *port, u8 *pkt, int len, int vlan)
+net_hps_host_port_ip_pre(struct net *net, void *data, u8 *buf, int len, u8 **p)
 {
-    struct ether eth;
-    struct net_bridge *bridge;
     struct ethhdr *ehdr;
+    struct iphdr *iphdr;
+    struct net_hps_host_port_ip_data *mdata;
+    u32 nh;
+    u64 macaddr;
     int ret;
+    u64 rnd;
 
-    /* Check the length first */
-    if ( unlikely(len < sizeof(struct ethhdr)) ) {
+    /* Check the buffer length first */
+    if ( unlikely(len < sizeof(struct ethhdr) + sizeof(struct iphdr)) ) {
         return -1;
     }
 
-    /* Find out the corresponding bridge */
-    eth.vlan = vlan;
-    if ( eth.vlan < 0 ) {
-        eth.vlan = 0;
-    }
-    if ( eth.vlan >= 4096 ) {
-        /* Invalid VLAN ID */
+    /* Meta data */
+    mdata = (struct net_hps_host_port_ip_data *)data;
+
+    /* Lookup next hop */
+    ret = net_rib4_lookup(&mdata->hport->rib4, mdata->daddr, &nh);
+    if ( ret < 0 ) {
+        /* No route to host */
         return -1;
     }
-
-    /* Check layer 2 information first */
-    ehdr = (struct ethhdr *)pkt;
-    eth.type = bswap16(ehdr->type);
-    eth.dstmac = ehdr->dst;
-    eth.srcmac = ehdr->src;
-
-    ret = net_sc_rx_ether(net, pkt + sizeof(struct ethhdr),
-                          len - sizeof(struct ethhdr), &eth);
-
-    return ret;
-
-#if 0
-    bridge = port->bridges[eth.vlan];
-
-    /* Check layer 2 information first */
-    ehdr = (struct ethhdr *)pkt;
-    eth.type = bswap16(ehdr->type);
-    eth.dstmac = ehdr->dst;
-    eth.srcmac = ehdr->src;
-    if ( ETHERTYPE_8021Q == eth.type ) {
-        /* 802.1Q */
-        return _rx_802_1q(net, port, pkt + sizeof(struct ethhdr),
-                          len - sizeof(struct ethhdr), &eth);
-    } else {
-        return _rx_bridge(net, bridge, pkt + sizeof(struct ethhdr),
-                          len - sizeof(struct ethhdr), &eth, port, 1);
+    if ( !nh ) {
+        /* Local scope */
+        nh = mdata->daddr;
     }
-#endif
+
+    /* Lookup MAC address table */
+    ret = net_arp_resolve(&mdata->hport->arp, nh, &macaddr);
+    if ( ret < 0 ) {
+        /* No entry found. FIXME: To send an ARP request */
+        return ret;
+    }
+
+    /* Ethernet */
+    ehdr = (struct ethhdr *)buf;
+    ehdr->dst = macaddr;
+    kmemcpy(&macaddr, mdata->hport->macaddr, 6);
+    ehdr->src = macaddr;
+    ehdr->type = ETHERTYPE_IPV4;
+
+    /* Get a random number */
+    ret = rdrand(&rnd);
+    if ( ret < 0 ) {
+        return ret;
+    }
+
+    /* IP */
+    iphdr = (struct iphdr *)(buf + sizeof(struct ethhdr));
+    iphdr->ip_ihl = 5;
+    iphdr->ip_version = 4;
+    iphdr->ip_tos = 0;
+    iphdr->ip_len = 0;
+    iphdr->ip_id = rnd;
+    iphdr->ip_off = 0;
+    iphdr->ip_ttl = 64;
+    iphdr->ip_proto = 0;
+    /* Set source address */
+    iphdr->ip_src = mdata->saddr;
+    /* Set destination address */
+    iphdr->ip_dst = mdata->daddr;
+
+    /* Payload */
+    *p = buf + sizeof(struct ethhdr) + sizeof(struct iphdr);
+
+    return len - sizeof(struct ethhdr) + sizeof(struct iphdr);
 }
+
+/*
+ * Ethernet
+ */
+int
+net_hps_host_pore_ip_post(struct net *net, void *data, u8 *buf, int len)
+{
+    struct ethhdr *ehdr;
+    struct iphdr *iphdr;
+    struct net_hps_host_port_ip_data *mdata;
+    int ret;
+    u8 *p;
+
+    /* Meta data */
+    mdata = (struct net_hps_host_port_ip_data *)data;
+
+    iphdr = (struct iphdr *)(buf + sizeof(struct ethhdr));
+    iphdr->ip_len = len;
+
+    p = buf + sizeof(struct ethhdr) + sizeof(struct iphdr);
+    kprintf("XXX\r\n");
+    iphdr->ip_sum = _ip_checksum((u8 *)iphdr, sizeof(struct iphdr));
+    kprintf("YYY\r\n");
+
+    return mdata->hport->port->netdev->sendpkt(buf,
+                                               len + sizeof(struct ethhdr)
+                                               + sizeof(struct iphdr),
+                                               mdata->hport->port->netdev);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /*
  * Initialize the network driver
@@ -979,6 +1373,15 @@ net_init(struct net *net)
 }
 
 
+
+
+
+
+
+
+
+
+#if 0
 /*
  * Lookup forwarding database
  */
@@ -1025,7 +1428,7 @@ net_l3if_ipv4_addr_delete(struct net *net)
 {
     return 0;
 }
-
+#endif
 
 
 

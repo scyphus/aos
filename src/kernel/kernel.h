@@ -268,6 +268,7 @@ struct net_rib4_entry {
     u32 prefix;
     int length;
     u32 nexthop;
+    /* scope/srcport? */
 };
 struct net_rib4 {
     int nr;
@@ -286,6 +287,7 @@ struct net_fdb_entry {
     union {
         struct net_port *port;
         struct net_ipif *ipif;
+        struct net_stack_chain_next *sc;
     } u;
 };
 struct net_fdb {
@@ -372,6 +374,24 @@ typedef int (*net_stack_chain_f)(struct net *, u8 *, int, void *);
 
 
 
+/*
+ * Host port IP
+ */
+struct net_hps_host_port_ip_data {
+    struct net_port_host *hport;
+    u32 saddr;
+    u32 daddr;
+    int flags;
+};
+
+
+/*
+ * MAC address
+ */
+struct net_macaddr {
+    int nr;
+    u64 *addrs;
+};
 
 /*
  * IPv4 address
@@ -389,15 +409,26 @@ struct net_ip6addr {
 };
 
 /*
+ * Stack chain
+ */
+struct net_stack_chain_next {
+    net_stack_chain_f func;
+    void *data;
+};
+
+/*
  * Host L3 port
  */
 struct net_port_host {
     /* MAC address */
     u8 macaddr[6];
+    /* FDB is not required for host port */
     /* IPv4 address */
     struct net_ip4addr ip4addr;
     /* ARP */
     struct net_arp_table arp;
+    /* RIB */
+    struct net_rib4 rib4;
     /* IPv6 address */
     struct net_ip6addr ip6addr;
     /* ND */
@@ -405,8 +436,8 @@ struct net_port_host {
 
     struct net_port *port;
 
-    /* TX function */
-    net_stack_chain_f tx;
+    /* Stack chain for tx */
+    struct net_stack_chain_next tx;
 };
 
 /*
@@ -415,19 +446,13 @@ struct net_port_host {
 struct net_port {
     /* Bidirectional link */
     struct netdev *netdev;
-    /* Chain */
-    net_stack_chain_f next;
-    void *data;
+    /* Stack chain */
+    struct net_stack_chain_next next;
 
     /* VLAN bridges */
     struct net_bridge *bridges[4096];
 };
 
-
-struct net_stack_chain_next {
-    net_stack_chain_f next;
-    void *db;
-};
 
 
 
@@ -745,6 +770,18 @@ void phys_mem_free_pages(void *);
 int open(const char *, int);
 ssize_t read(int, void *, size_t);
 ssize_t write(int, const void *, size_t);
+
+
+
+/* System service */
+struct sysserv {
+
+};
+
+struct sstable {
+
+};
+
 
 
 
