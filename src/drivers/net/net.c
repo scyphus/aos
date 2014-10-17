@@ -912,30 +912,58 @@ net_sc_rx_ether(struct net *net, u8 *pkt, int len, void *data)
 
 
 
+static int
+_ipv4_icmp_echo_request(struct net *net, struct net_stack_chain_next *tx,
+                        struct iphdr *iphdr, struct icmp_hdr *icmpreq, u8 *pkt,
+                        int len)
+{
+    int ret;
+    u8 buf[4096];
+    u8 *p;
+    struct net_hps_host_port_ip_data mdata;
+    struct icmp_hdr *icmp;
+
+    mdata.hport = ((struct net_port *)(tx->data))->next.data;
+    mdata.saddr = bswap32(0xc0a83803ULL);
+    mdata.daddr = iphdr->ip_src;
+    mdata.flags = 0;
+
+    /* Prepare a packet buffer */
+    ret = net_hps_host_port_ip_pre(net, &mdata, buf, 4096, &p);
+    if ( ret < len + sizeof(struct icmp_hdr) ) {
+        return -1;
+    }
+    icmp = (struct icmp_hdr *)p;
+    icmp->type = ICMP_ECHO_REPLY;
+    icmp->code = 0;
+    icmp->checksum = 0;
+    icmp->ident = icmpreq->ident;
+    icmp->seq = icmpreq->seq;
+    kmemcpy(p + sizeof(struct icmp_hdr), pkt, len);
+    icmp->checksum = _ip_checksum(p, sizeof(struct icmp_hdr) + len);
+
+    return net_hps_host_pore_ip_post(net, &mdata, buf,
+                                     len + sizeof(struct icmp_hdr));
+}
 
 static int
 _ipv4_icmp(struct net *net, struct net_stack_chain_next *tx,
            struct iphdr *iphdr, u8 *pkt, int len)
 {
-    //struct icmp_hdr *icmp = (struct icmp_hdr *)(pkt+14+ip_hdrlen);
-    int ret;
-    u8 buf[4096];
-    u8 *p;
-    struct net_hps_host_port_ip_data mdata;
-    mdata.hport = ((struct net_port *)(tx->data))->next.data;
-    mdata.saddr = bswap32(0xc0a83803ULL);
-    mdata.daddr = iphdr->ip_src;
+    struct icmp_hdr *icmp;
 
-    ret = net_hps_host_port_ip_pre(net, &mdata, buf, 4096, &p);
-    kprintf("XXX %llx\r\n", ret);
-    if ( ret < 0 ) {
+    if ( unlikely(len < sizeof(struct icmp_hdr)) ) {
         return -1;
     }
-    p[0] = 0xfe;
-    kprintf("ping %x, %llx\r\n", ret, *(u32 *)buf);
-    net_hps_host_pore_ip_post(net, &mdata, buf, 1);
+    icmp = (struct icmp_hdr *)(pkt);
+    switch ( icmp->type ) {
+    case ICMP_ECHO_REQUEST:
+        return _ipv4_icmp_echo_request(net, tx, iphdr, icmp,
+                                       pkt + sizeof(struct icmp_hdr),
+                                       len - sizeof(struct icmp_hdr));
+    }
 
-    return 0;
+    return -1;
 }
 
 
@@ -999,7 +1027,7 @@ _ipv4(struct net *net, struct net_stack_chain_next *tx, u8 *pkt, int len,
     switch ( hdr->ip_proto ) {
     case IP_ICMP:
         /* ICMP */
-        return _ipv4_icmp(net, tx, hdr, payload, iplen);
+        return _ipv4_icmp(net, tx, hdr, payload, iplen - hdrlen);
     case IP_TCP:
         /* TCP */
         return -1;
@@ -1289,7 +1317,7 @@ net_hps_host_port_ip_pre(struct net *net, void *data, u8 *buf, int len, u8 **p)
     ehdr->dst = macaddr;
     kmemcpy(&macaddr, mdata->hport->macaddr, 6);
     ehdr->src = macaddr;
-    ehdr->type = ETHERTYPE_IPV4;
+    ehdr->type = bswap16(ETHERTYPE_IPV4);
 
     /* Get a random number */
     ret = rdrand(&rnd);
@@ -1306,7 +1334,7 @@ net_hps_host_port_ip_pre(struct net *net, void *data, u8 *buf, int len, u8 **p)
     iphdr->ip_id = rnd;
     iphdr->ip_off = 0;
     iphdr->ip_ttl = 64;
-    iphdr->ip_proto = 0;
+    iphdr->ip_proto = IP_ICMP;
     /* Set source address */
     iphdr->ip_src = mdata->saddr;
     /* Set destination address */
@@ -1322,28 +1350,25 @@ net_hps_host_port_ip_pre(struct net *net, void *data, u8 *buf, int len, u8 **p)
  * Ethernet
  */
 int
-net_hps_host_pore_ip_post(struct net *net, void *data, u8 *buf, int len)
+net_hps_host_pore_ip_post(struct net *net, void *data, u8 *buf, int iplen)
 {
-    struct ethhdr *ehdr;
     struct iphdr *iphdr;
     struct net_hps_host_port_ip_data *mdata;
-    int ret;
     u8 *p;
+    int len;
 
     /* Meta data */
     mdata = (struct net_hps_host_port_ip_data *)data;
 
     iphdr = (struct iphdr *)(buf + sizeof(struct ethhdr));
-    iphdr->ip_len = len;
+    iphdr->ip_len = bswap16(iplen + sizeof(struct iphdr));
+    len = iplen + sizeof(struct ethhdr) + sizeof(struct iphdr);
 
     p = buf + sizeof(struct ethhdr) + sizeof(struct iphdr);
-    kprintf("XXX\r\n");
+    iphdr->ip_sum = 0;
     iphdr->ip_sum = _ip_checksum((u8 *)iphdr, sizeof(struct iphdr));
-    kprintf("YYY\r\n");
 
-    return mdata->hport->port->netdev->sendpkt(buf,
-                                               len + sizeof(struct ethhdr)
-                                               + sizeof(struct iphdr),
+    return mdata->hport->port->netdev->sendpkt(buf, len,
                                                mdata->hport->port->netdev);
 }
 
