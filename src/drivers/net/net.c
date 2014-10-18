@@ -595,8 +595,11 @@ _arp_request(struct net *net, struct net_stack_chain_next *tx,
     arp2->dst_mac = dstmac;
     arp2->dst_ip = dstip;
 
-    return tx->func(net, rpkt, sizeof(struct ethhdr) + sizeof(struct ip_arp),
-                    tx->data);
+    struct net_port *port;
+    port = (struct net_port *)tx->data;
+    return port->netdev->sendpkt(rpkt,
+                                 sizeof(struct ethhdr) + sizeof(struct ip_arp),
+                                 port->netdev);
 }
 
 /*
@@ -760,19 +763,6 @@ net_sc_rx_port_host(struct net *net, u8 *pkt, int len, void *data)
     return ret;
 }
 
-
-/*
- * Host L3 port stack chain for transmission
- */
-int
-net_sc_tx_port(struct net *net, u8 *pkt, int len, void *data)
-{
-    struct net_port *port;
-
-    port = (struct net_port *)data;
-
-    return port->netdev->sendpkt(pkt, len, port->netdev);
-}
 
 /*
  * Host L3 port stack chain (header/payload separation)
