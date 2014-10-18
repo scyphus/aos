@@ -864,7 +864,6 @@ int net_init(struct net *);
 int net_rx(struct net *, struct net_port *, u8 *, int, int);
 int net_sc_rx_ether(struct net *, u8 *, int, void *);
 int net_sc_rx_port_host(struct net *, u8 *, int, void *);
-int net_sc_tx_port(struct net *, u8 *, int, void *);
 int net_rib4_add(struct net_rib4 *, const u32, int, u32);
 u32 bswap32(u32);
 int
@@ -905,7 +904,7 @@ _net_test_main(int argc, char *argv[])
     port.netdev = dev;
     port.next.data = (void *)&hport;
     port.next.func = net_sc_rx_port_host;
-    hport.tx.func = net_sc_tx_port;
+    hport.tx.func = NULL;
     hport.tx.data = (void *)&port;
 
     /* Routing table */
@@ -918,6 +917,7 @@ _net_test_main(int argc, char *argv[])
     while ( 1 ) {
         n = port.netdev->recvpkt(pkt, sizeof(pkt), port.netdev);
         if ( n <= 0 ) {
+            __asm__ __volatile__ ("hlt");
             continue;
         }
         port.next.func(&net, pkt, n, port.next.data);
@@ -1448,6 +1448,7 @@ proc_shell(int argc, char *argv[])
     int fd;
 
     /* Print the logo */
+#if 0
     kprintf("\r\n"
             "                               iiii                           \r\n"
             "                              ii  ii                          \r\n"
@@ -1471,7 +1472,7 @@ proc_shell(int argc, char *argv[])
             "    ppp                                                       \r\n"
             "    pp                                                        \r\n"
             "\r\n");
-
+#endif
 
     _init(&kshell);
 

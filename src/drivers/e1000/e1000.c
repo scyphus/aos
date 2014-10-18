@@ -342,12 +342,12 @@ e1000_init_hw(struct pci_device *pcidev)
     /* Store the parent device information */
     dev->pci_device = pcidev;
 
-#if 0
+#if 1
     /* Enable interrupt (REG_IMS <- 0x1F6DC, then read REG_ICR ) */
     mmio_write32(dev->mmio, E1000_REG_IMS, 0x908e);
     (void)mmio_read32(dev->mmio, E1000_REG_ICR);
     /* Register IRQ handler */
-    register_irq_handler((((pcidev->intr_pin -1) + pcidev->slot) % 4) + 16,
+    register_irq_handler((((pcidev->intr_pin -1) + pcidev->slot) % 4) + 0x10,
                          &e1000_irq_handler, dev);
 #if 0
     kprintf("PCI: %x %x %x %x %x\r\n", pcidev->intr_pin, pcidev->intr_line,
