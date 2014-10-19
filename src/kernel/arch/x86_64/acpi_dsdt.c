@@ -13,7 +13,9 @@
 
 #define NAMESTRING_LEN  32
 
+#define ZEROOP          0x00
 #define NAMEOP          0x08
+#define PACKAGEOP       0x12
 
 #define BYTEPREFIX      0x0a
 #define WORDPREFIX      0x0b
@@ -30,6 +32,7 @@
 #define EXTOPPREFIX     0x5b
 #define  OPREGIONOP     0x80
 #define  FIELDOP        0x81
+#define  INDEXFIELDOP   0x86
 
 #define ARG0OP          0x68
 #define ARG1OP          0x69
@@ -39,6 +42,14 @@
 #define ARG5OP          0x6d
 #define AR75OP          0x6e
 #define STOREOP         0x70
+
+#define IFOP            0xa0
+#define ELSEOP          0xa1
+#define WHILEOP         0xa2
+#define NOOPOP          0xa3
+#define RETURNOP        0xa4
+#define BREAKOP         0xa5
+
 
 static int
 _is_lead_name_char(u8 c)
@@ -176,10 +187,22 @@ _name_op(struct acpi_parser *parser, u8 *d, int len)
     if ( len <= 0 ) {
         return -1;
     }
-    if ( 0 == *d ) {
+     if ( 0 == *d ) {
+        /* Zero */
         d += 1;
         len -= 1;
         ptr += 1;
+    } else if ( PACKAGEOP == *d ) {
+         /* FIXME */
+         int pkglen;
+         ret = _pkglength(d + 1, len - 1, &pkglen);
+         if ( ret < 0 ) {
+             return -1;
+         }
+         d += 1;
+         len -= 1;
+         ptr += 1;
+         ptr += pkglen;
     } else {
         kprintf("***%s %x %x %x %x\r\n", namestr, *d, *(d+1), *(d+2), *(d+3));
         return -1;
@@ -276,7 +299,49 @@ _field_op(struct acpi_parser *parser, u8 *d, int len)
 }
 
 static int
+_index_field_op(struct acpi_parser *parser, u8 *d, int len)
+{
+    int ret;
+    int pkglen;
+
+    ret = _pkglength(d, len, &pkglen);
+    if ( ret < 0 ) {
+        return -1;
+    }
+
+    return pkglen;
+}
+
+static int
+_scope_op(struct acpi_parser *parser, u8 *d, int len)
+{
+    int ret;
+    int pkglen;
+
+    ret = _pkglength(d, len, &pkglen);
+    if ( ret < 0 ) {
+        return -1;
+    }
+
+    return pkglen;
+}
+
+static int
 _method_op(struct acpi_parser *parser, u8 *d, int len)
+{
+    int ret;
+    int pkglen;
+
+    ret = _pkglength(d, len, &pkglen);
+    if ( ret < 0 ) {
+        return -1;
+    }
+
+    return pkglen;
+}
+
+static int
+_if_op(struct acpi_parser *parser, u8 *d, int len)
 {
     int ret;
     int pkglen;
@@ -305,8 +370,18 @@ _ext_op_prefix(struct acpi_parser *parser, u8 *d, int len)
     case FIELDOP:
         ret = _field_op(parser, d + 1, len - 1);
         break;
+    case INDEXFIELDOP:
+        ret = _index_field_op(parser, d + 1, len - 1);
+        break;
     default:
         kprintf("Unknown (ext): %x\r\n", *d);
+        int i;
+        for ( i = 0; i < 32; i++ ) {
+            kprintf("%.2x ", *(d+i));
+            if ( 15 == i % 16 ) {
+                kprintf("\r\n");
+            }
+        }
         return -1;
     }
     if ( ret < 0 ) {
@@ -339,6 +414,14 @@ acpi_parse_dsdt_root(u8 *d, int len)
             d += ret + 1;
             len -= ret + 1;
             break;
+        case SCOPEOP:
+            ret = _scope_op(&parser, d + 1, len - 1);
+            if ( ret <= 0 ) {
+                return -1;
+            }
+            d += ret + 1;
+            len -= ret + 1;
+            break;
         case METHODOP:
             ret = _method_op(&parser, d + 1, len - 1);
             if ( ret <= 0 ) {
@@ -356,8 +439,27 @@ acpi_parse_dsdt_root(u8 *d, int len)
             d += ret + 1;
             len -= ret + 1;
             break;
+        case IFOP:
+            ret = _if_op(&parser, d + 1, len - 1);
+            if ( ret <= 0 ) {
+                return -1;
+            }
+            d += ret + 1;
+            len -= ret + 1;
+            break;
+        case ZEROOP:
+            d += 1;
+            len -= 1;
+            break;
         default:
-            kprintf("Unknown: %x\r\n", *d);
+            kprintf("Unknown: %x %x\r\n", *d, len);
+            int i;
+            for ( i = 0; i < 32; i++ ) {
+                kprintf("%.2x ", *(d+i));
+                if ( 15 == i % 16 ) {
+                    kprintf("\r\n");
+                }
+            }
             return -1;
         }
     }

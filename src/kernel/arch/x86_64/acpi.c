@@ -362,7 +362,6 @@ acpi_load(void)
     ebda = *(u16 *)0x040e;
     if ( ebda ) {
         ebda_addr = (u64)ebda << 4;
-        kprintf("*****EBDA %llx\r\n", ebda_addr);
         if ( acpi_rsdp_search_range(ebda_addr, ebda_addr + 0x0400) ) {
             return 1;
         }
