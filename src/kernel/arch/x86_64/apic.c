@@ -224,6 +224,10 @@ ioapic_map_intr(u64 intvec, u64 tbldst, u64 ioapic_base)
      * 7:0      interrupt vector
      */
     val = intvec;
+    if ( val == 0x30 || val == 0x31 ) {
+        kprintf("KAKAK\r\n");
+        val |= (1ULL<<56);
+    }
 
     /* To avoid compiler optimization, call assembler function */
     asm_ioapic_map_intr(val, tbldst, ioapic_base);

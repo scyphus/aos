@@ -56,6 +56,7 @@ kpack: kernel/arch/$(ARCH)/asm.o \
 	kernel/arch/$(ARCH)/spinlock.o \
 	kernel/arch/$(ARCH)/vga.o \
 	kernel/arch/$(ARCH)/acpi.o \
+	kernel/arch/$(ARCH)/acpi_dsdt.o \
 	kernel/arch/$(ARCH)/apic.o \
 	kernel/arch/$(ARCH)/clock.o \
 	kernel/arch/$(ARCH)/trampoline.o \
