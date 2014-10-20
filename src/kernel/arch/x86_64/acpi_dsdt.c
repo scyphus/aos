@@ -107,8 +107,6 @@ _name_string(u8 *d, int len, u8 *namestr)
     namestr[3] = *(d + 3);
     namestr[4] = '\0';
 
-    kprintf("%s\r\n", namestr);
-
     return 4;
 }
 
@@ -204,7 +202,7 @@ _name_op(struct acpi_parser *parser, u8 *d, int len)
          ptr += 1;
          ptr += pkglen;
     } else {
-        kprintf("***%s %x %x %x %x\r\n", namestr, *d, *(d+1), *(d+2), *(d+3));
+         //kprintf("***%s %x %x %x %x\r\n", namestr, *d, *(d+1), *(d+2), *(d+3));
         return -1;
     }
 
@@ -317,11 +315,30 @@ _scope_op(struct acpi_parser *parser, u8 *d, int len)
 {
     int ret;
     int pkglen;
+    int ptr;
+    u8 namestr[NAMESTRING_LEN];
 
+    ptr = 0;
+
+    /* PkgLength */
     ret = _pkglength(d, len, &pkglen);
     if ( ret < 0 ) {
         return -1;
     }
+    d += ret;
+    len -= ret;
+    ptr += ret;
+
+    /* NameString */
+    ret = _name_string(d, len, namestr);
+    if ( ret < 0 ) {
+        return -1;
+    }
+    d += ret;
+    len -= ret;
+    ptr += ret;
+
+    kprintf("%s\r\n", namestr);
 
     return pkglen;
 }
