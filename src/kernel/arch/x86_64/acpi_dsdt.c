@@ -399,23 +399,6 @@ _scope_op(struct acpi_parser *parser, u8 *d, int len)
     len -= ret;
     ptr += ret;
 
-
-    kprintf("%s *** %x %x %x %x %lx\r\n",
-            namestr, *d, *(d+1), *(d+2), *(d+3), pkglen);
-#if 1
-    ret = 0;
-    len = pkglen;
-    while ( len > 0 ) {
-        ret = _dsdt(parser, d, len);
-        if ( ret < 0 ) {
-            kprintf("XXXX\r\n");
-            return -1;
-        }
-        d += ret;
-        len -= ret;
-    }
-#endif
-
     return pkglen;
 }
 
