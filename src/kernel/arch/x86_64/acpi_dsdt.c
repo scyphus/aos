@@ -14,6 +14,8 @@
 #define NAMESTRING_LEN  32
 
 #define ZEROOP          0x00
+#define ONEOP           0x01
+#define ONESOP          0xff
 #define NAMEOP          0x08
 #define PACKAGEOP       0x12
 
@@ -54,6 +56,7 @@
 #define STOREOP         0x70
 
 #define ADDOP           0x72
+#define DECREMENTOP     0x76
 #define SIZEOFOP        0x87
 
 #define IFOP            0xa0
@@ -470,6 +473,7 @@ _method_op(struct acpi_parser *parser, u8 *d, int len)
     int ptr;
     u8 namestr[NAMESTRING_LEN];
     u8 flags;
+    int clen;
 
     ptr = 0;
 
@@ -480,6 +484,7 @@ _method_op(struct acpi_parser *parser, u8 *d, int len)
     d += ret;
     len -= ret;
     ptr += ret;
+    clen = pkglen - ret;
 
     /* NameString */
     ret = _name_string(d, len, namestr);
@@ -489,18 +494,20 @@ _method_op(struct acpi_parser *parser, u8 *d, int len)
     d += ret;
     len -= ret;
     ptr += ret;
+    clen -= ret;
 
     /* MethodFlags */
     flags = *d;
     d += 1;
     len -= 1;
     ptr -= 1;
+    clen -= 1;
 
     kprintf("Method: %s\r\n", namestr);
     /* TermList */
-    if ( kstrcmp(namestr, "_PRT") ) {
+    if ( 0 == kstrcmp(namestr, "_PRT") ) {
         /* Evaluate _PRT method */
-        len = pkglen;
+        len = clen;
         ret = 0;
         while ( len > 0 ) {
             ret = _dsdt(parser, d, len);
@@ -533,15 +540,65 @@ _store_op(struct acpi_parser *parser, u8 *d, int len)
     case ARG4OP:
     case ARG5OP:
     case ARG6OP:
+    case ZEROOP:
         d += 1;
         len -= 1;
         ptr += 1;
         break;
+    case SIZEOFOP:
+        d += 1;
+        len -= 1;
+        ptr += 1;
+        switch ( *d ) {
+        case LOCAL0OP:
+        case LOCAL1OP:
+        case LOCAL2OP:
+        case LOCAL3OP:
+        case LOCAL4OP:
+        case LOCAL5OP:
+        case LOCAL6OP:
+        case LOCAL7OP:
+            d += 1;
+            len -= 1;
+            ptr += 1;
+            break;
+        default:
+            kprintf("Unknown TermArg: %.2x %.2x %.2x %.2x\r\n",
+                    *d, *(d+1), *(d+2), *(d+3));
+            return -1;
+        }
+        break;
     default:
-        /* Invalid */
-        kprintf("Unknown TermArg: %.2x %.2x %.2x %.2x\r\n", *d, *(d+1), *(d+2),
-                *(d+3));
-        return -1;
+        /* Method / Name */
+        ret = _name_string(d, len, namestr);
+        if ( ret < 0 ) {
+            kprintf("Unknown TermArg: %.2x %.2x %.2x %.2x\r\n",
+                    *d, *(d+1), *(d+2), *(d+3));
+            return -1;
+        }
+        d += ret;
+        len -= ret;
+        ptr += ret;
+        switch ( *d ) {
+        case LOCAL0OP:
+        case LOCAL1OP:
+        case LOCAL2OP:
+        case LOCAL3OP:
+        case LOCAL4OP:
+        case LOCAL5OP:
+        case LOCAL6OP:
+        case LOCAL7OP:
+        case ONEOP:
+        case ONESOP:
+            d += 1;
+            len -= 1;
+            ptr += 1;
+            break;
+        default:
+            kprintf("Unknown TermArg: %.2x %.2x %.2x %.2x\r\n",
+                    *d, *(d+1), *(d+2), *(d+3));
+            return -1;
+        }
     }
 
     /* SuperName */
@@ -574,13 +631,178 @@ _store_op(struct acpi_parser *parser, u8 *d, int len)
 static int
 _add_op(struct acpi_parser *parser, u8 *d, int len)
 {
-    /* To be implemented */
+    int ret;
+    u8 namestr[NAMESTRING_LEN];
+    int ptr;
 
-    return -1;
+    ptr = 0;
+
+    /* Operand */
+    switch ( *d ) {
+    case LOCAL0OP:
+    case LOCAL1OP:
+    case LOCAL2OP:
+    case LOCAL3OP:
+    case LOCAL4OP:
+    case LOCAL5OP:
+    case LOCAL6OP:
+    case LOCAL7OP:
+    case ONEOP:
+    case ONESOP:
+        d += 1;
+        len -= 1;
+        ptr += 1;
+        break;
+    default:
+        /* Method / Name */
+        ret = _name_string(d, len, namestr);
+        if ( ret < 0 ) {
+            return -1;
+        }
+        d += ret;
+        len -= ret;
+        ptr += ret;
+        switch ( *d ) {
+        case LOCAL0OP:
+        case LOCAL1OP:
+        case LOCAL2OP:
+        case LOCAL3OP:
+        case LOCAL4OP:
+        case LOCAL5OP:
+        case LOCAL6OP:
+        case LOCAL7OP:
+        case ONEOP:
+        case ONESOP:
+            d += 1;
+            len -= 1;
+            ptr += 1;
+            break;
+        default:
+            return -1;
+        }
+    }
+
+    /* Operand */
+    switch ( *d ) {
+    case LOCAL0OP:
+    case LOCAL1OP:
+    case LOCAL2OP:
+    case LOCAL3OP:
+    case LOCAL4OP:
+    case LOCAL5OP:
+    case LOCAL6OP:
+    case LOCAL7OP:
+    case ONEOP:
+    case ONESOP:
+        d += 1;
+        len -= 1;
+        ptr += 1;
+        break;
+    default:
+        /* Method / Name */
+        ret = _name_string(d, len, namestr);
+        if ( ret < 0 ) {
+            return -1;
+        }
+        d += ret;
+        len -= ret;
+        ptr += ret;
+    }
+
+    /* Target */
+    switch ( *d ) {
+    case LOCAL0OP:
+    case LOCAL1OP:
+    case LOCAL2OP:
+    case LOCAL3OP:
+    case LOCAL4OP:
+    case LOCAL5OP:
+    case LOCAL6OP:
+    case LOCAL7OP:
+        d += 1;
+        len -= 1;
+        ptr += 1;
+        break;
+    default:
+        /* Method / Name */
+        ret = _name_string(d, len, namestr);
+        if ( ret < 0 ) {
+            return -1;
+        }
+        d += ret;
+        len -= ret;
+        ptr += ret;
+    }
+
+    return ptr;
+}
+
+static int
+_decrement_op(struct acpi_parser *parser, u8 *d, int len)
+{
+    int ret;
+    u8 namestr[NAMESTRING_LEN];
+    int ptr;
+
+    ptr = 0;
+
+    /* SuperName */
+    switch ( *d ) {
+    case LOCAL0OP:
+    case LOCAL1OP:
+    case LOCAL2OP:
+    case LOCAL3OP:
+    case LOCAL4OP:
+    case LOCAL5OP:
+    case LOCAL6OP:
+    case LOCAL7OP:
+        d += 1;
+        len -= 1;
+        ptr += 1;
+        break;
+    default:
+        ret = _name_string(d, len, namestr);
+        if ( ret < 0 ) {
+            return -1;
+        }
+        d += ret;
+        len -= ret;
+        ptr += ret;
+    }
+
+    return ptr;
 }
 
 static int
 _if_op(struct acpi_parser *parser, u8 *d, int len)
+{
+    int ret;
+    int pkglen;
+
+    ret = _pkglength(d, len, &pkglen);
+    if ( ret < 0 ) {
+        return -1;
+    }
+
+    return pkglen;
+}
+
+static int
+_else_op(struct acpi_parser *parser, u8 *d, int len)
+{
+    int ret;
+    int pkglen;
+
+    ret = _pkglength(d, len, &pkglen);
+    if ( ret < 0 ) {
+        return -1;
+    }
+
+    return pkglen;
+}
+
+static int
+_while_op(struct acpi_parser *parser, u8 *d, int len)
 {
     int ret;
     int pkglen;
@@ -608,30 +830,37 @@ _return_op(struct acpi_parser *parser, u8 *d, int len)
         len -= 1;
         ptr += 1;
         /* SuperName */
-            switch ( *d ) {
-            case LOCAL0OP:
-            case LOCAL1OP:
-            case LOCAL2OP:
-            case LOCAL3OP:
-            case LOCAL4OP:
-            case LOCAL5OP:
-            case LOCAL6OP:
-            case LOCAL7OP:
-                d += 1;
-                len -= 1;
-                ptr += 1;
-                break;
-            default:
-                ret = _name_string(d, len, namestr);
-                if ( ret < 0 ) {
-                    return -1;
-                }
-                d += ret;
-                len -= ret;
-                ptr += ret;
+        switch ( *d ) {
+        case LOCAL0OP:
+        case LOCAL1OP:
+        case LOCAL2OP:
+        case LOCAL3OP:
+        case LOCAL4OP:
+        case LOCAL5OP:
+        case LOCAL6OP:
+        case LOCAL7OP:
+            d += 1;
+            len -= 1;
+            ptr += 1;
+            break;
+        default:
+            ret = _name_string(d, len, namestr);
+            if ( ret < 0 ) {
+                return -1;
             }
+            d += ret;
+            len -= ret;
+            ptr += ret;
+        }
     } else {
-        return -1;
+        /* NameString */
+        ret = _name_string(d, len, namestr);
+        if ( ret < 0 ) {
+            return -1;
+        }
+        d += ret;
+        len -= ret;
+        ptr += ret;
     }
 
     return ptr;
@@ -745,8 +974,37 @@ _dsdt(struct acpi_parser *parser, u8 *d, int len)
         len -= ret + 1;
         ptr += ret + 1;
         break;
+    case DECREMENTOP:
+        ret = _decrement_op(parser, d + 1, len - 1);
+        if ( ret <= 0 ) {
+            return -1;
+        }
+        d += ret + 1;
+        len -= ret + 1;
+        ptr += ret + 1;
+        break;
     case IFOP:
         ret = _if_op(parser, d + 1, len - 1);
+        if ( ret <= 0 ) {
+            return -1;
+        }
+        d += ret + 1;
+        len -= ret + 1;
+        ptr += ret + 1;
+        break;
+    case ELSEOP:
+        ret = _else_op(parser, d + 1, len - 1);
+        if ( ret <= 0 ) {
+            return -1;
+        }
+        d += ret + 1;
+        len -= ret + 1;
+        ptr += ret + 1;
+        kprintf("*** %.2x %.2x %.2x %.2x\r\n",
+                *d, *(d+1), *(d+2), *(d+3));
+        break;
+    case WHILEOP:
+        ret = _while_op(parser, d + 1, len - 1);
         if ( ret <= 0 ) {
             return -1;
         }
