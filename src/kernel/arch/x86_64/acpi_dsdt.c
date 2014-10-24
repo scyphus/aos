@@ -59,6 +59,12 @@
 #define DECREMENTOP     0x76
 #define SIZEOFOP        0x87
 
+#define LANDOP          0x90
+#define LNOTOP          0x92
+#define LEQUALOP        0x93
+#define LGREATEROP      0x94
+#define LLESSOP         0x95
+
 #define IFOP            0xa0
 #define ELSEOP          0xa1
 #define WHILEOP         0xa2
@@ -199,7 +205,275 @@ struct acpi_parser {
 };
 
 static int _dsdt(struct acpi_parser *, u8 *, int);
+static int _eval_land(struct acpi_parser *, u8 *, int, int *);
 
+
+/*
+ * Evaluate a name
+ */
+static int
+_eval_name(struct acpi_parser *parser, u8 *namestr, int *val)
+{
+    struct label_list *ll;
+    u8 *d;
+
+    ll = parser->labels;
+    while ( ll ) {
+        if ( 0 == kstrcmp(ll->l.name, namestr) ) {
+            d = ll->l.pos;
+            switch ( *d ) {
+            case ZEROOP:
+                *val = 0;
+                break;
+            case ONEOP:
+                *val = 1;
+                break;
+            case ONESOP:
+                *val = 0xff;
+                break;
+            default:
+                kprintf("Cannot evaluate the name: %.2x %.2x %.2x %.2x\r\n",
+                        *d, *(d+1), *(d+2), *(d+3));
+                return -1;
+            }
+            return 0;
+        }
+        ll = ll->next;
+    }
+
+    kprintf("Unknown name: %s\r\n", namestr);
+
+    return -1;
+}
+
+/*
+ * Evaluate an operand
+ */
+static int
+_eval_operand(struct acpi_parser *parser, u8 *d, int len, int *val)
+{
+    int ret;
+    u8 namestr[NAMESTRING_LEN];
+    int ptr;
+
+    if ( len <= 0 ) {
+        return -1;
+    }
+
+    ptr = 0;
+
+    /* Evaluate an operand */
+    switch ( *d ) {
+    case LANDOP:
+        /* LandOp */
+        return _eval_land(parser, d + 1, len - 1, val);
+    default:
+        /* NameString */
+        ret = _name_string(d, len, namestr);
+        if ( ret < 0 ) {
+            return -1;
+        }
+        d += ret;
+        len -= ret;
+        ptr += ret;
+
+        ret = _eval_name(parser, namestr, val);
+        if ( ret < 0 ) {
+            return -1;
+        }
+    }
+
+    return ptr;
+}
+
+/*
+ * Logical and
+ * DefLAnd := LandOp Operand Operand
+ */
+static int
+_eval_land(struct acpi_parser *parser, u8 *d, int len, int *val)
+{
+    int ret;
+    int op0;
+    int op1;
+    int ptr;
+
+    if ( len <= 0 ) {
+        return -1;
+    }
+
+    ptr = 0;
+
+    /* Operand */
+    ret = _eval_operand(parser, d, len, &op0);
+    if ( ret < 0 ) {
+        return -1;
+    }
+    d += ret;
+    len -= ret;
+    ptr += ret;
+
+    /* Operand */
+    ret = _eval_operand(parser, d, len, &op1);
+    if ( ret < 0 ) {
+        return -1;
+    }
+    d += ret;
+    len -= ret;
+    ptr += ret;
+
+    *val = op0 & op1;
+
+    return ptr;
+}
+
+/*
+ * Logical equal
+ * DefLequal := LequalOp Operand Operand
+ */
+static
+_eval_lequal(struct acpi_parser *parser, u8 *d, int len, int *val)
+{
+    int ret;
+    int op0;
+    int op1;
+    int ptr;
+
+    if ( len <= 0 ) {
+        return -1;
+    }
+
+    ptr = 0;
+
+    /* Operand */
+    ret = _eval_operand(parser, d, len, &op0);
+    if ( ret < 0 ) {
+        return -1;
+    }
+    d += ret;
+    len -= ret;
+    ptr += ret;
+
+    /* Operand */
+    ret = _eval_operand(parser, d, len, &op1);
+    if ( ret < 0 ) {
+        return -1;
+    }
+    d += ret;
+    len -= ret;
+    ptr += ret;
+
+    return ptr;
+}
+
+/*
+ * Predicate := TermArg => Integer
+ */
+static int
+_eval_predicate(struct acpi_parser *parser, u8 *d, int len)
+{
+    int ret;
+    int ptr;
+    int val;
+
+    if ( len <= 0 ) {
+        return -1;
+    }
+
+    ptr = 0;
+
+    switch ( *d ) {
+    case LEQUALOP:
+        ret = _eval_lequal(parser, d + 1, len - 1, &val);
+        if ( ret < 0 ) {
+            return -1;
+        }
+        d += 1;
+        len -= 1;
+        ptr += 1;
+        break;
+    default:
+        kprintf("Unknown predicate: %.2x %.2x %.2x %.2x\r\n",
+                *d, *(d+1), *(d+2), *(d+3));
+        return -1;
+    }
+
+    return ptr;
+}
+
+/*
+ * DefIfElse := IfOp PkgLength Predicate TermList DefElse
+ */
+static int
+_eval_if_op(struct acpi_parser *parser, u8 *d, int len)
+{
+    int ret;
+    int pkglen;
+
+    /* PkgLength */
+    ret = _pkglength(d, len, &pkglen);
+    if ( ret < 0 ) {
+        return -1;
+    }
+    d += ret;
+    len -= ret;
+
+    /* Predicate */
+    _eval_predicate(parser, d, len);
+
+    return pkglen;
+}
+
+static int
+_eval_else_op(struct acpi_parser *parser, u8 *d, int len)
+{
+    int ret;
+    int pkglen;
+
+    ret = _pkglength(d, len, &pkglen);
+    if ( ret < 0 ) {
+        return -1;
+    }
+
+    return pkglen;
+}
+
+
+
+static int
+_eval(struct acpi_parser *parser, u8 *d, int len)
+{
+    int ret;
+    int ptr;
+
+    if ( len <= 0 ) {
+        return -1;
+    }
+    ptr = 0;
+    switch ( *d ) {
+    case IFOP:
+        ret = _eval_if_op(parser, d + 1, len - 1);
+        if ( ret <= 0 ) {
+            return -1;
+        }
+        d += ret + 1;
+        len -= ret + 1;
+        ptr += ret + 1;
+        break;
+    case ELSEOP:
+        ret = _eval_else_op(parser, d + 1, len - 1);
+        if ( ret <= 0 ) {
+            return -1;
+        }
+        d += ret + 1;
+        len -= ret + 1;
+        ptr += ret + 1;
+        break;
+
+    }
+
+    return ptr;
+}
 
 
 static int
@@ -236,6 +510,25 @@ _name_op(struct acpi_parser *parser, u8 *d, int len)
     d += ret;
     len -= ret;
     ptr += ret;
+
+    /* FIXME: Store the position */
+    struct label_list *ll;
+    ll = kmalloc(sizeof(struct label_list));
+    if ( NULL == ll ) {
+        return -1;
+    }
+    kmemcpy(ll->l.name, namestr, NAMESTRING_LEN);
+    ll->l.pos = d;
+    ll->l.type = 0;
+    ll->prev = NULL;
+    ll->next = NULL;
+    if ( NULL == parser->labels ) {
+        parser->labels = ll;
+    } else {
+        ll->next = parser->labels;
+        parser->labels->prev = ll;
+        parser->labels = ll;
+    }
 
     /* DataRefObject */
     if ( len <= 0 ) {
@@ -503,14 +796,14 @@ _method_op(struct acpi_parser *parser, u8 *d, int len)
     ptr -= 1;
     clen -= 1;
 
-    kprintf("Method: %s\r\n", namestr);
     /* TermList */
     if ( 0 == kstrcmp(namestr, "_PRT") ) {
         /* Evaluate _PRT method */
+        //kprintf("Evaluate method: %s\r\n", namestr);
         len = clen;
         ret = 0;
         while ( len > 0 ) {
-            ret = _dsdt(parser, d, len);
+            ret = _eval(parser, d, len);
             if ( ret < 0 ) {
                 return -1;
             }
@@ -906,7 +1199,6 @@ _ext_op_prefix(struct acpi_parser *parser, u8 *d, int len)
     return ret + 1;
 }
 
-
 static int
 _dsdt(struct acpi_parser *parser, u8 *d, int len)
 {
@@ -1000,8 +1292,6 @@ _dsdt(struct acpi_parser *parser, u8 *d, int len)
         d += ret + 1;
         len -= ret + 1;
         ptr += ret + 1;
-        kprintf("*** %.2x %.2x %.2x %.2x\r\n",
-                *d, *(d+1), *(d+2), *(d+3));
         break;
     case WHILEOP:
         ret = _while_op(parser, d + 1, len - 1);

@@ -76,9 +76,6 @@ arch_bsp_init(void)
     /* Initialize VGA display */
     vga_init();
 
-    /* Find configuration using ACPI */
-    acpi_load();
-
     /* Initialize the clock */
     clock_init();
 
@@ -98,6 +95,9 @@ arch_bsp_init(void)
     }
     /* Initialize kmem */
     kmem_init();
+
+    /* Find configuration using ACPI */
+    acpi_load();
 
     /* For multiprocessors */
 #if 0
