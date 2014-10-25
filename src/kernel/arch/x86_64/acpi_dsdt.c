@@ -144,8 +144,8 @@ _name_string(u8 *d, int len, u8 *namestr)
         namestr[4] = '\0';
         return 4;
     } else {
-        kprintf("WARNING in NameString : %.2x %.2x %.2x %.2x\r\n",
-                *d, *(d+1), *(d+2), *(d+3));
+        kprintf("WARNING in NameString : %.2x %.2x %.2x %.2x %.2x %.2x %.2x %.2x\r\n",
+                *d, *(d+1), *(d+2), *(d+3), *(d+4), *(d+5), *(d+6), *(d+7));
         namestr[0] = *d;
         namestr[1] = *(d + 1);
         namestr[2] = *(d + 2);
@@ -191,8 +191,29 @@ _pkglength(u8 *d, int len, int *pkglen)
 
 struct label {
     u8 name[NAMESTRING_LEN];
-    u8 *pos;
     int type;
+    u8 *pos;
+
+    union {
+        /* Name */
+        struct {
+            u8 *pos;
+        } n;
+        /* Field */
+        struct {
+            u8 acc;
+            u8 space;
+            int offset;
+        } f;
+        /* IndexField */
+        struct {
+            int idx;
+            int dat;
+            u8 flags;
+            u8 space;
+            int offset;
+        } idxf;
+    } u;
 };
 struct label_list {
     struct label l;
@@ -232,7 +253,7 @@ _add_label(struct acpi_parser *parser, u8 *namestr, u8 *pos)
     }
     kmemcpy(ll->l.name, namestr, NAMESTRING_LEN);
     ll->l.pos = pos;
-    ll->l.type = 0;
+    ll->l.type = 1;
     ll->prev = NULL;
     ll->next = NULL;
     if ( NULL == parser->labels ) {
@@ -245,6 +266,90 @@ _add_label(struct acpi_parser *parser, u8 *namestr, u8 *pos)
 
     return 0;
 }
+
+static int
+_add_field(struct acpi_parser *parser, u8 *namestr, u8 acc, int space,
+           int offset)
+{
+    /* Store the position */
+    struct label_list *ll;
+
+    ll = kmalloc(sizeof(struct label_list));
+    if ( NULL == ll ) {
+        return -1;
+    }
+    kmemcpy(ll->l.name, namestr, NAMESTRING_LEN);
+    ll->l.type = 2;
+    ll->l.u.f.acc = acc;
+    ll->l.u.f.space = space;
+    ll->l.u.f.offset = offset;
+    ll->prev = NULL;
+    ll->next = NULL;
+    if ( NULL == parser->labels ) {
+        parser->labels = ll;
+    } else {
+        ll->next = parser->labels;
+        parser->labels->prev = ll;
+        parser->labels = ll;
+    }
+
+    return 0;
+}
+
+static int
+_find_field(struct acpi_parser *parser, u8 *namestr, u8 *acc, int *space,
+             int *offset)
+{
+    struct label_list *ll;
+
+    ll = parser->labels;
+    while ( NULL != ll ) {
+        if ( 0 == kstrcmp(ll->l.name, namestr) && ll->l.type == 2 ) {
+            /* Found */
+            *acc = ll->l.u.f.acc;
+            *space = ll->l.u.f.space;
+            *offset = ll->l.u.f.offset;
+            return 0;
+        }
+        ll = ll->next;
+    }
+
+    /* Not found */
+    return -1;
+
+}
+
+static int
+_add_indexfield(struct acpi_parser *parser, u8 *namestr, int idx, int dat,
+                u8 flags, u8 space, int offset)
+{
+    /* Store the position */
+    struct label_list *ll;
+
+    ll = kmalloc(sizeof(struct label_list));
+    if ( NULL == ll ) {
+        return -1;
+    }
+    kmemcpy(ll->l.name, namestr, NAMESTRING_LEN);
+    ll->l.type = 3;
+    ll->l.u.idxf.idx = idx;
+    ll->l.u.idxf.dat = dat;
+    ll->l.u.idxf.flags = flags;
+    ll->l.u.idxf.space = space;
+    ll->l.u.idxf.offset = offset;
+    ll->prev = NULL;
+    ll->next = NULL;
+    if ( NULL == parser->labels ) {
+        parser->labels = ll;
+    } else {
+        ll->next = parser->labels;
+        parser->labels->prev = ll;
+        parser->labels = ll;
+    }
+
+    return 0;
+}
+
 
 static int
 _add_region(struct acpi_parser *parser, u8 *namestr, u8 space, int offset,
@@ -273,7 +378,27 @@ _add_region(struct acpi_parser *parser, u8 *namestr, u8 space, int offset,
     return 0;
 }
 
+static int
+_find_region(struct acpi_parser *parser, u8 *namestr, u8 *space, int *offset,
+             int *len)
+{
+    struct region_list *rl;
 
+    rl = parser->regions;
+    while ( NULL != rl ) {
+        if ( 0 == kstrcmp(rl->r.name, namestr) ) {
+            /* Found */
+            *space = rl->r.space;
+            *offset = rl->r.offset;
+            *len = rl->r.len;
+            return 0;
+        }
+        rl = rl->next;
+    }
+
+    /* Not found */
+    return -1;
+}
 
 
 
@@ -281,29 +406,72 @@ _add_region(struct acpi_parser *parser, u8 *namestr, u8 space, int offset,
  * Evaluate a name
  */
 static int
-_eval_name(struct acpi_parser *parser, u8 *namestr, int *val)
+_eval_name(struct acpi_parser *parser, struct label *l, int *val)
+{
+    u8 *d;
+
+    d = l->pos;
+    switch ( *d ) {
+    case ZEROOP:
+        *val = 0;
+        break;
+    case ONEOP:
+        *val = 1;
+        break;
+    case ONESOP:
+        *val = 0xff;
+        break;
+    default:
+        kprintf("Cannot evaluate the name: %s %.2x %.2x %.2x %.2x\r\n",
+                l->name, *d, *(d+1), *(d+2), *(d+3));
+        return -1;
+    }
+    return 0;
+}
+
+/*
+ * Evaluate an IndexField
+ */
+static int
+_eval_indexfield(struct acpi_parser *parser, struct label *l, int *val)
+{
+    if ( l->u.idxf.space != 1 ) {
+        /* Currently only support SystemIO */
+        return -1;
+    }
+
+    outl(l->u.idxf.idx/8, l->u.idxf.offset/8);
+    *val = inl(l->u.idxf.dat/8);
+
+    return 0;
+}
+
+/*
+ * Evaluate a label
+ */
+static int
+_eval_label(struct acpi_parser *parser, u8 *namestr, int *val)
 {
     struct label_list *ll;
-    u8 *d;
 
     ll = parser->labels;
     while ( ll ) {
         if ( 0 == kstrcmp(ll->l.name, namestr) ) {
-            d = ll->l.pos;
-            switch ( *d ) {
-            case ZEROOP:
-                *val = 0;
+            /* Found */
+            switch (ll->l.type) {
+            case 1:
+                /* Name */
+                return _eval_name(parser, &ll->l, val);
                 break;
-            case ONEOP:
-                *val = 1;
+            case 2:
+                /* FIXME: Field */
                 break;
-            case ONESOP:
-                *val = 0xff;
+            case 3:
+                /* IndexField */
+                return _eval_indexfield(parser, &ll->l, val);
                 break;
             default:
-                kprintf("Cannot evaluate the name: %.2x %.2x %.2x %.2x\r\n",
-                        *d, *(d+1), *(d+2), *(d+3));
-                return -1;
+                kprintf("Cannot evaluate the name: %s\r\n", namestr);
             }
             return 0;
         }
@@ -348,7 +516,7 @@ _eval_operand(struct acpi_parser *parser, u8 *d, int len, int *val)
         len -= ret;
         ptr += ret;
 
-        ret = _eval_name(parser, namestr, val);
+        ret = _eval_label(parser, namestr, val);
         if ( ret < 0 ) {
             return -1;
         }
@@ -570,7 +738,7 @@ _eval(struct acpi_parser *parser, u8 *d, int len)
         ptr += ret + 1;
         break;
     case ELSEOP:
-        kprintf("Invalid syntax\r\n");
+        kprintf("Invalid syntax: ELSEOP\r\n");
         /*
         ret = _eval_else_op(parser, d + 1, len - 1);
         if ( ret <= 0 ) {
@@ -759,8 +927,6 @@ _region_op(struct acpi_parser *parser, u8 *d, int len)
     return ptr;
 }
 
-//int inl(int port);
-//void outl(int port, int value);
 static int
 _field_op(struct acpi_parser *parser, u8 *d, int len)
 {
@@ -804,7 +970,50 @@ _field_op(struct acpi_parser *parser, u8 *d, int len)
     ptr += 1;
     clen -= 1;
 
+    /* Find the corresponding region */
+    u8 rspace;
+    int roffset;
+    int rlen;
+    ret = _find_region(parser, namestr, &rspace, &roffset, &rlen);
+    if ( ret < 0 ) {
+        /* Cannot find the corresponding region */
+        return -1;
+    }
+
     /* FieldList */
+    int bitoff;
+    bitoff = 0;
+    while ( clen > 0 ) {
+        if ( *d == 0 ) {
+            /* FIXME: Offset */
+            d += 1;
+            clen -= 1;
+            int offlen;
+            ret = _pkglength(d, clen, &offlen);
+            bitoff += offlen;
+            d += ret;
+            clen -= ret;
+            continue;
+        }
+        /* NameString */
+        ret = _name_string(d, len, namestr);
+        if ( ret < 0 ) {
+            return -1;
+        }
+        d += ret;
+        clen -= ret;
+
+        ret = _add_field(parser, namestr, flags, rspace, roffset * 8 + bitoff);
+        if ( ret < 0 ) {
+            return -1;
+        }
+
+        /* Offset */
+        bitoff += (u16)*d;
+        d += 1;
+        clen -= 1;
+    }
+
 #if 0
     if ( 0 == kstrcmp(namestr, "SYSI") ) {
         kprintf("SYSI:\r\n");
@@ -916,6 +1125,57 @@ _index_field_op(struct acpi_parser *parser, u8 *d, int len)
     clen -= 1;
 
     if ( flags & 0xf ) {
+    }
+
+    int idx;
+    int dat;
+    u8 acc;
+    int space;
+    /* Find field */
+    ret = _find_field(parser, namestr0, &acc, &space, &idx);
+    if ( ret < 0 ) {
+        return -1;
+    }
+
+    /* Find field */
+    ret = _find_field(parser, namestr1, &acc, &space, &dat);
+    if ( ret < 0 ) {
+        return -1;
+    }
+
+    /* FieldList */
+    int bitoff;
+    u8 namestr[NAMESTRING_LEN];
+    bitoff = 0;
+    while ( clen > 0 ) {
+        if ( *d == 0 ) {
+            /* FIXME: Offset */
+            d += 1;
+            clen -= 1;
+            int offlen;
+            ret = _pkglength(d, clen, &offlen);
+            bitoff += offlen;
+            d += ret;
+            clen -= ret;
+            continue;
+        }
+        /* NameString */
+        ret = _name_string(d, len, namestr);
+        if ( ret < 0 ) {
+            return -1;
+        }
+        d += ret;
+        clen -= ret;
+
+        ret = _add_indexfield(parser, namestr, idx, dat, flags, space, bitoff);
+        if ( ret < 0 ) {
+            return -1;
+        }
+
+        /* Offset */
+        bitoff += (u16)*d;
+        d += 1;
+        clen -= 1;
     }
 
     /* FieldList */
@@ -1070,6 +1330,23 @@ _store_op(struct acpi_parser *parser, u8 *d, int len)
             return -1;
         }
         break;
+#if 0
+    case WORDPREFIX:
+        d += 2 + 1;
+        len -= 4 + 1;
+        ptr += 4 + 1;
+        break;
+    case DWORDPREFIX:
+        d += 4 + 1;
+        len -= 4 + 1;
+        ptr += 4 + 1;
+        break;
+    case QWORDPREFIX:
+        d += 8 + 1;
+        len -= 4 + 1;
+        ptr += 4 + 1;
+        break;
+#endif
     default:
         /* Method / Name */
         ret = _name_string(d, len, namestr);

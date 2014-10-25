@@ -117,7 +117,7 @@ acpi_parse_dsdt(struct acpi_sdt_hdr *sdt)
     addr = (u8 *)((u64)sdt + sizeof(struct acpi_sdt_hdr));
 
     /* Parse DSDT content */
-    acpi_parse_dsdt_root(addr, len);
+    //acpi_parse_dsdt_root(addr, len);
 
     /* Search \_S5 package in the DSDT */
     while ( len >= 5 ) {
