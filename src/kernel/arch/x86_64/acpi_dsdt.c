@@ -241,9 +241,11 @@ _eval_name(struct acpi_parser *parser, u8 *namestr, int *val)
         ll = ll->next;
     }
 
-    kprintf("Unknown name: %s\r\n", namestr);
+    kprintf("WARNING: Unknown name: %s\r\n", namestr);
+    *val = 0x00;
 
-    return -1;
+    /* FIXME */
+    return 0;
 }
 
 /*
@@ -363,6 +365,8 @@ _eval_lequal(struct acpi_parser *parser, u8 *d, int len, int *val)
     len -= ret;
     ptr += ret;
 
+    *val = (op0 == op1) ? 1 : 0;
+
     return ptr;
 }
 
@@ -370,11 +374,10 @@ _eval_lequal(struct acpi_parser *parser, u8 *d, int len, int *val)
  * Predicate := TermArg => Integer
  */
 static int
-_eval_predicate(struct acpi_parser *parser, u8 *d, int len)
+_eval_predicate(struct acpi_parser *parser, u8 *d, int len, int *val)
 {
     int ret;
     int ptr;
-    int val;
 
     if ( len <= 0 ) {
         return -1;
@@ -384,7 +387,7 @@ _eval_predicate(struct acpi_parser *parser, u8 *d, int len)
 
     switch ( *d ) {
     case LEQUALOP:
-        ret = _eval_lequal(parser, d + 1, len - 1, &val);
+        ret = _eval_lequal(parser, d + 1, len - 1, val);
         if ( ret < 0 ) {
             return -1;
         }
@@ -404,11 +407,18 @@ _eval_predicate(struct acpi_parser *parser, u8 *d, int len)
 /*
  * DefIfElse := IfOp PkgLength Predicate TermList DefElse
  */
+static int _eval(struct acpi_parser *, u8 *, int);
+static int _eval_else_op(struct acpi_parser *, u8 *, int);
 static int
 _eval_if_op(struct acpi_parser *parser, u8 *d, int len)
 {
     int ret;
     int pkglen;
+    int pkglen2;
+    int val;
+    int clen;
+    u8 *e;
+    int elen;
 
     /* PkgLength */
     ret = _pkglength(d, len, &pkglen);
@@ -417,9 +427,39 @@ _eval_if_op(struct acpi_parser *parser, u8 *d, int len)
     }
     d += ret;
     len -= ret;
+    clen = pkglen - ret;
+
+    e = d + pkglen;
+    elen = len - pkglen;
 
     /* Predicate */
-    _eval_predicate(parser, d, len);
+    ret = _eval_predicate(parser, d, len, &val);
+    if ( ret < 0 ) {
+        return -1;
+    }
+    d += ret;
+    len -= ret;
+    clen -= ret;
+
+    if ( val ) {
+        /* If */
+        ret = _eval(parser, d, clen);
+        if ( ret < 0 ) {
+            return -1;
+        }
+        /* Need to skip else */
+        return pkglen;
+    } else {
+        /* Else */
+        if ( ELSEOP == *d ) {
+            pkglen2 = _eval_else_op(parser, e + 1, elen - 1);
+            if ( pkglen2 < 0 ) {
+                return -1;
+            }
+        } else {
+            kprintf("Invalid DefElse\r\n");
+        }
+    }
 
     return pkglen;
 }
@@ -461,6 +501,8 @@ _eval(struct acpi_parser *parser, u8 *d, int len)
         ptr += ret + 1;
         break;
     case ELSEOP:
+        kprintf("Invalid syntax\r\n");
+        /*
         ret = _eval_else_op(parser, d + 1, len - 1);
         if ( ret <= 0 ) {
             return -1;
@@ -468,6 +510,8 @@ _eval(struct acpi_parser *parser, u8 *d, int len)
         d += ret + 1;
         len -= ret + 1;
         ptr += ret + 1;
+        */
+        return -1;
         break;
 
     }
@@ -578,6 +622,8 @@ _region_op(struct acpi_parser *parser, u8 *d, int len)
     int ret;
     u8 namestr[NAMESTRING_LEN];
     u8 rspace;
+    int roffset;
+    int rlen;
     int ptr;
 
     ptr = 0;
@@ -609,11 +655,13 @@ _region_op(struct acpi_parser *parser, u8 *d, int len)
     }
     switch ( *d ) {
     case BYTEPREFIX:
+        roffset = *(u8 *)(d + 1);
         d += 2;
         len -= 2;
         ptr += 2;
         break;
     case WORDPREFIX:
+        roffset = *(u16 *)(d + 1);
         d += 3;
         len -= 3;
         ptr += 3;
@@ -628,11 +676,13 @@ _region_op(struct acpi_parser *parser, u8 *d, int len)
     }
     switch ( *d ) {
     case BYTEPREFIX:
+        rlen = *(u8 *)(d + 1);
         d += 2;
         len -= 2;
         ptr += 2;
         break;
     case WORDPREFIX:
+        rlen = *(u16 *)(d + 1);
         d += 3;
         len -= 3;
         ptr += 3;
@@ -641,19 +691,71 @@ _region_op(struct acpi_parser *parser, u8 *d, int len)
         return -1;
     }
 
+    if ( 0 == kstrcmp(namestr, "SYSI") ) {
+        kprintf("Region: %x %x %x\r\n", rspace, roffset, rlen);
+    }
+
     return ptr;
 }
 
+//int inl(int port);
+//void outl(int port, int value);
 static int
 _field_op(struct acpi_parser *parser, u8 *d, int len)
 {
     int ret;
     int pkglen;
+    u8 namestr[NAMESTRING_LEN];
+    int ptr;
+    u8 flags;
+    int clen;
 
+    ptr = 0;
+
+    if ( len <= 0 ) {
+        return -1;
+    }
+
+    /* PkgLength */
     ret = _pkglength(d, len, &pkglen);
     if ( ret < 0 ) {
         return -1;
     }
+    d += ret;
+    len -= ret;
+    ptr += ret;
+    clen = pkglen - ret;
+
+    /* NameString */
+    ret = _name_string(d, len, namestr);
+    if ( ret < 0 ) {
+        return -1;
+    }
+    d += ret;
+    len -= ret;
+    ptr += ret;
+    clen -= ret;
+
+    /* FieldFlags */
+    flags = *d;
+    d += 1;
+    len -= 1;
+    ptr += 1;
+    clen -= 1;
+
+    /* FieldList */
+#if 0
+    if ( 0 == kstrcmp(namestr, "SYSI") ) {
+        kprintf("SYSI:\r\n");
+        kprintf("DEBUG: %.2x %.2x %.2x %.2x\r\n", *(d+0), *(d+1), *(d+2), *(d+3));
+        kprintf("DEBUG: %.2x %.2x %.2x %.2x\r\n", *(d+4), *(d+5), *(d+6), *(d+7));
+
+        int x0 = inl(0x4048);
+        outl(0x4048, 16);
+        int x1 = inl(0x4048 + 4);
+        kprintf("**** %.8x %.8x\r\n", x0, x1);
+    }
+#endif
 
     return pkglen;
 }
@@ -701,16 +803,62 @@ _device_op(struct acpi_parser *parser, u8 *d, int len)
     return pkglen;
 }
 
+/*
+ * DefIndexField
+ *      := IndexFieldOp PkgLength NameString NameString FieldFlags FieldList
+ */
 static int
 _index_field_op(struct acpi_parser *parser, u8 *d, int len)
 {
     int ret;
     int pkglen;
+    int clen;
+    u8 namestr0[NAMESTRING_LEN];
+    u8 namestr1[NAMESTRING_LEN];
+    int flags;
 
+    if ( len <= 0 ) {
+        return -1;
+    }
+
+    /* PkgLength */
     ret = _pkglength(d, len, &pkglen);
     if ( ret < 0 ) {
         return -1;
     }
+    d += ret;
+    len -= ret;
+    clen = pkglen - ret;
+
+    /* NameString */
+    ret = _name_string(d, len, namestr0);
+    if ( ret < 0 ) {
+        return -1;
+    }
+    d += ret;
+    len -= ret;
+    clen -= ret;
+
+    /* NameString */
+    ret = _name_string(d, len, namestr1);
+    if ( ret < 0 ) {
+        return -1;
+    }
+    d += ret;
+    len -= ret;
+    clen -= ret;
+
+    /* FieldFlags */
+    flags = *d;
+    d += 1;
+    len -= 1;
+    clen -= 1;
+
+    if ( flags & 0xf ) {
+    }
+
+    /* FieldList */
+    //kprintf("DEBUG: %.2x %.2x %.2x %.2x\r\n", *(d+4), *(d+5), *(d+6), *(d+7));
 
     return pkglen;
 }
