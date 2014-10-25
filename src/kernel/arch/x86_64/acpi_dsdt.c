@@ -189,7 +189,6 @@ _pkglength(u8 *d, int len, int *pkglen)
 }
 
 
-
 struct label {
     u8 name[NAMESTRING_LEN];
     u8 *pos;
@@ -200,12 +199,82 @@ struct label_list {
     struct label_list *prev;
     struct label_list *next;
 };
+struct region {
+    u8 name[NAMESTRING_LEN];
+    u8 space;
+    int offset;
+    int len;
+};
+struct region_list {
+    struct region r;
+    struct region_list *prev;
+    struct region_list *next;
+};
 struct acpi_parser {
     struct label_list *labels;
+    struct region_list *regions;
 };
+
 
 static int _dsdt(struct acpi_parser *, u8 *, int);
 static int _eval_land(struct acpi_parser *, u8 *, int, int *);
+
+
+static int
+_add_label(struct acpi_parser *parser, u8 *namestr, u8 *pos)
+{
+    /* Store the position */
+    struct label_list *ll;
+
+    ll = kmalloc(sizeof(struct label_list));
+    if ( NULL == ll ) {
+        return -1;
+    }
+    kmemcpy(ll->l.name, namestr, NAMESTRING_LEN);
+    ll->l.pos = pos;
+    ll->l.type = 0;
+    ll->prev = NULL;
+    ll->next = NULL;
+    if ( NULL == parser->labels ) {
+        parser->labels = ll;
+    } else {
+        ll->next = parser->labels;
+        parser->labels->prev = ll;
+        parser->labels = ll;
+    }
+
+    return 0;
+}
+
+static int
+_add_region(struct acpi_parser *parser, u8 *namestr, u8 space, int offset,
+            int len)
+{
+    struct region_list *rl;
+
+    rl = kmalloc(sizeof(struct region_list));
+    if ( NULL == rl ) {
+        return -1;
+    }
+    kmemcpy(rl->r.name, namestr, NAMESTRING_LEN);
+    rl->r.space = space;
+    rl->r.offset = offset;
+    rl->r.len = len;
+    rl->prev = NULL;
+    rl->next = NULL;
+    if ( NULL == parser->regions ) {
+        parser->regions = rl;
+    } else {
+        rl->next = parser->regions;
+        parser->regions->prev = rl;
+        parser->regions = rl;
+    }
+
+    return 0;
+}
+
+
+
 
 
 /*
@@ -556,22 +625,8 @@ _name_op(struct acpi_parser *parser, u8 *d, int len)
     ptr += ret;
 
     /* FIXME: Store the position */
-    struct label_list *ll;
-    ll = kmalloc(sizeof(struct label_list));
-    if ( NULL == ll ) {
+    if ( _add_label(parser, namestr, d) < 0 ) {
         return -1;
-    }
-    kmemcpy(ll->l.name, namestr, NAMESTRING_LEN);
-    ll->l.pos = d;
-    ll->l.type = 0;
-    ll->prev = NULL;
-    ll->next = NULL;
-    if ( NULL == parser->labels ) {
-        parser->labels = ll;
-    } else {
-        ll->next = parser->labels;
-        parser->labels->prev = ll;
-        parser->labels = ll;
     }
 
     /* DataRefObject */
@@ -691,8 +746,14 @@ _region_op(struct acpi_parser *parser, u8 *d, int len)
         return -1;
     }
 
+#if 0
     if ( 0 == kstrcmp(namestr, "SYSI") ) {
         kprintf("Region: %x %x %x\r\n", rspace, roffset, rlen);
+    }
+#endif
+
+    if ( _add_region(parser, namestr, rspace, roffset, rlen) < 0 ) {
+        return -1;
     }
 
     return ptr;
@@ -1486,6 +1547,7 @@ acpi_parse_dsdt_root(u8 *d, int len)
     struct acpi_parser parser;
 
     parser.labels = NULL;
+    parser.regions = NULL;
 
     if ( len < 0 ) {
         return -1;
