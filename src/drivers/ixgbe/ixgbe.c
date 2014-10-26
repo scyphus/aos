@@ -863,7 +863,7 @@ ixgbe_tx_test3(struct netdev *netdev, u8 *pkt, int len, int blksize)
     kprintf("%x\r\n", aa);
     //t0 = rdtsc();
     //tdh = mmio_read32(ixgbedev->mmio, IXGBE_REG_TDH(0));
-#if 0
+#if 1
     int i;
     for ( i = 0; i < 1000 * 1000; i++ ) {
         //tdh ^= mmio_read32(ixgbedev->mmio, IXGBE_REG_TDH(0));

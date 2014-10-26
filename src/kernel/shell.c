@@ -317,7 +317,7 @@ _builtin_test(char *const argv[])
     pkt[24] = cs & 0xff;
     pkt[25] = cs >> 8;
 
-    ixgbe_tx_test3(list->next->netdev, pkt, pktsz + 18 - 4, blk);
+    ixgbe_tx_test(list->next->netdev, pkt, pktsz + 18 - 4, blk);
     //kprintf("%llx: pkt\r\n", list->netdev);
     //list->netdev->sendpkt(pkt, pktsz + 18 - 4, list->netdev);
 
@@ -865,7 +865,7 @@ _tx_main(int argc, char *argv[])
     pkt[25] = cs >> 8;
 
     //ixgbe_tx_test(list->next->netdev, pkt, pktsz + 18 - 4, blk);
-    ixgbe_tx_test3(list->next->netdev, pkt, pktsz + 18 - 4, blk);
+    ixgbe_tx_test2(list->next->netdev, pkt, pktsz + 18 - 4, blk);
     //kprintf("%llx: pkt\r\n", list->netdev);
     //list->netdev->sendpkt(pkt, pktsz + 18 - 4, list->netdev);
 
