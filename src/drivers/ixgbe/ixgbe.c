@@ -342,7 +342,7 @@ ixgbe_setup_rx_desc(struct ixgbe_device *dev)
     /* Previous tail */
     dev->rx_tail = 0;
     /* up to 64 K minus 8 */
-    dev->rx_bufsz = 8192/2;
+    dev->rx_bufsz = 8192;
     /* Cache */
     dev->rx_head_cache = 0;
 
