@@ -153,6 +153,8 @@ volatile u32 acpi_get_timer(void);
 u64 acpi_get_timer_period(void);
 u64 acpi_get_timer_hz(void);
 
+/* acpi_dsdt.c */
+int acpi_parse_dsdt_root(u8 *, int);
 
 #endif /* _KERNEL_ACPI_H */
 

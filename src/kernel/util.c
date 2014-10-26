@@ -58,6 +58,8 @@ kprintf_decimal(long long int val, int zero, int pad, int prec)
     int i;
     char *buf;
 
+    /* FIXME: Support "signed" integer */
+
     /* Calculate the maximum buffer size */
     sz = 3 * sizeof(long long int);
     buf = alloca(sz);

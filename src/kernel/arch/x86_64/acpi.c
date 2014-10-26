@@ -5,8 +5,6 @@
  *      Hirochika Asai  <asai@scyphus.co.jp>
  */
 
-/* $Id$ */
-
 #include <aos/const.h>
 #include "acpi.h"
 #include "arch.h"
@@ -117,6 +115,9 @@ acpi_parse_dsdt(struct acpi_sdt_hdr *sdt)
 
     len = sdt->length;
     addr = (u8 *)((u64)sdt + sizeof(struct acpi_sdt_hdr));
+
+    /* Parse DSDT content */
+    //acpi_parse_dsdt_root(addr, len);
 
     /* Search \_S5 package in the DSDT */
     while ( len >= 5 ) {
