@@ -48,12 +48,11 @@ struct cmd cmds[] = {
     { .s = "request", .desc = "Request a command", .f = NULL },
 };
 
-
-
-
-
-
-
+/*
+  0800277a98ea 192.168.56.2
+  0800275af6dc 192.168.56.3
+ */
+const char *config = "e0 08:00:27:7a:98:ea";
 
 
 
@@ -123,7 +122,7 @@ _builtin_show(char *const argv[])
         list = netdev_head;
         while ( list ) {
             kprintf(" %s\r\n", list->netdev->name);
-            kprintf("   HWADDR: %.2x:%.2x:%.2x:%.2x:%.2x:%.2x\r\n",
+            kprintf("   hwaddr: %.2x:%.2x:%.2x:%.2x:%.2x:%.2x\r\n",
                     list->netdev->macaddr[0],
                     list->netdev->macaddr[1],
                     list->netdev->macaddr[2],
@@ -136,7 +135,7 @@ _builtin_show(char *const argv[])
         struct pci *list;
         list = pci_list();
         while ( list ) {
-            kprintf("%x.%x.%x %.4x:%.4x\r\n", list->device->bus,
+            kprintf("%.2x.%.2x.%.2x %.4x:%.4x\r\n", list->device->bus,
                     list->device->slot, list->device->func,
                     list->device->vendor_id, list->device->device_id);
             list = list->next;
@@ -1211,7 +1210,7 @@ _builtin_start(char *const argv[])
         id = atoi(argv[2]);
         t->main = &_tx_main;
         arch_set_next_task_other_cpu(t, id);
-        kprintf("Launch routing @ CPU #%d\r\n", id);
+        kprintf("Launch tx @ CPU #%d\r\n", id);
         lapic_send_ns_fixed_ipi(id, IV_IPI);
     } else if ( 0 == kstrcmp("routing", argv[1]) ) {
         /* Start routing */

@@ -243,8 +243,6 @@ struct net_nd_table {
 };
 
 
-
-
 /* DRIVER */
 #define NETDEV_MAX_NAME 32
 struct netdev {

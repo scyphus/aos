@@ -528,115 +528,71 @@ e1000_sendpkt(const u8 *pkt, u32 len, struct netdev *netdev)
     return -1;
 }
 
-#if 0
-typedef int (*router_rx_cb_t)(const u8 *, u32, int);
+
+int
+e1000_tx_enqueue(struct netdev *netdev, u8 *pkt, int len)
+{
+    u32 tdh;
+    struct e1000_device *dev;
+    int tx_avl;
+    struct e1000_tx_desc *txdesc;
+
+    dev = (struct e1000_device *)netdev->vendor;
+    //tdh = mmio_read32(dev->mmio, E1000_REG_TDH);
+    tdh = dev->tx_head_cache;
+
+    tx_avl = dev->tx_bufsz - ((dev->tx_bufsz - tdh + dev->tx_tail)
+                              % dev->tx_bufsz);
+    if ( 0 == tx_avl ) {
+        dev->tx_head_cache = mmio_read32(dev->mmio, E1000_REG_TDH);
+        tdh = dev->tx_head_cache;
+        tx_avl = dev->tx_bufsz - ((dev->tx_bufsz - tdh + dev->tx_tail)
+                                  % dev->tx_bufsz);
+        if ( 0 == tx_avl ) {
+            return -1;
+        }
+    }
+
+
+    /* Check the head of TX ring buffer */
+    txdesc = (struct e1000_tx_desc *)
+        (dev->tx_base + (dev->tx_tail % dev->tx_bufsz)
+         * sizeof(struct e1000_tx_desc));
+    kmemcpy((void *)txdesc->address, pkt, len);
+    txdesc->length = len;
+    txdesc->sta = 0;
+    txdesc->css = 0;
+    txdesc->cso = 0;
+    txdesc->special = 0;
+    txdesc->cmd = (1<<3) | (1<<1) | 1;
+
+    dev->tx_tail = (dev->tx_tail + 1) % dev->tx_bufsz;
+    //mmio_write32(dev->mmio, E1000_REG_TDT, dev->tx_tail);
+
+    return len;
+}
 
 /*
- * Get a valid TX buffer
+ * Commit Tx queue
  */
-int
-e1000_tx_buf(struct netdev *netdev, u8 **txpkt, u16 **txlen, u16 vlan)
-{
-    struct e1000_device *e1000dev;
-    struct e1000_tx_desc *txdesc;
-    int tx_avl;
-
-    /* Retrieve data structure of e1000 driver */
-    e1000dev = (struct e1000_device *)netdev->vendor;
-
-    /* Get available TX buffer length */
-    tx_avl = e1000dev->tx_bufsz
-        - ((e1000dev->tx_bufsz - e1000dev->tx_head_cache + e1000dev->tx_tail)
-           % e1000dev->tx_bufsz);
-    if ( tx_avl <= 0 ) {
-        return -1;
-    }
-
-    /* Check the head of TX ring buffer */
-    txdesc = (struct e1000_tx_desc *)
-        (e1000dev->tx_base
-         + (e1000dev->tx_tail % e1000dev->tx_bufsz)
-         * sizeof(struct e1000_tx_desc));
-
-    *txpkt = (u8 *)txdesc->address;
-    *txlen = &(txdesc->length);
-
-    txdesc->sta = 0;
-    txdesc->css = 0;
-    txdesc->cso = 0;
-    txdesc->special = vlan;
-    if ( vlan == 0 ) {
-        txdesc->cmd = (1<<3) | (1<<1) | 1;
-    } else {
-        txdesc->cmd = (1<<3) | (1<<1) | 1 | (1<<6);
-    }
-
-    /* Update the tail pointer of the TX buffer */
-    e1000dev->tx_tail = (e1000dev->tx_tail + 1) % e1000dev->tx_bufsz;
-
-    return 0;
-}
-int
-e1000_tx_set(struct netdev *netdev, u64 txpkt, u16 txlen, u16 vlan)
-{
-    struct e1000_device *e1000dev;
-    struct e1000_tx_desc *txdesc;
-    int tx_avl;
-    int ret;
-
-    /* Retrieve data structure of e1000 driver */
-    e1000dev = (struct e1000_device *)netdev->vendor;
-
-    /* Get available TX buffer length */
-    tx_avl = e1000dev->tx_bufsz
-        - ((e1000dev->tx_bufsz - e1000dev->tx_head_cache + e1000dev->tx_tail)
-           % e1000dev->tx_bufsz);
-    if ( tx_avl <= 0 ) {
-        return -1;
-    }
-
-    /* Check the head of TX ring buffer */
-    ret = e1000dev->tx_tail;
-    txdesc = (struct e1000_tx_desc *)
-        (e1000dev->tx_base
-         + (e1000dev->tx_tail % e1000dev->tx_bufsz)
-         * sizeof(struct e1000_tx_desc));
-
-    kmemcpy((u8 *)txdesc->address, (u8 *)txpkt, txlen);
-    txdesc->length = txlen;
-    txdesc->sta = 0;
-    txdesc->css = 0;
-    txdesc->cso = 0;
-    txdesc->special = vlan;
-    if ( vlan == 0 ) {
-        txdesc->cmd = (1<<3) | (1<<1) | 1;
-    } else {
-        txdesc->cmd = (1<<3) | (1<<1) | 1 | (1<<6);
-    }
-
-    /* Update the tail pointer of the TX buffer */
-    e1000dev->tx_tail = (e1000dev->tx_tail + 1) % e1000dev->tx_bufsz;
-
-    return ret;
-}
 int
 e1000_tx_commit(struct netdev *netdev)
 {
-    struct e1000_device *e1000dev;
+    struct e1000_device *dev;
+    u32 tdh;
 
     /* Retrieve data structure of e1000 driver */
-    e1000dev = (struct e1000_device *)netdev->vendor;
+    dev = (struct e1000_device *)netdev->vendor;
 
     /* Write to PCI */
-    mmio_write32(e1000dev->mmio, E1000_REG_TDT, e1000dev->tx_tail);
+    mmio_write32(dev->mmio, E1000_REG_TDT, dev->tx_tail);
 
-    u32 tdh;
-    tdh = mmio_read32(e1000dev->mmio, E1000_REG_TDH);
-    e1000dev->tx_head_cache = tdh;
+    /* Update Tx head cache */
+    tdh = mmio_read32(dev->mmio, E1000_REG_TDH);
+    dev->tx_head_cache = tdh;
 
     return 0;
 }
-#endif
 
 /*
  * Local variables:
