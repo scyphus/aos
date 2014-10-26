@@ -14,7 +14,7 @@
 
 void pause(void);
 
-#define PKTSZ   4096
+#define PKTSZ   2048
 
 #define PCI_VENDOR_INTEL        0x8086
 
@@ -423,8 +423,8 @@ ixgbe_setup_tx_desc(struct ixgbe_device *dev)
     dev->tx_tail[0] = 0;
     dev->tx_tail[1] = 0;
     /* up to 64 K minus 8 */
-    dev->tx_bufsz[0] = 8192/2;
-    dev->tx_bufsz[1] = 8192/2;
+    dev->tx_bufsz[0] = 8192/8;
+    dev->tx_bufsz[1] = 8192/8;
     /* Cache */
     dev->tx_head_cache[0] = 0;
     dev->tx_head_cache[1] = 0;
@@ -945,8 +945,9 @@ ixgbe_forwarding_test(struct netdev *netdev1, struct netdev *netdev2)
         }
 #else
         rdh = mmio_read32(dev1->mmio, IXGBE_REG_RDH(0));
-        tdh = mmio_read32(dev2->mmio, IXGBE_REG_TDH(0));
         rx_que = (dev1->rx_bufsz - dev1->rx_tail + rdh) % dev1->rx_bufsz;
+
+        tdh = mmio_read32(dev2->mmio, IXGBE_REG_TDH(0));
         tx_avl = dev2->tx_bufsz[0]
             - ((dev2->tx_bufsz[0] - tdh + dev2->tx_tail[0])
                % dev2->tx_bufsz[0]);
@@ -978,12 +979,14 @@ ixgbe_forwarding_test(struct netdev *netdev1, struct netdev *netdev2)
 
             txpkt = (u8 *)dev1->rx_read[0][rxidx].pkt_addr;
 
+#if 0
             /* dst:  00:40:66:67:72:24  */
             *(u32 *)txpkt =  0x67664000LLU;
             *(u16 *)(txpkt + 4) =  0x2472LLU;
             /* src */
             *(u16 *)(txpkt + 6) =  *((u16 *)netdev2->macaddr);
             *(u32 *)(txpkt + 8) =  *((u32 *)(netdev2->macaddr + 2));
+#endif
 
 #if 0
             /* TTL -= 1 */
@@ -1005,25 +1008,25 @@ ixgbe_forwarding_test(struct netdev *netdev1, struct netdev *netdev2)
 #endif
 
             /* Save Tx */
-            u8 *tmp = (u64)txdesc->pkt_addr & 0xfffffffffffffff0ULL;
+            u8 *tmp = (u8 *)((u64)txdesc->pkt_addr & 0xfffffffffffffff0ULL);
 
             txdesc->pkt_addr = (u64)txpkt;
             txdesc->length = rxdesc->wb.length;
             txdesc->dtyp_mac = (3 << 4);
             txdesc->dcmd = (1<<1) | 1;
-            txdesc->paylen_ports_cc_idx_sta = (txdesc->length << 14);
+            txdesc->paylen_ports_cc_idx_sta = ((u32)rxdesc->wb.length << 14);
 
             /* Reset RX desc */
-            rxdesc->read.pkt_addr = tmp;
+            rxdesc->read.pkt_addr = (u64)tmp;
             dev1->rx_read[0][rxidx].pkt_addr = rxdesc->read.pkt_addr;
-            //rxdesc->read.hdr_addr = dev1->rx_read[0][rxidx].hdr_addr;
+            rxdesc->read.hdr_addr = dev1->rx_read[0][rxidx].hdr_addr;
 
         }
         dev1->rx_tail = (dev1->rx_tail + nrp - 1) % dev1->rx_bufsz;
-        dev2->tx_tail[0] = (dev2->tx_tail[0] + nrp) % dev2->tx_bufsz[0];
         mmio_write32(dev1->mmio, IXGBE_REG_RDT(0), dev1->rx_tail);
-        mmio_write32(dev2->mmio, IXGBE_REG_TDT(0), dev2->tx_tail[0]);
         dev1->rx_tail = (dev1->rx_tail + 1) % dev1->rx_bufsz;
+        dev2->tx_tail[0] = (dev2->tx_tail[0] + nrp) % dev2->tx_bufsz[0];
+        mmio_write32(dev2->mmio, IXGBE_REG_TDT(0), dev2->tx_tail[0]);
     }
 
 #if 0
