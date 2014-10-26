@@ -228,19 +228,19 @@ arch_bsp_init(void)
 
     /* ToDo: Synchronize all processors */
 
-#if 0
+#if 1
     /* Performance monitoring registers */
     //IA32_PMCx
     //IA32_PERFEVTSEL0: 0x186
     // LLC cache misses: Event 2E, unmask 41H
     u64 msr = 0x186;
-    //u64 pmc = (1<<22) | (1<<17) | (1<<16) | (0x41 << 8) | 0x2e;
-    u64 pmc = (1<<22) | (0<<21) | (1<<17) | (1<<16) | (0x00 << 8) | 0x3c;
+    u64 pmc = (1<<22) | (1<<17) | (1<<16) | (0x41 << 8) | 0x2e;
+    //u64 pmc = (1<<22) | (0<<21) | (1<<17) | (1<<16) | (0x00 << 8) | 0x3c;
     u64 zero = 0;
     __asm__ __volatile__ ("wrmsr" :: "a"(pmc), "c"(msr), "d"(zero) );
     msr = 0x187;
-    //pmc = (1<<22) | (0<<21) | (1<<17) | (1<<16) | (0x00 << 8) | 0x3c;
-    pmc = (1<<22) | (1<<17) | (1<<16) | (0x4f << 8) | 0x2e;
+    pmc = (1<<22) | (0<<21) | (1<<17) | (1<<16) | (0x00 << 8) | 0x3c;
+    //pmc = (1<<22) | (1<<17) | (1<<16) | (0x4f << 8) | 0x2e;
     __asm__ __volatile__ ("wrmsr" :: "a"(pmc), "c"(msr), "d"(zero) );
 
     //IA32_PERF_GLOBAL_CTRL = 0x38f
@@ -263,6 +263,7 @@ arch_bsp_init(void)
     //__asm__ __volatile__ ("wrmsr" : : "c"(msr), "a"(aa), "d"(dd) );
     kprintf("%x %x\r\n", dd, aa);
     arch_busy_usleep(10);
+    //u64 cc = 1;
     //__asm__ __volatile__ ("rdpmc" : "=a"(aa), "=d"(dd)  : "c"(cc) );
     //kprintf("Cycles: %.8x%.8x\r\n", dd, aa);
 #endif

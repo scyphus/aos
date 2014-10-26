@@ -841,30 +841,49 @@ ixgbe_tx_test2(struct netdev *netdev, u8 *pkt, int len, int blksize)
     return 0;
 }
 
+u64 rdtsc(void);
 int
 ixgbe_tx_test3(struct netdev *netdev, u8 *pkt, int len, int blksize)
 {
     struct ixgbe_device *ixgbedev;
-    u64 t0;
-    u64 t1;
-    u64 aa;
-    u64 dd;
+    u64 t0 = 0;
+    u64 t1 = 0;
+    u64 aa = 0;
+    u64 dd = 0;
+    u32 tdh = 0;
+
+    aa = 0;
+    dd = 0;
 
     ixgbedev = (struct ixgbe_device *)netdev->vendor;
 
+    aa = dd = 0;
     __asm__ __volatile__ ("movq $1,%%rcx;mfence;rdpmc" : "=a"(aa), "=d"(dd) );
     t0 = (dd<<32) | aa;
-    mmio_write32(ixgbedev->mmio, IXGBE_REG_TDT(0), 0);
+    kprintf("%x\r\n", aa);
+    //t0 = rdtsc();
+    //tdh = mmio_read32(ixgbedev->mmio, IXGBE_REG_TDH(0));
+#if 0
+    int i;
+    for ( i = 0; i < 1000 * 1000; i++ ) {
+        //tdh ^= mmio_read32(ixgbedev->mmio, IXGBE_REG_TDH(0));
+        mmio_write32(ixgbedev->mmio, IXGBE_REG_TDT(0), 0);
+    }
+#endif
+    aa = dd = 0;
     __asm__ __volatile__ ("movq $1,%%rcx;mfence;rdpmc" : "=a"(aa), "=d"(dd) );
     t1 = (dd<<32) | aa;
+    //t1 = rdtsc();
 
-    kprintf("Performance: %d %d\r\n", 0, t1 - t0);
+    kprintf("Performance: %d %.16x %.16x %lld\r\n", tdh, t1, t0, t1 - t0);
 
 #if 0
     t0 = rdtsc();
     mmio_write32(ixgbedev->mmio, IXGBE_REG_TDT(0), 0);
     t1 = rdtsc();
 #endif
+
+    return 0;
 }
 
 int
