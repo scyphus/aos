@@ -182,6 +182,7 @@ _builtin_request(char *const argv[])
  * test packet
  */
 int ixgbe_tx_test(struct netdev *, u8 *, int, int);
+int ixgbe_tx_test2(struct netdev *, u8 *, int, int);
 int
 _builtin_test(char *const argv[])
 {
@@ -1217,6 +1218,11 @@ _builtin_start(char *const argv[])
         /* Start Tx */
         id = atoi(argv[2]);
         t->main = &_tx_main;
+        t->argv = kmalloc(sizeof(char *) * 4);
+        t->argv[0] = "tx";
+        t->argv[1] = argv[3] ? kstrdup(argv[3]) : NULL;
+        t->argv[2] = argv[4] ? kstrdup(argv[4]) : NULL;
+        t->argv[3] = NULL;
         arch_set_next_task_other_cpu(t, id);
         kprintf("Launch tx @ CPU #%d\r\n", id);
         lapic_send_ns_fixed_ipi(id, IV_IPI);
