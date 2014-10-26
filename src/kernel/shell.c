@@ -727,7 +727,7 @@ _tx_main(int argc, char *argv[])
     int blk;
     char *s;
 
-#if 0
+#if 1
     s = argv[1];
     sz = 0;
     while ( *s ) {
@@ -742,16 +742,17 @@ _tx_main(int argc, char *argv[])
         blk += *s - '0';
         s++;
     }
-#endif
+#else
     sz = 64;
     blk = 64;
+#endif
     kprintf("Testing: %d/%d\r\n", sz, blk);
 
     int pktsz = sz - 18;
 
     pkt = kmalloc(9200);
 
-    list = netdev_head;
+    list = netdev_head->next;
     /* dst (multicast) */
 #if 0
     pkt[0] = 0x01;
@@ -770,13 +771,20 @@ _tx_main(int argc, char *argv[])
     pkt[5] = 0x40;
     //90:e2:ba:6a:0c:40
     //90:e2:ba:6a:0c:41
-#else
+#elif 0
     pkt[0] = 0x90;
     pkt[1] = 0xe2;
     pkt[2] = 0xba;
     pkt[3] = 0x68;
     pkt[4] = 0xb4;
     pkt[5] = 0xb4;
+#else
+    pkt[0] = 0x00;
+    pkt[1] = 0x40;
+    pkt[2] = 0x66;
+    pkt[3] = 0x67;
+    pkt[4] = 0x72;
+    pkt[5] = 0x24;
 #endif
 #endif
 
@@ -807,7 +815,7 @@ _tx_main(int argc, char *argv[])
     /* checksum */
     pkt[24] = 0x00;
     pkt[25] = 0x00;
-    /* src: 192.168.56.2 */
+    /* src: 192.168.200.2 */
     pkt[26] = 192;
     pkt[27] = 168;
     pkt[28] = 100;
