@@ -48,12 +48,11 @@ struct cmd cmds[] = {
     { .s = "request", .desc = "Request a command", .f = NULL },
 };
 
-
-
-
-
-
-
+/*
+  0800277a98ea 192.168.56.2
+  0800275af6dc 192.168.56.3
+ */
+const char *config = "e0 08:00:27:7a:98:ea";
 
 
 
@@ -123,7 +122,7 @@ _builtin_show(char *const argv[])
         list = netdev_head;
         while ( list ) {
             kprintf(" %s\r\n", list->netdev->name);
-            kprintf("   HWADDR: %.2x:%.2x:%.2x:%.2x:%.2x:%.2x\r\n",
+            kprintf("   hwaddr: %.2x:%.2x:%.2x:%.2x:%.2x:%.2x\r\n",
                     list->netdev->macaddr[0],
                     list->netdev->macaddr[1],
                     list->netdev->macaddr[2],
@@ -136,7 +135,7 @@ _builtin_show(char *const argv[])
         struct pci *list;
         list = pci_list();
         while ( list ) {
-            kprintf("%x.%x.%x %.4x:%.4x\r\n", list->device->bus,
+            kprintf("%.2x.%.2x.%.2x %.4x:%.4x\r\n", list->device->bus,
                     list->device->slot, list->device->func,
                     list->device->vendor_id, list->device->device_id);
             list = list->next;
@@ -728,7 +727,7 @@ _tx_main(int argc, char *argv[])
     int blk;
     char *s;
 
-#if 0
+#if 1
     s = argv[1];
     sz = 0;
     while ( *s ) {
@@ -743,16 +742,17 @@ _tx_main(int argc, char *argv[])
         blk += *s - '0';
         s++;
     }
-#endif
+#else
     sz = 64;
     blk = 64;
+#endif
     kprintf("Testing: %d/%d\r\n", sz, blk);
 
     int pktsz = sz - 18;
 
     pkt = kmalloc(9200);
 
-    list = netdev_head;
+    list = netdev_head->next;
     /* dst (multicast) */
 #if 0
     pkt[0] = 0x01;
@@ -771,13 +771,20 @@ _tx_main(int argc, char *argv[])
     pkt[5] = 0x40;
     //90:e2:ba:6a:0c:40
     //90:e2:ba:6a:0c:41
-#else
+#elif 0
     pkt[0] = 0x90;
     pkt[1] = 0xe2;
     pkt[2] = 0xba;
     pkt[3] = 0x68;
     pkt[4] = 0xb4;
     pkt[5] = 0xb4;
+#else
+    pkt[0] = 0x00;
+    pkt[1] = 0x40;
+    pkt[2] = 0x66;
+    pkt[3] = 0x67;
+    pkt[4] = 0x72;
+    pkt[5] = 0x24;
 #endif
 #endif
 
@@ -808,7 +815,7 @@ _tx_main(int argc, char *argv[])
     /* checksum */
     pkt[24] = 0x00;
     pkt[25] = 0x00;
-    /* src: 192.168.56.2 */
+    /* src: 192.168.200.2 */
     pkt[26] = 192;
     pkt[27] = 168;
     pkt[28] = 100;
@@ -1211,7 +1218,7 @@ _builtin_start(char *const argv[])
         id = atoi(argv[2]);
         t->main = &_tx_main;
         arch_set_next_task_other_cpu(t, id);
-        kprintf("Launch routing @ CPU #%d\r\n", id);
+        kprintf("Launch tx @ CPU #%d\r\n", id);
         lapic_send_ns_fixed_ipi(id, IV_IPI);
     } else if ( 0 == kstrcmp("routing", argv[1]) ) {
         /* Start routing */
