@@ -164,6 +164,25 @@ int ixgbe_routing_test(struct netdev *);
 
 
 
+static u16
+_ip_checksum(const u8 *data, int len)
+{
+    /* Compute checksum */
+    u16 *tmp;
+    u32 cs;
+    int i;
+
+    tmp = (u16 *)data;
+    cs = 0;
+    for ( i = 0; i < len / 2; i++ ) {
+        cs += (u32)tmp[i];
+        cs = (cs & 0xffff) + (cs >> 16);
+    }
+    cs = 0xffff - cs;
+
+    return cs;
+}
+
 /*
  * Read data from a PCI register by MMIO
  */
@@ -979,26 +998,37 @@ ixgbe_forwarding_test(struct netdev *netdev1, struct netdev *netdev2)
                 continue;
             }
 #endif
-#if 0
+#if 1
             /* dst:  00:40:66:67:72:24  */
+#if 0
             txpkt[0] = 0x00;
             txpkt[1] = 0x40;
             txpkt[2] = 0x66;
             txpkt[3] = 0x67;
             txpkt[4] = 0x72;
             txpkt[5] = 0x24;
+#else
+            *(u32 *)txpkt =  0x67664000LLU;
+            *(u16 *)(txpkt + 4) =  0x2472LLU;
+#endif
             /* src */
+#if 0
             txpkt[6] = netdev2->macaddr[0];
             txpkt[7] = netdev2->macaddr[1];
             txpkt[8] = netdev2->macaddr[2];
             txpkt[9] = netdev2->macaddr[3];
             txpkt[10] = netdev2->macaddr[4];
             txpkt[11] = netdev2->macaddr[5];
+#else
+            *(u32 *)(txpkt + 6) =  ((u32 *)netdev2->macaddr);
+            *(u16 *)(txpkt + 10) =  ((u16 *)(netdev2->macaddr + 4));
+#endif
             //for ( j = 12; j < rxdesc->wb.length; j++ ) {
             //    txpkt[j] = rxpkt[j];
             //}
 #endif
 
+#if 0
 #if 0
             u32 addr;
             addr = *(u32 *)(txpkt + 30);
@@ -1018,14 +1048,30 @@ ixgbe_forwarding_test(struct netdev *netdev1, struct netdev *netdev2)
             *(u32 *)(txpkt + 6) = *(u32 *)netdev2->macaddr;
             *(u16 *)(txpkt + 10) = *(u16 *)(netdev2->macaddr + 4);
             //kmemcpy(txpkt+6, netdev2->macaddr, 6);
+#endif
 
             /* Save Tx */
             u8 *tmp = (u64)txdesc->pkt_addr & 0xfffffffffffffff0ULL;
 
+#if 0
             /* TTL -= 1 */
-            //txpkt[22]--;
-            //txpkt[24] = 0;
-            //txpkt[25] = 0;
+            txpkt[22]--;
+            /* Compute checksum */
+            u16 *ctmp;
+            u32 cs;
+            txpkt[24] = 0x0;
+            txpkt[25] = 0x0;
+            ctmp = (u16 *)txpkt;
+            cs = 0;
+            for ( i = 7; i < 17; i++ ) {
+                cs += (u32)ctmp[i];
+                cs = (cs & 0xffff) + (cs >> 16);
+            }
+            cs = 0xffff - cs;
+            txpkt[24] = cs & 0xff;
+            txpkt[25] = cs >> 8;
+#endif
+
 
             txdesc->pkt_addr = (u64)txpkt;
             txdesc->length = rxdesc->wb.length;

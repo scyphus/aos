@@ -780,6 +780,13 @@ _tx_main(int argc, char *argv[])
     pkt[3] = 0x68;
     pkt[4] = 0xb4;
     pkt[5] = 0xb4;
+#elif 1
+    pkt[0] = 0x90;
+    pkt[1] = 0xe2;
+    pkt[2] = 0xba;
+    pkt[3] = 0x6a;
+    pkt[4] = 0x00;
+    pkt[5] = 0xdc;
 #else
     pkt[0] = 0x00;
     pkt[1] = 0x40;
@@ -817,7 +824,7 @@ _tx_main(int argc, char *argv[])
     /* checksum */
     pkt[24] = 0x00;
     pkt[25] = 0x00;
-    /* src: 192.168.200.2 */
+    /* src: 192.168.100.2 */
     pkt[26] = 192;
     pkt[27] = 168;
     pkt[28] = 100;
@@ -864,8 +871,8 @@ _tx_main(int argc, char *argv[])
     pkt[24] = cs & 0xff;
     pkt[25] = cs >> 8;
 
-    //ixgbe_tx_test(list->next->netdev, pkt, pktsz + 18 - 4, blk);
-    ixgbe_tx_test2(list->next->netdev, pkt, pktsz + 18 - 4, blk);
+    //ixgbe_tx_test(list->netdev, pkt, pktsz + 18 - 4, blk);
+    ixgbe_tx_test2(list->netdev, pkt, pktsz + 18 - 4, blk);
     //kprintf("%llx: pkt\r\n", list->netdev);
     //list->netdev->sendpkt(pkt, pktsz + 18 - 4, list->netdev);
 

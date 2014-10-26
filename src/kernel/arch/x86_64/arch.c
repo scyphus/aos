@@ -228,7 +228,7 @@ arch_bsp_init(void)
 
     /* ToDo: Synchronize all processors */
 
-#if 1
+#if 0
     /* Performance monitoring registers */
     //IA32_PMCx
     //IA32_PERFEVTSEL0: 0x186
