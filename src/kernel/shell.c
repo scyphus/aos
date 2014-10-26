@@ -183,6 +183,7 @@ _builtin_request(char *const argv[])
  */
 int ixgbe_tx_test(struct netdev *, u8 *, int, int);
 int ixgbe_tx_test2(struct netdev *, u8 *, int, int);
+int ixgbe_tx_test3(struct netdev *, u8 *, int, int);
 int
 _builtin_test(char *const argv[])
 {
@@ -843,9 +844,10 @@ _tx_main(int argc, char *argv[])
     pkt[39] = (pktsz - 20) & 0xff;
     pkt[40] = 0x00;
     pkt[41] = 0x00;
-    for ( i = 42; i < pktsz + 14; i++ ) {
-        pkt[i] = 0;
-    }
+    kmemset(pkt + 42, 0, pktsz + 14 - 42);
+    //for ( i = 42; i < pktsz + 14; i++ ) {
+    //    pkt[i] = 0;
+    //}
 
     /* Compute checksum */
     u16 *tmp;
@@ -862,7 +864,8 @@ _tx_main(int argc, char *argv[])
     pkt[24] = cs & 0xff;
     pkt[25] = cs >> 8;
 
-    ixgbe_tx_test(list->next->netdev, pkt, pktsz + 18 - 4, blk);
+    //ixgbe_tx_test(list->next->netdev, pkt, pktsz + 18 - 4, blk);
+    ixgbe_tx_test3(list->next->netdev, pkt, pktsz + 18 - 4, blk);
     //kprintf("%llx: pkt\r\n", list->netdev);
     //list->netdev->sendpkt(pkt, pktsz + 18 - 4, list->netdev);
 
