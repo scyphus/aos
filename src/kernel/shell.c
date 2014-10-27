@@ -325,6 +325,8 @@ _builtin_test(char *const argv[])
 }
 
 int ixgbe_forwarding_test(struct netdev *, struct netdev *);
+int ixgbe_forwarding_test_sub(struct netdev *, struct netdev *);
+int ixgbe_routing_test(struct netdev *);
 int
 _builtin_test2(char *const argv[])
 {
@@ -704,7 +706,7 @@ _mgmt_main(int argc, char *argv[])
 
     return 0;
 }
-int
+static int
 _routing_main(int argc, char *argv[])
 {
     struct netdev_list *list;
@@ -712,8 +714,21 @@ _routing_main(int argc, char *argv[])
     list = netdev_head;
 
     kprintf("Started routing: %s => %s\r\n", list->next->netdev->name,
-            list->next->next->next->netdev->name);
-    ixgbe_forwarding_test(list->next->netdev, list->next->next->next->netdev);
+            list->next->next->netdev->name);
+    ixgbe_forwarding_test(list->next->netdev, list->next->next->netdev);
+
+    return 0;
+}
+static int
+_subrouting_main(int argc, char *argv[])
+{
+    struct netdev_list *list;
+
+    list = netdev_head;
+
+    kprintf("Started routing: %s => %s\r\n", list->next->netdev->name,
+            list->next->next->netdev->name);
+    ixgbe_forwarding_test_sub(list->next->netdev, list->next->next->netdev);
 
     return 0;
 }
@@ -1242,6 +1257,13 @@ _builtin_start(char *const argv[])
         t->main = &_routing_main;
         arch_set_next_task_other_cpu(t, id);
         kprintf("Launch routing @ CPU #%d\r\n", id);
+        lapic_send_ns_fixed_ipi(id, IV_IPI);
+    } else if ( 0 == kstrcmp("subrouting", argv[1]) ) {
+        /* Start routing */
+        id = atoi(argv[2]);
+        t->main = &_subrouting_main;
+        arch_set_next_task_other_cpu(t, id);
+        kprintf("Launch subrouting @ CPU #%d\r\n", id);
         lapic_send_ns_fixed_ipi(id, IV_IPI);
     } else if ( 0 == kstrcmp("net", argv[1]) ) {
         /* Start TCP testing process */

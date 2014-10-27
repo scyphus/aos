@@ -136,9 +136,11 @@ struct ixgbe_device {
     u64 rx_base;
     u32 rx_tail;
     u32 rx_bufsz;
+    u32 rx_divisorm;
     u64 tx_base[2];
     u32 tx_tail[2];
     u32 tx_bufsz[2];
+    u32 tx_divisorm[2];
 
     struct ixgbe_adv_rx_desc_read *rx_read[1];
 
@@ -342,7 +344,8 @@ ixgbe_setup_rx_desc(struct ixgbe_device *dev)
     /* Previous tail */
     dev->rx_tail = 0;
     /* up to 64 K minus 8 */
-    dev->rx_bufsz = 8192;
+    dev->rx_bufsz = (1<<14);
+    dev->rx_divisorm = (1<<14) - 1;
     /* Cache */
     dev->rx_head_cache = 0;
 
@@ -381,7 +384,7 @@ ixgbe_setup_rx_desc(struct ixgbe_device *dev)
                  | /*IXGBE_SRRCTL_DESCTYPE_LEGACY*/(1<<25) | (1<<28));
 
     /* Support jumbo frame */
-#if 1
+#if 0
     mmio_write32(dev->mmio, /*IXGBE_REG_MAXFRS*/0x04268, 0x23f0<<16);
     mmio_write32(dev->mmio, /*HLREG*/0x04240,
                  mmio_read32(dev->mmio, 0x04240) | (1<<2));
@@ -403,9 +406,10 @@ ixgbe_setup_rx_desc(struct ixgbe_device *dev)
 
     mmio_write32(dev->mmio, IXGBE_REG_RDH(0), 0);
     /* RDT must be larger than 0 for the initial value to receive the first
-       packet but I don't know why */
+       packet but I don't know why: See 4.6.7 */
     mmio_write32(dev->mmio, IXGBE_REG_RDT(0), dev->rx_bufsz - 1);
     mmio_write32(dev->mmio, IXGBE_REG_RXCTL, IXGBE_RXCTL_RXEN);
+
 
     return 0;
 }
@@ -421,13 +425,11 @@ ixgbe_setup_tx_desc(struct ixgbe_device *dev)
     u32 m32;
 
     dev->tx_tail[0] = 0;
-    dev->tx_tail[1] = 0;
     /* up to 64 K minus 8 */
-    dev->tx_bufsz[0] = 8192/8;
-    dev->tx_bufsz[1] = 8192/8;
+    dev->tx_bufsz[0] = (1<<14);
+    dev->tx_divisorm[0] = (1<<14) - 1;
     /* Cache */
     dev->tx_head_cache[0] = 0;
-    dev->tx_head_cache[1] = 0;
 
     /* ToDo: 16 bytes for alignment */
     dev->tx_base[0] = (u64)kmalloc(dev->tx_bufsz[0]
@@ -554,6 +556,7 @@ ixgbe_routing_test(struct netdev *netdev)
             kprintf("XX: %x %x %d.%d.%d.%d\r\n", rxdesc->special,
                     rxdesc->length, rxpkt[30], rxpkt[31], rxpkt[32], rxpkt[33]);
 #endif
+#if 0
             if ( rxdesc->special != 100
                  || rxpkt[30] != 192 || rxpkt[31] != 168
                  || rxpkt[32] != 200 || rxpkt[33] != 2 ) {
@@ -583,6 +586,9 @@ ixgbe_routing_test(struct netdev *netdev)
             for ( j = 12; j < rxdesc->length; j++ ) {
                 txpkt[j] = rxpkt[j];
             }
+#endif
+            rxdesc->address = txpkt;
+            txdesc->address = rxpkt;
             txdesc->length = rxdesc->length;
             txdesc->sta = 0;
             txdesc->css = 0;
@@ -591,8 +597,8 @@ ixgbe_routing_test(struct netdev *netdev)
             txdesc->cmd = (1<<3) | (1<<1) | 1 | (1<<6);
         }
 
-        ixgbedev->rx_tail = (ixgbedev->rx_tail + nrp) % ixgbedev->rx_bufsz;
-        ixgbedev->tx_tail[0] = (ixgbedev->tx_tail[0] + nrp) % ixgbedev->tx_bufsz[0];
+        ixgbedev->rx_tail = (ixgbedev->rx_tail + nrp) & ixgbedev->rx_divisorm;
+        ixgbedev->tx_tail[0] = (ixgbedev->tx_tail[0] + nrp) & ixgbedev->tx_divisorm[0];
         mmio_write32(ixgbedev->mmio, IXGBE_REG_RDT(0), ixgbedev->rx_tail);
         mmio_write32(ixgbedev->mmio, IXGBE_REG_TDT(0), ixgbedev->tx_tail[0]);
     }
@@ -777,7 +783,7 @@ ixgbe_tx_test(struct netdev *netdev, u8 *pkt, int len, int blksize)
                 //txdesc->pkt_addr = (u64)pkt;
                 txdesc->length = len;
                 txdesc->dtyp_mac = (3 << 4);
-                txdesc->dcmd = (1<<1) | 1;
+                txdesc->dcmd = (1<<5) | (1<<1) | 1;
                 txdesc->paylen_ports_cc_idx_sta = (len << 14);
             }
 
@@ -849,7 +855,7 @@ ixgbe_tx_test2(struct netdev *netdev, u8 *pkt, int len, int blksize)
             //txdesc->pkt_addr = (u64)pkt;
             txdesc->length = len;
             txdesc->dtyp_mac = (3 << 4);
-            txdesc->dcmd = (1<<1) | 1;
+            txdesc->dcmd = (1<<5) | (1<<1) | 1;
             txdesc->paylen_ports_cc_idx_sta = (len << 14);
         }
 
@@ -906,6 +912,25 @@ ixgbe_tx_test3(struct netdev *netdev, u8 *pkt, int len, int blksize)
 }
 
 int
+ixgbe_forwarding_test_sub(struct netdev *netdev1, struct netdev *netdev2)
+{
+    struct ixgbe_device *dev1;
+    struct ixgbe_device *dev2;
+
+    dev1 = (struct ixgbe_device *)netdev1->vendor;
+    dev2 = (struct ixgbe_device *)netdev2->vendor;
+    for ( ;; ) {
+        dev1->rx_head_cache = mmio_read32(dev1->mmio, IXGBE_REG_RDH(0));
+        dev2->tx_head_cache[0] = mmio_read32(dev2->mmio, IXGBE_REG_TDH(0));
+        kprintf("** %x %x\r\n", dev1->rx_head_cache, dev2->tx_head_cache[0]);
+        mmio_write32(dev1->mmio, IXGBE_REG_RDT(0), (dev1->rx_head_cache - 1) & 0x3fff);
+        //mmio_write32(dev2->mmio, IXGBE_REG_TDT(0), dev2->tx_tail[0]);
+        arch_busy_usleep(100000);
+    }
+    return 0;
+}
+
+int
 ixgbe_forwarding_test(struct netdev *netdev1, struct netdev *netdev2)
 {
     struct ixgbe_device *dev1;
@@ -914,6 +939,8 @@ ixgbe_forwarding_test(struct netdev *netdev1, struct netdev *netdev2)
     struct ixgbe_adv_tx_desc_data *txdesc;
     u32 rdh;
     u32 tdh;
+    u32 rdt;
+    u32 tdt;
     int rx_que;
     int tx_avl;
     int nrp;
@@ -928,29 +955,23 @@ ixgbe_forwarding_test(struct netdev *netdev1, struct netdev *netdev2)
         rdh = dev1->rx_head_cache;
         tdh = dev2->tx_head_cache[0];
 
-        rx_que = (dev1->rx_bufsz - dev1->rx_tail + rdh) % dev1->rx_bufsz;
-        if ( 0 == rx_que ) {
-            dev1->rx_head_cache = rdh = mmio_read32(dev1->mmio, IXGBE_REG_RDH(0));
-            rx_que = (dev1->rx_bufsz - dev1->rx_tail + rdh) % dev1->rx_bufsz;
-        }
-
+        rx_que = (dev1->rx_bufsz - dev1->rx_tail + rdh) & dev1->rx_divisorm;
         tx_avl = dev2->tx_bufsz[0]
             - ((dev2->tx_bufsz[0] - tdh + dev2->tx_tail[0])
-               % dev2->tx_bufsz[0]);
-        if ( tx_avl < 32 ) {
-            dev2->tx_head_cache[0] = tdh = mmio_read32(dev2->mmio, IXGBE_REG_TDH(0));
-            tx_avl = dev2->tx_bufsz[0]
-                - ((dev2->tx_bufsz[0] - tdh + dev2->tx_tail[0])
-                   % dev2->tx_bufsz[0]);
-        }
+               & dev2->tx_divisorm[0])
+            - 1;
+        //kprintf("%x %x\r\n", rx_que, tx_avl);
 #else
         rdh = mmio_read32(dev1->mmio, IXGBE_REG_RDH(0));
-        rx_que = (dev1->rx_bufsz - dev1->rx_tail + rdh) % dev1->rx_bufsz;
+        //rx_que = (dev1->rx_bufsz - dev1->rx_tail + rdh) & dev1->rx_divisorm;
+        rx_que = (rdh - dev1->rx_tail) & dev1->rx_divisorm;
 
         tdh = mmio_read32(dev2->mmio, IXGBE_REG_TDH(0));
-        tx_avl = dev2->tx_bufsz[0]
-            - ((dev2->tx_bufsz[0] - tdh + dev2->tx_tail[0])
-               % dev2->tx_bufsz[0]);
+        tx_avl = (tdh - dev2->tx_tail[0] - 1) & dev2->tx_divisorm[0];
+        //tx_avl = dev2->tx_bufsz[0]
+        //- ((dev2->tx_bufsz[0] - tdh + dev2->tx_tail[0])
+        //& dev2->tx_divisorm[0])
+        //- 1;
 #endif
 
         if ( rx_que > tx_avl ) {
@@ -961,16 +982,62 @@ ixgbe_forwarding_test(struct netdev *netdev1, struct netdev *netdev2)
         //if ( nrp > 1024 ) {
         //    nrp = 1024;
         //}
-
         if ( nrp <= 0 ) {
             continue;
         }
+
+        if ( rx_que > 0x3f00 ) {
+            kprintf("%x %x\r\n", rx_que, tx_avl);
+        }
+        for ( i = 0; i < nrp; i++ ) {
+            int idx = ((dev1->rx_tail + i) & dev1->rx_divisorm);
+            rxdesc = (union ixgbe_adv_rx_desc *)
+                (dev1->rx_base + idx * sizeof(union ixgbe_adv_rx_desc));
+            txdesc = (struct ixgbe_adv_tx_desc_data *)
+                (dev2->tx_base[0] + ((tdt + i) & dev2->tx_divisorm[0])
+                 * sizeof(struct ixgbe_adv_tx_desc_data));
+
+            txpkt = (u8 *)dev1->rx_read[0][idx].pkt_addr;
+            *(u32 *)txpkt =  0x67664000LLU;
+            *(u16 *)(txpkt + 4) =  0x2472LLU;
+            /* src */
+            *(u16 *)(txpkt + 6) =  *((u16 *)netdev2->macaddr);
+            *(u32 *)(txpkt + 8) =  *((u32 *)(netdev2->macaddr + 2));
+
+            /* Save Tx */
+            u8 *tmp = (u8 *)((u64)txdesc->pkt_addr & 0xfffffffffffffff0ULL);
+
+            txdesc->pkt_addr = (u64)txpkt;
+            txdesc->length = rxdesc->wb.length;
+            txdesc->dtyp_mac = (3 << 4);
+            txdesc->dcmd = (1<<5) | (1<<1) | 1;
+            txdesc->paylen_ports_cc_idx_sta = ((u32)rxdesc->wb.length << 14);
+
+            rxdesc->read.pkt_addr = (u64)tmp;
+            dev1->rx_read[0][idx].pkt_addr = (u64)tmp;
+            rxdesc->read.hdr_addr = dev1->rx_read[0][idx].hdr_addr;
+
+            /* Reset RX desc */
+            //rxdesc->read.pkt_addr = (u64)tmp;
+            //dev1->rx_read[0][idx].pkt_addr = rxdesc->read.pkt_addr;
+            //rxdesc->read.hdr_addr = dev1->rx_read[0][rxidx].hdr_addr;
+        }
+        dev1->rx_tail = (dev1->rx_tail + nrp - 1) & dev1->rx_divisorm;
+        mmio_write32(dev1->mmio, IXGBE_REG_RDT(0), dev1->rx_tail);
+        dev1->rx_tail++;
+        dev2->tx_tail[0] = (dev2->tx_tail[0] + nrp) & dev2->tx_divisorm[0];
+        mmio_write32(dev2->mmio, IXGBE_REG_TDT(0), dev2->tx_tail[0]);
+        continue;
+
+
         /* Routing */
         for ( i = 0; i < nrp; i++ ) {
             int rxidx;
             int txidx;
-            rxidx = (dev1->rx_tail + i) % dev1->rx_bufsz;
-            txidx = (dev2->tx_tail[0] + i) % dev2->tx_bufsz[0];
+            rdt = dev1->rx_tail;
+            tdt = dev2->tx_tail[0];
+            rxidx = (rdt + i) & dev1->rx_divisorm;
+            txidx = (tdt + i) & dev2->tx_divisorm[0];
 
             rxdesc = (union ixgbe_adv_rx_desc *)
                 (dev1->rx_base + rxidx * sizeof(union ixgbe_adv_rx_desc));
@@ -979,7 +1046,9 @@ ixgbe_forwarding_test(struct netdev *netdev1, struct netdev *netdev2)
 
             txpkt = (u8 *)dev1->rx_read[0][rxidx].pkt_addr;
 
-#if 0
+
+            //txdesc->vlan_maclen_iplen = 20;
+#if 1
             /* dst:  00:40:66:67:72:24  */
             *(u32 *)txpkt =  0x67664000LLU;
             *(u16 *)(txpkt + 4) =  0x2472LLU;
@@ -1013,19 +1082,27 @@ ixgbe_forwarding_test(struct netdev *netdev1, struct netdev *netdev2)
             txdesc->pkt_addr = (u64)txpkt;
             txdesc->length = rxdesc->wb.length;
             txdesc->dtyp_mac = (3 << 4);
-            txdesc->dcmd = (1<<1) | 1;
+            txdesc->dcmd = (1<<5) | (1<<1) | 1;
             txdesc->paylen_ports_cc_idx_sta = ((u32)rxdesc->wb.length << 14);
 
             /* Reset RX desc */
             rxdesc->read.pkt_addr = (u64)tmp;
             dev1->rx_read[0][rxidx].pkt_addr = rxdesc->read.pkt_addr;
             rxdesc->read.hdr_addr = dev1->rx_read[0][rxidx].hdr_addr;
-
+#if 0
+            if ( 0 == (i & ((1<<12)-1)) ) {
+                mmio_write32(dev1->mmio, IXGBE_REG_RDT(0),
+                             (rdt + i - 1) & dev1->rx_divisorm);
+                mmio_write32(dev2->mmio, IXGBE_REG_TDT(0),
+                             (tdt + i) & dev2->tx_divisorm[0]);
+            }
+#endif
         }
-        dev1->rx_tail = (dev1->rx_tail + nrp - 1) % dev1->rx_bufsz;
+        dev1->rx_tail = (rdt + nrp - 1) & dev1->rx_divisorm;
         mmio_write32(dev1->mmio, IXGBE_REG_RDT(0), dev1->rx_tail);
-        dev1->rx_tail = (dev1->rx_tail + 1) % dev1->rx_bufsz;
-        dev2->tx_tail[0] = (dev2->tx_tail[0] + nrp) % dev2->tx_bufsz[0];
+        dev1->rx_tail++;
+
+        dev2->tx_tail[0] = (tdt + nrp) & dev2->tx_divisorm[0];
         mmio_write32(dev2->mmio, IXGBE_REG_TDT(0), dev2->tx_tail[0]);
     }
 
@@ -1184,7 +1261,7 @@ ixgbe_forwarding_test(struct netdev *netdev1, struct netdev *netdev2)
             txdesc->pkt_addr = (u64)txpkt;
             txdesc->length = rxdesc->wb.length;
             txdesc->dtyp_mac = (3 << 4);
-            txdesc->dcmd = (1<<1) | 1;
+            txdesc->dcmd = (1<<5) | (1<<1) | 1;
             txdesc->paylen_ports_cc_idx_sta = (txdesc->length << 14);
 
             /* Reset RX desc */
