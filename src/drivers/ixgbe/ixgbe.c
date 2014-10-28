@@ -975,6 +975,23 @@ ixgbe_forwarding_test(struct netdev *netdev1, struct netdev *netdev2)
             *(u16 *)(txpkt + 6) =  *((u16 *)netdev2->macaddr);
             *(u32 *)(txpkt + 8) =  *((u32 *)(netdev2->macaddr + 2));
 
+            /* TTL -= 1 */
+            txpkt[22]--;
+            /* Compute checksum */
+            u16 *ctmp;
+            u32 cs;
+            txpkt[24] = 0x0;
+            txpkt[25] = 0x0;
+            ctmp = (u16 *)txpkt;
+            cs = 0;
+            for ( i = 7; i < 17; i++ ) {
+                cs += (u32)ctmp[i];
+                cs = (cs & 0xffff) + (cs >> 16);
+            }
+            cs = 0xffff - cs;
+            txpkt[24] = cs & 0xff;
+            txpkt[25] = cs >> 8;
+
             /* Save Tx */
             u8 *tmp = (u8 *)((u64)txdesc->pkt_addr & 0xfffffffffffffff0ULL);
 
