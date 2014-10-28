@@ -788,14 +788,14 @@ _tx_main(int argc, char *argv[])
     pkt[5] = 0x40;
     //90:e2:ba:6a:0c:40
     //90:e2:ba:6a:0c:41
-#elif 0
+#elif 1
     pkt[0] = 0x90;
     pkt[1] = 0xe2;
     pkt[2] = 0xba;
     pkt[3] = 0x68;
     pkt[4] = 0xb4;
     pkt[5] = 0xb4;
-#elif 1
+#elif 0
     pkt[0] = 0x90;
     pkt[1] = 0xe2;
     pkt[2] = 0xba;

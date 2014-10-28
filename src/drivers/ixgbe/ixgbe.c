@@ -114,8 +114,8 @@ struct ixgbe_adv_tx_desc_data {
 } __attribute__ ((packed));
 
 struct ixgbe_adv_rx_desc_read {
-    u64 pkt_addr;                 /* 0:A0 */
-    u64 hdr_addr;                 /* 0:DD */
+    volatile u64 pkt_addr;                 /* 0:A0 */
+    volatile u64 hdr_addr;                 /* 0:DD */
 } __attribute__ ((packed));
 struct ixgbe_adv_rx_desc_wb {
     /* Write back */
@@ -344,8 +344,8 @@ ixgbe_setup_rx_desc(struct ixgbe_device *dev)
     /* Previous tail */
     dev->rx_tail = 0;
     /* up to 64 K minus 8 */
-    dev->rx_bufsz = (1<<14);
-    dev->rx_divisorm = (1<<14) - 1;
+    dev->rx_bufsz = (1<<13);
+    dev->rx_divisorm = (1<<13) - 1;
     /* Cache */
     dev->rx_head_cache = 0;
 
@@ -935,7 +935,7 @@ ixgbe_forwarding_test(struct netdev *netdev1, struct netdev *netdev2)
 {
     struct ixgbe_device *dev1;
     struct ixgbe_device *dev2;
-    union ixgbe_adv_rx_desc *rxdesc;
+    union ixgbe_adv_rx_desc * rxdesc;
     struct ixgbe_adv_tx_desc_data *txdesc;
     u32 rdh;
     u32 tdh;
@@ -945,11 +945,63 @@ ixgbe_forwarding_test(struct netdev *netdev1, struct netdev *netdev2)
     int tx_avl;
     int nrp;
     int i;
+    int cntr = 0;
     u8 *txpkt;
 
     dev1 = (struct ixgbe_device *)netdev1->vendor;
     dev2 = (struct ixgbe_device *)netdev2->vendor;
     for ( ;; ) {
+
+#if 0
+        if ( ((cntr++) & 0x7fffff) == 0 ) {
+            kprintf("%.8llx\r\n",
+                    mmio_read32(dev1->mmio, 0x03FA0) /* Missed */
+                );
+            //mmio_read32(dev1->mmio, 0x04000) /* CRC Error */
+        }
+#endif
+
+        rxdesc = (union ixgbe_adv_rx_desc *)
+            (dev1->rx_base + dev1->rx_tail * sizeof(union ixgbe_adv_rx_desc));
+        txdesc = (struct ixgbe_adv_tx_desc_data *)
+            (dev2->tx_base[0] + dev2->tx_tail[0] * sizeof(struct ixgbe_adv_tx_desc_data));
+
+        if ( rxdesc->read.hdr_addr & 0x1 ) {
+
+            txpkt = (u8 *)dev1->rx_read[0][dev1->rx_tail].pkt_addr;
+            *(u32 *)(txpkt + 0) =  0x67664000LLU;
+            *(u16 *)(txpkt + 4) =  0x2472LLU;
+            /* src */
+            *(u16 *)(txpkt + 6) =  *((u16 *)netdev2->macaddr);
+            *(u32 *)(txpkt + 8) =  *((u32 *)(netdev2->macaddr + 2));
+
+            /* Save Tx */
+            u8 *tmp = (u8 *)((u64)txdesc->pkt_addr & 0xfffffffffffffff0ULL);
+
+            txdesc->pkt_addr = (u64)txpkt;
+            txdesc->length = rxdesc->wb.length;
+            txdesc->dtyp_mac = (3 << 4);
+            txdesc->dcmd = (1<<5) | (1<<1) | 1;
+            txdesc->paylen_ports_cc_idx_sta = ((u32)rxdesc->wb.length << 14);
+
+            dev1->rx_read[0][dev1->rx_tail].pkt_addr = (u64)tmp;
+            rxdesc->read.pkt_addr = dev1->rx_read[0][dev1->rx_tail].pkt_addr;
+            rxdesc->read.hdr_addr = dev1->rx_read[0][dev1->rx_tail].hdr_addr;
+
+            /* Reset RX desc */
+            //rxdesc->read.pkt_addr = dev1->rx_read[0][dev1->rx_tail].pkt_addr;
+            //rxdesc->read.hdr_addr = dev1->rx_read[0][dev1->rx_tail].hdr_addr;
+
+            dev2->tx_tail[0] = (dev2->tx_tail[0] + 1) & dev2->tx_divisorm[0];
+            if ( (cntr & 0x3ff) == 0 ) {
+                mmio_write32(dev1->mmio, IXGBE_REG_RDT(0), dev1->rx_tail);
+                mmio_write32(dev2->mmio, IXGBE_REG_TDT(0), dev2->tx_tail[0]);
+                //kprintf("%x %x\r\n", dev1->rx_tail, dev2->tx_tail[0]);
+            }
+            dev1->rx_tail = (dev1->rx_tail + 1) & dev1->rx_divisorm;
+        }
+        continue;
+
 
 #if 0
         rdh = dev1->rx_head_cache;
@@ -986,47 +1038,57 @@ ixgbe_forwarding_test(struct netdev *netdev1, struct netdev *netdev2)
             continue;
         }
 
-        if ( rx_que > 0x3f00 ) {
-            kprintf("%x %x\r\n", rx_que, tx_avl);
+        if ( rx_que > 0x1800 || ((cntr++) & 0x7fff) == 0 ) {
+            kprintf("%.4x %.4x %.4x %.8llx\r\n",
+                    rx_que, rdh, dev1->rx_tail,
+                    mmio_read32(dev1->mmio, 0x03FA0) /* Missed */
+                );
+            //mmio_read32(dev1->mmio, 0x04000) /* CRC Error */
         }
         for ( i = 0; i < nrp; i++ ) {
             int idx = ((dev1->rx_tail + i) & dev1->rx_divisorm);
             rxdesc = (union ixgbe_adv_rx_desc *)
                 (dev1->rx_base + idx * sizeof(union ixgbe_adv_rx_desc));
             txdesc = (struct ixgbe_adv_tx_desc_data *)
-                (dev2->tx_base[0] + ((tdt + i) & dev2->tx_divisorm[0])
+                (dev2->tx_base[0] + ((dev2->tx_tail[0] + i) & dev2->tx_divisorm[0])
                  * sizeof(struct ixgbe_adv_tx_desc_data));
 
-            txpkt = (u8 *)dev1->rx_read[0][idx].pkt_addr;
-            *(u32 *)txpkt =  0x67664000LLU;
+            //txpkt = (u8 *)dev1->rx_read[0][idx].pkt_addr;
+            //txpkt = (u8 *)(txdesc->pkt_addr & 0xfffffffffffffff0ULL) ;
+            //kmemcpy(txpkt, (u8 *)dev1->rx_read[0][idx].pkt_addr, rxdesc->wb.length);
+
+#if 0
+            //txpkt = (u8 *)dev1->rx_read[0][idx].pkt_addr;
+            *(u32 *)(txpkt + 0) =  0x67664000LLU;
             *(u16 *)(txpkt + 4) =  0x2472LLU;
             /* src */
             *(u16 *)(txpkt + 6) =  *((u16 *)netdev2->macaddr);
             *(u32 *)(txpkt + 8) =  *((u32 *)(netdev2->macaddr + 2));
+#endif
 
             /* Save Tx */
-            u8 *tmp = (u8 *)((u64)txdesc->pkt_addr & 0xfffffffffffffff0ULL);
+            //u8 *tmp = (u8 *)txdesc->pkt_addr;
 
-            txdesc->pkt_addr = (u64)txpkt;
-            txdesc->length = rxdesc->wb.length;
-            txdesc->dtyp_mac = (3 << 4);
-            txdesc->dcmd = (1<<5) | (1<<1) | 1;
-            txdesc->paylen_ports_cc_idx_sta = ((u32)rxdesc->wb.length << 14);
+            //txdesc->pkt_addr = (u64)txpkt;
+            //txdesc->length = rxdesc->wb.length;
+            //txdesc->dtyp_mac = (3 << 4);
+            //txdesc->dcmd = (1<<5) | (1<<1) | 1;
+            //txdesc->paylen_ports_cc_idx_sta = ((u32)rxdesc->wb.length << 14);
 
-            rxdesc->read.pkt_addr = (u64)tmp;
-            dev1->rx_read[0][idx].pkt_addr = (u64)tmp;
-            rxdesc->read.hdr_addr = dev1->rx_read[0][idx].hdr_addr;
+            //rxdesc->read.pkt_addr = (u64)txpkt;
+            //dev1->rx_read[0][idx].pkt_addr = (u64)rxdesc->read.pkt_addr;
+            //rxdesc->read.hdr_addr = dev1->rx_read[0][idx].hdr_addr;
 
             /* Reset RX desc */
-            //rxdesc->read.pkt_addr = (u64)tmp;
-            //dev1->rx_read[0][idx].pkt_addr = rxdesc->read.pkt_addr;
-            //rxdesc->read.hdr_addr = dev1->rx_read[0][rxidx].hdr_addr;
+            rxdesc->read.pkt_addr = dev1->rx_read[0][idx].pkt_addr;
+            rxdesc->read.hdr_addr = dev1->rx_read[0][idx].hdr_addr;
+            //arch_busy_usleep(1);
         }
         dev1->rx_tail = (dev1->rx_tail + nrp - 1) & dev1->rx_divisorm;
         mmio_write32(dev1->mmio, IXGBE_REG_RDT(0), dev1->rx_tail);
         dev1->rx_tail++;
-        dev2->tx_tail[0] = (dev2->tx_tail[0] + nrp) & dev2->tx_divisorm[0];
-        mmio_write32(dev2->mmio, IXGBE_REG_TDT(0), dev2->tx_tail[0]);
+        //dev2->tx_tail[0] = (dev2->tx_tail[0] + nrp) & dev2->tx_divisorm[0];
+        //mmio_write32(dev2->mmio, IXGBE_REG_TDT(0), dev2->tx_tail[0]);
         continue;
 
 
