@@ -993,9 +993,9 @@ ixgbe_forwarding_test(struct netdev *netdev1, struct netdev *netdev2)
             //rxdesc->read.hdr_addr = dev1->rx_read[0][dev1->rx_tail].hdr_addr;
 
             dev2->tx_tail[0] = (dev2->tx_tail[0] + 1) & dev2->tx_divisorm[0];
-            if ( (dev2->tx_tail[0] & 0x3ff) == 0 ) {
-                mmio_write32(dev1->mmio, IXGBE_REG_RDT(0), dev1->rx_tail);
+            if ( (dev2->tx_tail[0] & 0x7ff) == 0 ) {
                 mmio_write32(dev2->mmio, IXGBE_REG_TDT(0), dev2->tx_tail[0]);
+                mmio_write32(dev1->mmio, IXGBE_REG_RDT(0), dev1->rx_tail);
                 //kprintf("%x %x\r\n", dev1->rx_tail, dev2->tx_tail[0]);
             }
             dev1->rx_tail = (dev1->rx_tail + 1) & dev1->rx_divisorm;
