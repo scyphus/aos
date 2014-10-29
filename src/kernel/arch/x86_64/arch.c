@@ -30,6 +30,7 @@ void pci_init(void);
 void netdev_init(void);
 void e1000e_init(void);
 void ixgbe_init(void);
+void i40e_init(void);
 void ahci_init(void);
 
 extern void trampoline(void);
@@ -193,6 +194,7 @@ arch_bsp_init(void)
     netdev_init();
     e1000e_init();
     ixgbe_init();
+    i40e_init();
     arch_dbg_printf("Initializing AHCI.\r\n");
     ahci_init();
 
