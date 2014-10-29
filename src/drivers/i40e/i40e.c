@@ -441,6 +441,40 @@ i40e_init_fpm(struct i40e_device *dev)
             *(u64 *)(hmc + 0), *(u64 *)(hmc + 8),
             *(u64 *)(hmc + 16), *(u64 *)(hmc + 24));
 
+
+    /* Clear QDIS flag */
+    mmio_write32(dev->mmio, I40E_GLLAN_TXPRE_QDIS(0), 1<<31);
+
+    /* PF Queue */
+    mmio_write32(dev->mmio, I40E_QTX_CTL(0), 2);
+
+    /* Enable */
+    mmio_write32(dev->mmio, I40E_QTX_ENA(0), 1);
+    for ( i = 0; i < 10; i++ ) {
+        kprintf("***%x\r\n", mmio_read32(dev->mmio, I40E_QTX_ENA(0)));
+    }
+
+    txdesc = (struct i40e_tx_desc_data *)(dev->tx_base);
+    u8 *pkt = (u8 *)txdesc->pkt_addr;
+    pkt[0] = 0xff;
+    pkt[1] = 0xff;
+    pkt[2] = 0xff;
+    pkt[3] = 0xff;
+    pkt[4] = 0xff;
+    pkt[5] = 0xff;
+    pkt[6] = dev->macaddr[0];
+    pkt[7] = dev->macaddr[1];
+    pkt[8] = dev->macaddr[2];
+    pkt[9] = dev->macaddr[3];
+    pkt[10] = dev->macaddr[4];
+    pkt[11] = dev->macaddr[5];
+    pkt[12] = 0x08;
+    pkt[13] = 0x00;
+    txdesc->l2tag = 0;
+    txdesc->txbufsz_offset = (60 << 18) | 0;
+    txdesc->rsv_cmd_dtyp = 0 | (((1) | (1<<1)) << 4);
+    mmio_write32(dev->mmio, I40E_QTX_TAIL(0), 1);
+
     return 0;
 }
 
