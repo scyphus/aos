@@ -22,6 +22,7 @@
     (0x000e6500 + 0x4 * (n))
 #define I40E_QTX_ENA(q)         (0x00100000 + 0x4 * (q))
 #define I40E_QTX_CTL(q)         (0x00104000 + 0x4 * (q))
+#define I40E_QTX_HEAD(q)        (0x000e4000 + 0x4 * (q))
 #define I40E_QTX_TAIL(q)        (0x00108000 + 0x4 * (q))
 
 #define I40E_GLHMC_LANTXBASE(n) (0x000c6200 + 0x4 * (n)) /* [0:23] */
@@ -41,7 +42,7 @@
 
 
 #define I40E_PRTPM_SAL(n)       (0x001e4440 + 0x20 * (n)) /* RO */
-#define I40E_PRTPM_SAH(n)       (0x001e4440 + 0x20 * (n)) /* RO */
+#define I40E_PRTPM_SAH(n)       (0x001e44c0 + 0x20 * (n)) /* RO */
 
 //PFHMC_SDCMD
 //PFHMC_SDDATALOW
@@ -105,66 +106,67 @@ struct i40e_device {
 
 struct i40e_lan_rxq_ctx {
     /* 0-31 */
-    u32 rsv1:11;
-    u32 cpuid:8;
     u32 head:13;
+    u32 cpuid:8;
+    u32 rsv1:11;
     /* 32-95 */
-    u64 qlen_l:7;
     u64 base:57;
+    //u64 qlen_l:7;
+    u64 qlen:13;
     /* 96-127 */
-    u32 showiv:1;
-    u32 rsv2:1;
-    u32 hsplit_1:2;
-    u32 hsplit_0:4;
-    u32 l2tsel:1;
-    u32 fcena:1;
-    u32 crcstrip:1;
-    u32 dsize:1;
-    u32 dtype:2;
-    u32 hbuff:5;
+    //u32 qlen_h:6;
     u32 dbuff:7;
-    u32 qlen_h:6;
+    u32 hbuff:5;
+    u32 dtype:2;
+    u32 dsize:1;
+    u32 crcstrip:1;
+    u32 fcena:1;
+    u32 l2tsel:1;
+    u32 hsplit_0:4;
+    u32 hsplit_1:2;
+    u32 rsv2:1;
+    u32 showiv:1;
     /* 128-191 */
-    u64 rsv4l:4;
-    u64 rxmax:14;
     u64 rsv3:46;
+    u64 rxmax:14;
+    u64 rsv4l:4;
     /* 192- */
-    u64 rsv6:55;
-    u64 lrxqtresh:3;
-    u64 rsv5:1;
-    u64 tphhead:1;
-    u64 tphdata:1;
-    u64 tphwdesc:1;
-    u64 tphrdesc:1;
     u64 rsv4h:1;
+    u64 tphrdesc:1;
+    u64 tphwdesc:1;
+    u64 tphdata:1;
+    u64 tphhead:1;
+    u64 rsv5:1;
+    u64 lrxqtresh:3;
+    u64 rsv6:55;
 } __attribute__ ((packed));
 
 struct i40e_lan_txq_ctx {
     /* Line 0.0 */
-    u32 rsv2:1;
-    u32 newctx:1;
-    u32 rsv1:17;
     u32 head:13;
+    u32 rsv1:17;
+    u32 newctx:1;
+    u32 rsv2:1;
     /* Line 0.1 */
-    u64 rsv3:3;
-    u64 alt_vlan:1;
-    u64 fdena:1;
-    u64 tsynena:1;
-    u64 fcena:1;
     u64 base:57;
+    u64 fcena:1;
+    u64 tsynena:1;
+    u64 fdena:1;
+    u64 alt_vlan:1;
+    u64 rsv3:3;
     /* Line 0.2 */
-    u32 rsv4:24;
     u32 cpuid:8;
+    u32 rsv4:24;
     /* Line 1.0 */
-    u32 rsv5:19;
     u32 thead_wb:13;
+    u32 rsv5:19;
     /* Line 1.1 */
-    u32 rsv6:15;
-    u32 tphwdesc:1;
-    u32 tphrpacket:1;
-    u32 tphrdesc:1;
-    u32 qlen:13;
     u32 head_wben:1;
+    u32 qlen:13;
+    u32 tphrdesc:1;
+    u32 tphrpacket:1;
+    u32 tphwdesc:1;
+    u32 rsv6:15;
     /* Line 1.2 */
     u64 head_wbaddr;
     /* Line 2 */
@@ -180,9 +182,9 @@ struct i40e_lan_txq_ctx {
     /* Line 7.0 */
     u64 rsv12;
     /* Line 7.1 */
-    u64 rsv14:34;
-    u64 rdylist:10;
     u64 rsv13:20;
+    u64 rdylist:10;
+    u64 rsv14:34;
 } __attribute__ ((packed));
 
 
@@ -311,6 +313,7 @@ i40e_init_fpm(struct i40e_device *dev)
     u16 func;
     u32 qalloc;
     int i;
+    u32 m32;
 
     /* Get function number to determine the HMC function index */
     func = dev->pci_device->func;
@@ -343,8 +346,8 @@ i40e_init_fpm(struct i40e_device *dev)
     struct i40e_tx_desc_data *txdesc;
     dev->tx_tail = 0;
     /* up to 64 K minus 8 */
-    dev->tx_bufsz = (1<<13);
-    dev->tx_bufmask = (1<<13) - 1;
+    dev->tx_bufsz = (1<<12);
+    dev->tx_bufmask = (1<<12) - 1;
     /* ToDo: 16 bytes for alignment */
     dev->tx_base = (u64)kmalloc(dev->tx_bufsz * sizeof(struct i40e_tx_desc_data));
     for ( i = 0; i < dev->tx_bufsz; i++ ) {
@@ -361,8 +364,8 @@ i40e_init_fpm(struct i40e_device *dev)
     /* Previous tail */
     dev->rx_tail = 0;
     /* up to 64 K minus 8 */
-    dev->rx_bufsz = (1<<13);
-    dev->rx_bufmask = (1<<13) - 1;
+    dev->rx_bufsz = (1<<12);
+    dev->rx_bufmask = (1<<12) - 1;
     /* Allocate memory for RX descriptors */
     dev->rx_read = kmalloc(dev->rx_bufsz * sizeof(struct i40e_rx_desc_read));
     if ( 0 == dev->rx_read ) {
@@ -394,29 +397,33 @@ i40e_init_fpm(struct i40e_device *dev)
     u32 txobjsz = mmio_read32(dev->mmio, I40E_GLHMC_LANTXOBJSZ);
     u32 rxobjsz = mmio_read32(dev->mmio, I40E_GLHMC_LANRXOBJSZ);
 
-    hmc = kmalloc(2 * 1024 * 1024);
-    kmemset(hmc, 0, 2 * 1024 * 1024);
+    hmc = kmalloc(4 * 1024 * 1024);
+    kmemset(hmc, 0, 4 * 1024 * 1024);
     hmcint = (u64)hmc;
+    hmcint = (hmcint + 0xfffff) & (~0xfffffULL);
+    hmc = (u8 *)hmcint;
 
     txbase = 0;
     /* roundup512((TXBASE * 512) + (TXCNT * 2^TXOBJSZ)) / 512 */
     rxbase = (((txbase * 512) + (1 * (1<<txobjsz))) + 511) / 512;
 
-    struct i40e_lan_txq_ctx *txq_ctx = (struct i40e_lan_txq_ctx *)(hmcint + txbase);
-    struct i40e_lan_rxq_ctx *rxq_ctx = (struct i40e_lan_rxq_ctx *)(hmcint + rxbase);
+    struct i40e_lan_txq_ctx *txq_ctx = (struct i40e_lan_txq_ctx *)(hmcint + txbase * 512);
+    struct i40e_lan_rxq_ctx *rxq_ctx = (struct i40e_lan_rxq_ctx *)(hmcint + rxbase * 512);
+
+    kprintf("HMC: %llx, Tx: %llx, Rx: %llx\r\n", hmcint, dev->tx_base, dev->rx_base);
 
     txq_ctx->head = 0;
+    txq_ctx->rsv1 = 0;
     txq_ctx->newctx = 1;
-    txq_ctx->base = 0;          /* FIXME */
+    txq_ctx->base = dev->tx_base / 128;
     txq_ctx->thead_wb = 0;
     txq_ctx->head_wben = 0;
-    txq_ctx->qlen = 0;          /* FIXME */
+    txq_ctx->qlen = dev->tx_bufsz;
     txq_ctx->head_wbaddr = 0;
 
     rxq_ctx->head = 0;
-    rxq_ctx->base = 0;          /* FIXME */
-    rxq_ctx->qlen_l = 0;        /* FIXME */
-    rxq_ctx->qlen_h = 0;        /* FIXME */
+    rxq_ctx->base = dev->rx_base / 128;
+    rxq_ctx->qlen = dev->rx_bufsz;
     rxq_ctx->dbuff = 4096/128;
     rxq_ctx->hbuff = 128/64;
     rxq_ctx->dtype = 0x0;
@@ -424,23 +431,26 @@ i40e_init_fpm(struct i40e_device *dev)
     rxq_ctx->crcstrip = 0x0;
     rxq_ctx->rxmax = 4096;
 
+    kprintf("HMC: %.8llx %.8llx %.8llx %.8llx\r\n",
+            *(u32 *)(hmc + 0), *(u32 *)(hmc + 4),
+            *(u32 *)(hmc + 8), *(u32 *)(hmc + 12));
+
     mmio_write32(dev->mmio, I40E_PFHMC_SDDATALOW,
                  (hmcint & 0xfff00000) | 1 | (1<<1) | (512<<2));
     mmio_write32(dev->mmio, I40E_PFHMC_SDDATAHIGH, hmcint >> 32);
     mmio_write32(dev->mmio, I40E_PFHMC_SDCMD, (1<<31) | 0);
 
 
-    mmio_write32(dev->mmio, I40E_GLHMC_LANTXBASE(0), 0);
+    mmio_write32(dev->mmio, I40E_GLHMC_LANTXBASE(0), txbase);
     mmio_write32(dev->mmio, I40E_GLHMC_LANRXBASE(0), rxbase);
 
     mmio_write32(dev->mmio, I40E_GLHMC_LANTXCNT(0), cnt);
     mmio_write32(dev->mmio, I40E_GLHMC_LANRXCNT(0), cnt);
 
 
-    kprintf("HMC: %llx %llx %llx %llx\r\n",
-            *(u64 *)(hmc + 0), *(u64 *)(hmc + 8),
-            *(u64 *)(hmc + 16), *(u64 *)(hmc + 24));
-
+    kprintf("HMC: %.8llx %.8llx %.8llx %.8llx\r\n",
+            *(u32 *)(hmc + 0), *(u32 *)(hmc + 4),
+            *(u32 *)(hmc + 8), *(u32 *)(hmc + 12));
 
     /* Clear QDIS flag */
     mmio_write32(dev->mmio, I40E_GLLAN_TXPRE_QDIS(0), 1<<31);
@@ -451,8 +461,18 @@ i40e_init_fpm(struct i40e_device *dev)
     /* Enable */
     mmio_write32(dev->mmio, I40E_QTX_ENA(0), 1);
     for ( i = 0; i < 10; i++ ) {
-        kprintf("***%x\r\n", mmio_read32(dev->mmio, I40E_QTX_ENA(0)));
+        arch_busy_usleep(1);
+        m32 = mmio_read32(dev->mmio, I40E_QTX_ENA(0));
+        if ( 5 == (m32 & 5) ) {
+            break;
+        }
     }
+    if ( 5 != (m32 & 5) ) {
+        kprintf("Error on enable a TX queue\r\n");
+    }
+
+    /* Invalidate */
+    mmio_write32(dev->mmio, I40E_PFHMC_PDINV, 0);
 
     txdesc = (struct i40e_tx_desc_data *)(dev->tx_base);
     u8 *pkt = (u8 *)txdesc->pkt_addr;
@@ -470,10 +490,73 @@ i40e_init_fpm(struct i40e_device *dev)
     pkt[11] = dev->macaddr[5];
     pkt[12] = 0x08;
     pkt[13] = 0x00;
+    pkt[12] = 0x08;
+    pkt[13] = 0x00;
+    /* IP header */
+    pkt[14] = 0x45;
+    pkt[15] = 0x00;
+    pkt[16] = (46 >> 8) & 0xff;
+    pkt[17] = 46 & 0xff;
+    /* ID / fragment */
+    pkt[18] = 0x26;
+    pkt[19] = 0x6d;
+    pkt[20] = 0x00;
+    pkt[21] = 0x00;
+    /* TTL/protocol */
+    pkt[22] = 0x64;
+    pkt[23] = 17;
+    /* checksum */
+    pkt[24] = 0x00;
+    pkt[25] = 0x00;
+    /* src: 192.168.100.2 */
+    pkt[26] = 192;
+    pkt[27] = 168;
+    pkt[28] = 100;
+    pkt[29] = 2;
+    /* dst */
+    pkt[30] = 224;
+    pkt[31] = 0;
+    pkt[32] = 0;
+    pkt[33] = 1;
+    /* UDP */
+    pkt[34] = 0xff;
+    pkt[35] = 0xff;
+    pkt[36] = 0xff;
+    pkt[37] = 0xfe;
+    pkt[38] = (46 - 20) >> 8;
+    pkt[39] = (46 - 20) & 0xff;
+    pkt[40] = 0x00;
+    pkt[41] = 0x00;
+    kmemset(pkt + 42, 0, 46 + 14 - 42);
+    /* Compute checksum */
+    u16 *tmp;
+    u32 cs;
+    pkt[24] = 0x0;
+    pkt[25] = 0x0;
+    tmp = (u16 *)pkt;
+    cs = 0;
+    for ( i = 7; i < 17; i++ ) {
+        cs += (u32)tmp[i];
+        cs = (cs & 0xffff) + (cs >> 16);
+    }
+    cs = 0xffff - cs;
+    pkt[24] = cs & 0xff;
+    pkt[25] = cs >> 8;
+
     txdesc->l2tag = 0;
     txdesc->txbufsz_offset = (60 << 18) | 0;
     txdesc->rsv_cmd_dtyp = 0 | (((1) | (1<<1)) << 4);
+
     mmio_write32(dev->mmio, I40E_QTX_TAIL(0), 1);
+
+    mfence();
+
+    for ( i = 0; i < 10; i++ ) {
+        arch_busy_usleep(1);
+        kprintf("%x %x %x\r\n", txdesc->rsv_cmd_dtyp,
+                mmio_read32(dev->mmio, I40E_QTX_HEAD(0)),
+                mmio_read32(dev->mmio, I40E_QTX_TAIL(0)));
+    }
 
     return 0;
 }
