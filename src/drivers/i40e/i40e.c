@@ -14,7 +14,8 @@
 
 #define PCI_VENDOR_INTEL        0x8086
 
-#define I40E_XL710              0x1584
+#define I40E_XL710_QDA1         0x1584
+#define I40E_XL710_QDA2         0x1583
 
 #define I40E_PFLAN_QALLOC       0x001c0400 /* RO */
 #define I40E_GLLAN_TXPRE_QDIS(n)                \
@@ -37,6 +38,10 @@
 #define I40E_PFHMC_SDDATAHIGH   0x000c0200
 #define I40E_PFHMC_PDINV        0x000c0300
 #define I40E_GLHMC_SDPART(n)    (0x000c0800 + 0x04 * (n)) /* RO */
+
+
+#define I40E_PRTPM_SAL(n)       (0x001e4440 + 0x20 * (n)) /* RO */
+#define I40E_PRTPM_SAH(n)       (0x001e4440 + 0x20 * (n)) /* RO */
 
 //PFHMC_SDCMD
 //PFHMC_SDDATALOW
@@ -79,6 +84,93 @@ struct i40e_device {
 
     struct pci_device *pci_device;
 };
+
+
+
+struct i40e_lan_rxq_ctx {
+    /* 0-31 */
+    u32 rsv1:11;
+    u32 cpuid:8;
+    u32 head:13;
+    /* 32-95 */
+    u64 qlen_l:7;
+    u64 base:57;
+    /* 96-127 */
+    u32 showiv:1;
+    u32 rsv2:1;
+    u32 hsplit_1:2;
+    u32 hsplit_0:4;
+    u32 l2tsel:1;
+    u32 fcena:1;
+    u32 crcstrip:1;
+    u32 dsize:1;
+    u32 dtype:2;
+    u32 hbuff:5;
+    u32 dbuff:7;
+    u32 qlen_h:6;
+    /* 128-191 */
+    u64 rsv4l:4;
+    u64 rxmax:14;
+    u64 rsv3:46;
+    /* 192- */
+    u64 rsv6:55;
+    u64 lrxqtresh:3;
+    u64 rsv5:1;
+    u64 tphhead:1;
+    u64 tphdata:1;
+    u64 tphwdesc:1;
+    u64 tphrdesc:1;
+    u64 rsv4h:1;
+} __attribute__ ((packed));
+
+struct i40e_lan_txq_ctx {
+    /* Line 0.0 */
+    u32 rsv2:1;
+    u32 newctx:1;
+    u32 rsv1:17;
+    u32 head:13;
+    /* Line 0.1 */
+    u64 rsv3:3;
+    u64 alt_vlan:1;
+    u64 fdena:1;
+    u64 tsynena:1;
+    u64 fcena:1;
+    u64 base:57;
+    /* Line 0.2 */
+    u32 rsv4:24;
+    u32 cpuid:8;
+    /* Line 1.0 */
+    u32 rsv5:19;
+    u32 thead_wb:13;
+    /* Line 1.1 */
+    u32 rsv6:15;
+    u32 tphwdesc:1;
+    u32 tphrpacket:1;
+    u32 tphrdesc:1;
+    u32 qlen:13;
+    u32 head_wben:1;
+    /* Line 1.2 */
+    u64 head_wbaddr;
+    /* Line 2 */
+    u64 rsv7[2];
+    /* Line 3 */
+    u64 rsv8[2];
+    /* Line 4 */
+    u64 rsv9[2];
+    /* Line 5 */
+    u64 rsv10[2];
+    /* Line 6 */
+    u64 rsv11[2];
+    /* Line 7.0 */
+    u64 rsv12;
+    /* Line 7.1 */
+    u64 rsv14:34;
+    u64 rdylist:10;
+    u64 rsv13:20;
+} __attribute__ ((packed));
+
+
+
 
 /* Prototype declarations */
 void i40e_update_hw(void);
@@ -133,7 +225,8 @@ i40e_update_hw(void)
     while ( NULL != pci ) {
         if ( PCI_VENDOR_INTEL == pci->device->vendor_id ) {
             switch ( pci->device->device_id ) {
-            case I40E_XL710:
+            case I40E_XL710_QDA1:
+            case I40E_XL710_QDA2:
                 dev = i40e_init_hw(pci->device);
                 netdev_add_device(dev->macaddr, dev);
                 idx++;
@@ -171,69 +264,21 @@ i40e_init_hw(struct pci_device *pcidev)
         return NULL;
     }
 
+
 #if 1
     kprintf("ROM BAR: %x\r\n",
             pci_read_rom_bar(pcidev->bus, pcidev->slot, pcidev->func));
 #endif
 
-#if 0
-    /* Reset PCIe master */
-    mmio_write32(dev->mmio, IXGBE_REG_CTRL,
-                 mmio_read32(dev->mmio, IXGBE_REG_CTRL)
-                 | IXGBE_CTRL_PCIE_MASTER_DISABLE);
-    arch_busy_usleep(50);
-    mmio_write32(dev->mmio, IXGBE_REG_CTRL,
-                 mmio_read32(dev->mmio, IXGBE_REG_CTRL)
-                 & (~IXGBE_CTRL_PCIE_MASTER_DISABLE));
-    arch_busy_usleep(50);
-
     /* Read MAC address */
-    switch ( pcidev->device_id ) {
-    case IXGBE_X520:
-        m32 = mmio_read32(dev->mmio, IXGBE_REG_RAL(0));
-        dev->macaddr[0] = m32 & 0xff;
-        dev->macaddr[1] = (m32 >> 8) & 0xff;
-        dev->macaddr[2] = (m32 >> 16) & 0xff;
-        dev->macaddr[3] = (m32 >> 24) & 0xff;
-        m32 = mmio_read32(dev->mmio, IXGBE_REG_RAH(0));
-        dev->macaddr[4] = m32 & 0xff;
-        dev->macaddr[5] = (m32 >> 8) & 0xff;
-        break;
-    }
-
-    /* Initialize */
-    mmio_write32(dev->mmio, IXGBE_REG_EIMC, 0x7fffffff);
-    mmio_write32(dev->mmio, IXGBE_REG_CTRL,
-                 mmio_read32(dev->mmio, IXGBE_REG_CTRL)
-                 | IXGBE_CTRL_RST);
-    for ( i = 0; i < 10; i++ ) {
-        arch_busy_usleep(1);
-        m32 = mmio_read32(dev->mmio, IXGBE_REG_CTRL);
-        if ( !(m32 & IXGBE_CTRL_RST) ) {
-            break;
-        }
-    }
-    if ( m32 & IXGBE_CTRL_RST ) {
-        kprintf("Error on reset\r\n");
-    }
-    arch_busy_usleep(50);
-
-    mmio_write32(dev->mmio, IXGBE_REG_FCTRL,
-                 IXGBE_FCTRL_MPE | IXGBE_FCTRL_UPE | IXGBE_FCTRL_BAM);
-
-    /* Multicast array table */
-    for ( i = 0; i < 128; i++ ) {
-        mmio_write32(dev->mmio, IXGBE_REG_MTA + i * 4, 0);
-    }
-
-    /* Enable interrupt (REG_IMS <- 0x1F6DC, then read REG_ICR ) */
-    //mmio_write32(dev->mmio, IXGBE_REG_IMS, 0x1f6dc);
-    //mmio_read32(dev->mmio, 0xc0);
-
-    /* Setup TX/RX descriptor */
-    ixgbe_setup_rx_desc(dev);
-    ixgbe_setup_tx_desc(dev);
-#endif
+    m32 = mmio_read32(dev->mmio, I40E_PRTPM_SAL(0));
+    dev->macaddr[0] = m32 & 0xff;
+    dev->macaddr[1] = (m32 >> 8) & 0xff;
+    dev->macaddr[2] = (m32 >> 16) & 0xff;
+    dev->macaddr[3] = (m32 >> 24) & 0xff;
+    m32 = mmio_read32(dev->mmio, I40E_PRTPM_SAH(0));
+    dev->macaddr[4] = m32 & 0xff;
+    dev->macaddr[5] = (m32 >> 8) & 0xff;
 
     dev->pci_device = pcidev;
 
@@ -241,6 +286,7 @@ i40e_init_hw(struct pci_device *pcidev)
 
     return dev;
 }
+
 
 
 int
@@ -261,8 +307,76 @@ i40e_init_fpm(struct i40e_device *dev)
     kprintf("LANTXOBJSZ: %x\r\n", mmio_read32(dev->mmio, I40E_GLHMC_LANTXOBJSZ));
     kprintf("LANRXOBJSZ: %x\r\n", mmio_read32(dev->mmio, I40E_GLHMC_LANRXOBJSZ));
 
-    kprintf("LANTXBASE(0): %x\r\n", mmio_read32(dev->mmio, I40E_GLHMC_LANTXBASE(0)));
-    kprintf("LANTXBASE(1): %x\r\n", mmio_read32(dev->mmio, I40E_GLHMC_LANTXBASE(1)));
+    kprintf("LANTXBASE(0): %x %x\r\n",
+            mmio_read32(dev->mmio, I40E_GLHMC_LANTXBASE(0)),
+            mmio_read32(dev->mmio, I40E_GLHMC_LANTXCNT(0)));
+    kprintf("LANTXBASE(1): %x %x\r\n",
+            mmio_read32(dev->mmio, I40E_GLHMC_LANTXBASE(1)),
+            mmio_read32(dev->mmio, I40E_GLHMC_LANTXCNT(1)));
+
+    kprintf("LANRXBASE(0): %x %x\r\n",
+            mmio_read32(dev->mmio, I40E_GLHMC_LANRXBASE(0)),
+            mmio_read32(dev->mmio, I40E_GLHMC_LANRXCNT(0)));
+    kprintf("LANRXBASE(1): %x %x\r\n",
+            mmio_read32(dev->mmio, I40E_GLHMC_LANRXBASE(1)),
+            mmio_read32(dev->mmio, I40E_GLHMC_LANRXCNT(1)));
+
+    u8 *hmc;
+    u64 hmcint;
+    u64 txbase;
+    u64 rxbase;
+    u32 cnt = 1536;
+    u32 txobjsz = mmio_read32(dev->mmio, I40E_GLHMC_LANTXOBJSZ);
+    u32 rxobjsz = mmio_read32(dev->mmio, I40E_GLHMC_LANRXOBJSZ);
+
+    hmc = kmalloc(2 * 1024 * 1024);
+    kmemset(hmc, 0, 2 * 1024 * 1024);
+    hmcint = (u64)hmc;
+
+    txbase = 0;
+    /* roundup512((TXBASE * 512) + (TXCNT * 2^TXOBJSZ)) / 512 */
+    rxbase = (((txbase * 512) + (1 * (1<<txobjsz))) + 511) / 512;
+
+    struct i40e_lan_txq_ctx *txq_ctx = (struct i40e_lan_txq_ctx *)(hmcint + txbase);
+    struct i40e_lan_rxq_ctx *rxq_ctx = (struct i40e_lan_rxq_ctx *)(hmcint + rxbase);
+
+    txq_ctx->head = 0;
+    txq_ctx->newctx = 1;
+    txq_ctx->base = 0;          /* FIXME */
+    txq_ctx->thead_wb = 0;
+    txq_ctx->head_wben = 0;
+    txq_ctx->qlen = 0;          /* FIXME */
+    txq_ctx->head_wbaddr = 0;
+
+    rxq_ctx->head = 0;
+    rxq_ctx->base = 0;          /* FIXME */
+    rxq_ctx->qlen_l = 0;        /* FIXME */
+    rxq_ctx->qlen_h = 0;        /* FIXME */
+    rxq_ctx->dbuff = 4096/128;
+    rxq_ctx->hbuff = 128/64;
+    rxq_ctx->dtype = 0x0;
+    rxq_ctx->dsize = 0x0;
+    rxq_ctx->crcstrip = 0x0;
+    rxq_ctx->rxmax = 4096;
+
+
+    mmio_write32(dev->mmio, I40E_PFHMC_SDDATALOW,
+                 (hmcint & 0xfff00000) | 1 | (1<<1) | (512<<2));
+    mmio_write32(dev->mmio, I40E_PFHMC_SDDATAHIGH, hmcint >> 32);
+    mmio_write32(dev->mmio, I40E_PFHMC_SDCMD, (1<<31) | 0);
+
+
+    mmio_write32(dev->mmio, I40E_GLHMC_LANTXBASE(0), 0);
+    mmio_write32(dev->mmio, I40E_GLHMC_LANRXBASE(0), rxbase);
+
+    mmio_write32(dev->mmio, I40E_GLHMC_LANTXCNT(0), cnt);
+    mmio_write32(dev->mmio, I40E_GLHMC_LANRXCNT(0), cnt);
+
+
+
+    kprintf("HMC: %llx %llx %llx %llx\r\n",
+            *(u64 *)(hmc + 0), *(u64 *)(hmc + 8),
+            *(u64 *)(hmc + 16), *(u64 *)(hmc + 24));
 
     return 0;
 }
