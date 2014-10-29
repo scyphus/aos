@@ -64,21 +64,37 @@ struct i40e_tx_desc_ctx {
 } __attribute__ ((packed));
 
 
-struct ixgbe_rx_desc_read {
+struct i40e_rx_desc_read {
     volatile u64 pkt_addr;
     volatile u64 hdr_addr;      /* 0:DD */
 } __attribute__ ((packed));
 
-struct ixgbe_adv_rx_desc_wb {
+struct i40e_rx_desc_wb {
     /* Write back */
     u32 filter_stat;
     u32 l2tag_mirr_fcoe_ctx;
     u64 len_ptype_err_status;
 } __attribute__ ((packed));
+union i40e_rx_desc {
+    struct i40e_rx_desc_read read;
+    struct i40e_rx_desc_wb wb;
+} __attribute__ ((packed));
 
 
 struct i40e_device {
     u64 mmio;
+
+    u64 rx_base;
+    u32 rx_tail;
+    u32 rx_bufsz;
+    u32 rx_bufmask;
+
+    u64 tx_base;
+    u32 tx_tail;
+    u32 tx_bufsz;
+    u32 tx_bufmask;
+
+    struct i40e_rx_desc_read *rx_read;
 
     u8 macaddr[6];
 
@@ -294,6 +310,7 @@ i40e_init_fpm(struct i40e_device *dev)
 {
     u16 func;
     u32 qalloc;
+    int i;
 
     /* Get function number to determine the HMC function index */
     func = dev->pci_device->func;
@@ -320,6 +337,54 @@ i40e_init_fpm(struct i40e_device *dev)
     kprintf("LANRXBASE(1): %x %x\r\n",
             mmio_read32(dev->mmio, I40E_GLHMC_LANRXBASE(1)),
             mmio_read32(dev->mmio, I40E_GLHMC_LANRXCNT(1)));
+
+
+    /* Tx descriptor */
+    struct i40e_tx_desc_data *txdesc;
+    dev->tx_tail = 0;
+    /* up to 64 K minus 8 */
+    dev->tx_bufsz = (1<<13);
+    dev->tx_bufmask = (1<<13) - 1;
+    /* ToDo: 16 bytes for alignment */
+    dev->tx_base = (u64)kmalloc(dev->tx_bufsz * sizeof(struct i40e_tx_desc_data));
+    for ( i = 0; i < dev->tx_bufsz; i++ ) {
+        txdesc = (struct i40e_tx_desc_data *)(dev->tx_base + i * sizeof(struct i40e_tx_desc_data));
+        txdesc->pkt_addr = (u64)kmalloc(4096);
+        txdesc->rsv_cmd_dtyp = 0;
+        txdesc->txbufsz_offset = 0;
+        txdesc->l2tag = 0;
+    }
+
+
+    /* Rx descriptor */
+    union i40e_rx_desc *rxdesc;
+    /* Previous tail */
+    dev->rx_tail = 0;
+    /* up to 64 K minus 8 */
+    dev->rx_bufsz = (1<<13);
+    dev->rx_bufmask = (1<<13) - 1;
+    /* Allocate memory for RX descriptors */
+    dev->rx_read = kmalloc(dev->rx_bufsz * sizeof(struct i40e_rx_desc_read));
+    if ( 0 == dev->rx_read ) {
+        kfree(dev);
+        return NULL;
+    }
+    /* ToDo: 16 bytes for alignment */
+    dev->rx_base = (u64)kmalloc(dev->rx_bufsz * sizeof(union i40e_rx_desc));
+    if ( 0 == dev->rx_base ) {
+        kfree(dev);
+        return NULL;
+    }
+    for ( i = 0; i < dev->rx_bufsz; i++ ) {
+        rxdesc = (union i40e_rx_desc *)(dev->rx_base + i * sizeof(union i40e_rx_desc));
+        rxdesc->read.pkt_addr = (u64)kmalloc(4096);
+        rxdesc->read.hdr_addr = (u64)kmalloc(4096);
+
+        dev->rx_read[i].pkt_addr = rxdesc->read.pkt_addr;
+        dev->rx_read[i].hdr_addr = rxdesc->read.hdr_addr;
+    }
+
+
 
     u8 *hmc;
     u64 hmcint;
@@ -359,7 +424,6 @@ i40e_init_fpm(struct i40e_device *dev)
     rxq_ctx->crcstrip = 0x0;
     rxq_ctx->rxmax = 4096;
 
-
     mmio_write32(dev->mmio, I40E_PFHMC_SDDATALOW,
                  (hmcint & 0xfff00000) | 1 | (1<<1) | (512<<2));
     mmio_write32(dev->mmio, I40E_PFHMC_SDDATAHIGH, hmcint >> 32);
@@ -371,7 +435,6 @@ i40e_init_fpm(struct i40e_device *dev)
 
     mmio_write32(dev->mmio, I40E_GLHMC_LANTXCNT(0), cnt);
     mmio_write32(dev->mmio, I40E_GLHMC_LANRXCNT(0), cnt);
-
 
 
     kprintf("HMC: %llx %llx %llx %llx\r\n",
