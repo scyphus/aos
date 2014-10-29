@@ -560,4 +560,3 @@ i40e_init_fpm(struct i40e_device *dev)
 
     return 0;
 }
-
