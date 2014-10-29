@@ -29,6 +29,8 @@ struct pci {
 
 u16 pci_read_config(u16, u16, u16, u16);
 u64 pci_read_mmio(u8, u8, u8);
+u32 pci_read_rom_bar(u8, u8, u8);
+u8 pci_get_header_type(u16, u16, u16);
 struct pci * pci_list(void);
 
 #endif /* _DRIVERS_PCI_H */

@@ -70,6 +70,27 @@ pci_read_mmio(u8 bus, u8 slot, u8 func)
 }
 
 
+u32
+pci_read_rom_bar(u8 bus, u8 slot, u8 func)
+{
+    u8 type;
+    u32 bar;
+
+    type = pci_get_header_type(bus, slot, func);
+    if ( 0x00 == type ) {
+        bar = pci_read_config(bus, slot, func, 0x30);
+        bar |= (u32)pci_read_config(bus, slot, func, 0x32) << 16;
+    } else if ( 0x00 == type ) {
+        bar = pci_read_config(bus, slot, func, 0x38);
+        bar |= (u32)pci_read_config(bus, slot, func, 0x3a) << 16;
+    } else {
+        bar = 0;
+    }
+
+    return bar;
+}
+
+
 
 
 

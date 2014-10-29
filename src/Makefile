@@ -76,6 +76,7 @@ kpack: kernel/arch/$(ARCH)/asm.o \
 	drivers/e1000/e1000.o \
 	drivers/e1000e/e1000e.o \
 	drivers/ixgbe/ixgbe.o \
+	drivers/i40e/i40e.o \
 	drivers/ahci/ahci.o \
 	drivers/pci/pci.o
 	$(LD) -N -e kstart64 -Ttext=0x10000 --oformat binary -o $@ $^
