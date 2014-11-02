@@ -25,6 +25,9 @@
 #define I40E_QTX_HEAD(q)        (0x000e4000 + 0x4 * (q))
 #define I40E_QTX_TAIL(q)        (0x00108000 + 0x4 * (q))
 
+#define I40E_QRX_ENA(q)         (0x00120000 + 0x4 * (q))
+#define I40E_QRX_TAIL(q)        (0x00128000 + 0x4 * (q))
+
 #define I40E_GLHMC_LANTXBASE(n) (0x000c6200 + 0x4 * (n)) /* [0:23] */
 #define I40E_GLHMC_LANTXCNT(n)  (0x000c6300 + 0x4 * (n)) /* [0:10] */
 #define I40E_GLHMC_LANRXBASE(n) (0x000c6400 + 0x4 * (n)) /* [0:23] */
@@ -48,10 +51,12 @@
 //PFHMC_SDDATALOW
 //PFHMC_SDDATAHIGH
 //GLHMC_SDPART[n]
+//GLTPH_CTRL.Desc_PH
+//GLHMC_LANQMAX
 
 struct i40e_tx_desc_data {
     u64 pkt_addr;
-    u16 rsv_cmd_dtyp;            /* rsv:2 cmd:10 dtyp:4 */
+    volatile u16 rsv_cmd_dtyp;            /* rsv:2 cmd:10 dtyp:4 */
     u32 txbufsz_offset;         /* Tx buffer size:14 Offset:18*/
     u16 l2tag;
 } __attribute__ ((packed));
@@ -90,10 +95,19 @@ struct i40e_device {
     u32 rx_bufsz;
     u32 rx_bufmask;
 
+    struct {
+        u64 base;
+        u32 tail;
+        u32 bufsz;
+        u32 bufmask;
+        u32 head_cache;
+    } txq[4];
+
     u64 tx_base;
     u32 tx_tail;
     u32 tx_bufsz;
     u32 tx_bufmask;
+    u32 tx_head_cache;
 
     struct i40e_rx_desc_read *rx_read;
 
@@ -313,6 +327,7 @@ i40e_init_fpm(struct i40e_device *dev)
     u16 func;
     u32 qalloc;
     int i;
+    int j;
     u32 m32;
 
     /* Get function number to determine the HMC function index */
@@ -342,20 +357,23 @@ i40e_init_fpm(struct i40e_device *dev)
             mmio_read32(dev->mmio, I40E_GLHMC_LANRXCNT(1)));
 
 
-    /* Tx descriptor */
+    /* Tx descriptors */
     struct i40e_tx_desc_data *txdesc;
-    dev->tx_tail = 0;
-    /* up to 64 K minus 8 */
-    dev->tx_bufsz = (1<<12);
-    dev->tx_bufmask = (1<<12) - 1;
-    /* ToDo: 16 bytes for alignment */
-    dev->tx_base = (u64)kmalloc(dev->tx_bufsz * sizeof(struct i40e_tx_desc_data));
-    for ( i = 0; i < dev->tx_bufsz; i++ ) {
-        txdesc = (struct i40e_tx_desc_data *)(dev->tx_base + i * sizeof(struct i40e_tx_desc_data));
-        txdesc->pkt_addr = (u64)kmalloc(4096);
-        txdesc->rsv_cmd_dtyp = 0;
-        txdesc->txbufsz_offset = 0;
-        txdesc->l2tag = 0;
+    for ( i = 0; i < 4; i++ ) {
+        dev->txq[i].tail = 0;
+        dev->txq[i].head_cache = 0;
+        /* up to 64 K minus 8 */
+        dev->txq[i].bufsz = (1<<12);
+        dev->txq[i].bufmask = (1<<12) - 1;
+        /* ToDo: 16 bytes for alignment */
+        dev->txq[i].base = (u64)kmalloc(dev->txq[i].bufsz * sizeof(struct i40e_tx_desc_data));
+        for ( j = 0; j < dev->txq[i].bufsz; j++ ) {
+            txdesc = (struct i40e_tx_desc_data *)(dev->txq[i].base + j * sizeof(struct i40e_tx_desc_data));
+            txdesc->pkt_addr = (u64)kmalloc(4096);
+            txdesc->rsv_cmd_dtyp = 0;
+            txdesc->txbufsz_offset = 0;
+            txdesc->l2tag = 0;
+        }
     }
 
 
@@ -364,8 +382,8 @@ i40e_init_fpm(struct i40e_device *dev)
     /* Previous tail */
     dev->rx_tail = 0;
     /* up to 64 K minus 8 */
-    dev->rx_bufsz = (1<<12);
-    dev->rx_bufmask = (1<<12) - 1;
+    dev->rx_bufsz = (1<<10);
+    dev->rx_bufmask = (1<<10) - 1;
     /* Allocate memory for RX descriptors */
     dev->rx_read = kmalloc(dev->rx_bufsz * sizeof(struct i40e_rx_desc_read));
     if ( 0 == dev->rx_read ) {
@@ -407,20 +425,27 @@ i40e_init_fpm(struct i40e_device *dev)
     /* roundup512((TXBASE * 512) + (TXCNT * 2^TXOBJSZ)) / 512 */
     rxbase = (((txbase * 512) + (1 * (1<<txobjsz))) + 511) / 512;
 
-    struct i40e_lan_txq_ctx *txq_ctx = (struct i40e_lan_txq_ctx *)(hmcint + txbase * 512);
-    struct i40e_lan_rxq_ctx *rxq_ctx = (struct i40e_lan_rxq_ctx *)(hmcint + rxbase * 512);
 
     kprintf("HMC: %llx, Tx: %llx, Rx: %llx\r\n", hmcint, dev->tx_base, dev->rx_base);
 
-    txq_ctx->head = 0;
-    txq_ctx->rsv1 = 0;
-    txq_ctx->newctx = 1;
-    txq_ctx->base = dev->tx_base / 128;
-    txq_ctx->thead_wb = 0;
-    txq_ctx->head_wben = 0;
-    txq_ctx->qlen = dev->tx_bufsz;
-    txq_ctx->head_wbaddr = 0;
+    struct i40e_lan_txq_ctx *txq_ctx;
+    for ( i = 0; i < 4; i++ ){
+        txq_ctx = (struct i40e_lan_txq_ctx *)(hmcint + txbase * 512 + i * 128);
+        txq_ctx->head = 0;
+        txq_ctx->rsv1 = 0;
+        txq_ctx->newctx = 1;
+        txq_ctx->base = dev->txq[i].base / 128;
+        txq_ctx->thead_wb = 0;
+        txq_ctx->head_wben = 0;
+        txq_ctx->qlen = dev->txq[i].bufsz;
+        txq_ctx->head_wbaddr = 0;
+        txq_ctx->tphrdesc = 1;
+        txq_ctx->tphrpacket = 1;
+        txq_ctx->tphwdesc = 1;
+        txq_ctx->rdylist = 0x0;
+    }
 
+    struct i40e_lan_rxq_ctx *rxq_ctx = (struct i40e_lan_rxq_ctx *)(hmcint + rxbase * 512);
     rxq_ctx->head = 0;
     rxq_ctx->base = dev->rx_base / 128;
     rxq_ctx->qlen = dev->rx_bufsz;
@@ -431,9 +456,11 @@ i40e_init_fpm(struct i40e_device *dev)
     rxq_ctx->crcstrip = 0x0;
     rxq_ctx->rxmax = 4096;
 
+#if 0
     kprintf("HMC: %.8llx %.8llx %.8llx %.8llx\r\n",
             *(u32 *)(hmc + 0), *(u32 *)(hmc + 4),
             *(u32 *)(hmc + 8), *(u32 *)(hmc + 12));
+#endif
 
     mmio_write32(dev->mmio, I40E_PFHMC_SDDATALOW,
                  (hmcint & 0xfff00000) | 1 | (1<<1) | (512<<2));
@@ -447,33 +474,57 @@ i40e_init_fpm(struct i40e_device *dev)
     mmio_write32(dev->mmio, I40E_GLHMC_LANTXCNT(0), cnt);
     mmio_write32(dev->mmio, I40E_GLHMC_LANRXCNT(0), cnt);
 
-
+#if 0
     kprintf("HMC: %.8llx %.8llx %.8llx %.8llx\r\n",
             *(u32 *)(hmc + 0), *(u32 *)(hmc + 4),
             *(u32 *)(hmc + 8), *(u32 *)(hmc + 12));
+#endif
 
-    /* Clear QDIS flag */
-    mmio_write32(dev->mmio, I40E_GLLAN_TXPRE_QDIS(0), 1<<31);
+    for ( i = 0; i < 4; i++ ) {
+        /* Clear QDIS flag */
+        mmio_write32(dev->mmio, I40E_GLLAN_TXPRE_QDIS(0), (1<<31) | i);
 
-    /* PF Queue */
-    mmio_write32(dev->mmio, I40E_QTX_CTL(0), 2);
+        /* PF Queue */
+        mmio_write32(dev->mmio, I40E_QTX_CTL(i), 2);
 
-    /* Enable */
-    mmio_write32(dev->mmio, I40E_QTX_ENA(0), 1);
+        mmio_write32(dev->mmio, I40E_QTX_HEAD(i), 0);
+        mmio_write32(dev->mmio, I40E_QTX_TAIL(i), 0);
+
+        /* Enable */
+        mmio_write32(dev->mmio, I40E_QTX_ENA(i), 1);
+        for ( j = 0; j < 10; j++ ) {
+            arch_busy_usleep(1);
+            m32 = mmio_read32(dev->mmio, I40E_QTX_ENA(i));
+            if ( 5 == (m32 & 5) ) {
+                break;
+            }
+        }
+        if ( 5 != (m32 & 5) ) {
+            kprintf("Error on enable a TX queue (%d)\r\n", i);
+        }
+    }
+
+
+    /* Invalidate */
+    //mmio_write32(dev->mmio, I40E_PFHMC_PDINV, 0);
+
+
+    /* Enable Rx */
+    mmio_write32(dev->mmio, I40E_QRX_TAIL(0), dev->rx_bufsz - 1);
+
+    mmio_write32(dev->mmio, I40E_QRX_ENA(0), 1);
     for ( i = 0; i < 10; i++ ) {
         arch_busy_usleep(1);
-        m32 = mmio_read32(dev->mmio, I40E_QTX_ENA(0));
+        m32 = mmio_read32(dev->mmio, I40E_QRX_ENA(0));
         if ( 5 == (m32 & 5) ) {
             break;
         }
     }
     if ( 5 != (m32 & 5) ) {
-        kprintf("Error on enable a TX queue\r\n");
+        kprintf("Error on enable a RX queue\r\n");
     }
 
-    /* Invalidate */
-    mmio_write32(dev->mmio, I40E_PFHMC_PDINV, 0);
-
+#if 0
     txdesc = (struct i40e_tx_desc_data *)(dev->tx_base);
     u8 *pkt = (u8 *)txdesc->pkt_addr;
     pkt[0] = 0xff;
@@ -544,7 +595,7 @@ i40e_init_fpm(struct i40e_device *dev)
     pkt[25] = cs >> 8;
 
     txdesc->l2tag = 0;
-    txdesc->txbufsz_offset = (60 << 18) | 0;
+    txdesc->txbufsz_offset = (60 << 18) | 14;
     txdesc->rsv_cmd_dtyp = 0 | (((1) | (1<<1)) << 4);
 
     mmio_write32(dev->mmio, I40E_QTX_TAIL(0), 1);
@@ -557,6 +608,198 @@ i40e_init_fpm(struct i40e_device *dev)
                 mmio_read32(dev->mmio, I40E_QTX_HEAD(0)),
                 mmio_read32(dev->mmio, I40E_QTX_TAIL(0)));
     }
+#endif
 
     return 0;
 }
+
+int
+i40e_tx_test(struct netdev *netdev, u8 *pkt, int len, int blksize)
+{
+    struct i40e_device *dev;
+    struct i40e_tx_desc_data *txdesc;
+    int i;
+
+    blksize--;
+
+    dev = (struct i40e_device *)netdev->vendor;
+
+    /* Prepare */
+    for ( i = 0; i < dev->tx_bufsz; i++ ) {
+        txdesc = (struct i40e_tx_desc_data *)
+            (dev->tx_base + i * sizeof(struct i40e_tx_desc_data));
+        kmemcpy((void *)txdesc->pkt_addr, pkt, len);
+        txdesc->rsv_cmd_dtyp = 0xf;
+    }
+
+    int cnt = 0;
+    for ( ;; ) {
+        txdesc = (struct i40e_tx_desc_data *)
+            (dev->tx_base + dev->tx_tail * sizeof(struct i40e_tx_desc_data));
+
+        if ( 0xf == (txdesc->rsv_cmd_dtyp & 0xf) )  {
+            /* Write back ok */
+            txdesc->l2tag = 0;
+            txdesc->txbufsz_offset = (len << 18) | 14;
+            txdesc->rsv_cmd_dtyp = 0 | (((1) | (1<<1)) << 4);
+
+            cnt += 1;
+            dev->tx_tail = (dev->tx_tail + 1) & dev->tx_bufmask;
+
+            if ( 0 == (cnt & blksize) ) {
+                cnt = 0;
+                mmio_write32(dev->mmio, I40E_QTX_TAIL(0), dev->tx_tail);
+            }
+        } else if ( cnt ) {
+            cnt = 0;
+            mmio_write32(dev->mmio, I40E_QTX_TAIL(0), dev->tx_tail);
+        }
+    }
+
+    return 0;
+}
+
+int
+i40e_tx_test2(struct netdev *netdev, u8 *pkt, int len, int blksize,
+              int frm, int to)
+{
+    struct i40e_device *dev;
+    struct i40e_tx_desc_data *txdesc;
+    int i;
+    int j;
+    u32 tdh;
+    u32 next_tail;
+
+    dev = (struct i40e_device *)netdev->vendor;
+
+    /* Prepare */
+    for ( i = frm; i < to; i++ ) {
+        for ( j = 0; j < dev->txq[i].bufsz; j++ ) {
+            txdesc = (struct i40e_tx_desc_data *)
+                (dev->txq[i].base + j * sizeof(struct i40e_tx_desc_data));
+            kmemcpy((void *)txdesc->pkt_addr, pkt, len);
+        }
+    }
+
+    int cnt = 0;
+    for ( ;; ) {
+
+        for ( i = frm; i < to; i++ ) {
+            tdh = dev->txq[i].head_cache;
+            next_tail = (dev->txq[i].tail + blksize) & dev->txq[i].bufmask;
+            if ( dev->txq[i].bufsz -
+                 (((dev->txq[i].bufsz - tdh + dev->txq[i].tail) & dev->txq[i].bufmask))
+                 < blksize ) {
+                tdh = mmio_read32(dev->mmio, I40E_QTX_HEAD(i));
+                dev->txq[i].head_cache = tdh;
+                if ( dev->txq[i].bufsz -
+                     (((dev->txq[i].bufsz - tdh + dev->txq[i].tail) & dev->txq[i].bufmask))
+                     < blksize ) {
+                    /* Still full */
+                    kprintf("Full: %x %x\r\n", tdh, dev->txq[i].tail);
+                    continue;
+                }
+            }
+            /* Not full */
+            for ( j = 0; j < blksize; j++ ) {
+                txdesc = (struct i40e_tx_desc_data *)
+                    (dev->txq[i].base
+                     + ((dev->txq[i].tail + j) & dev->txq[i].bufmask)
+                     * sizeof(struct i40e_tx_desc_data));
+                txdesc->l2tag = 0;
+                txdesc->txbufsz_offset = (len << 18) | 14;
+                txdesc->rsv_cmd_dtyp = 0 | (((1)/* | (1<<1)*/) << 4);
+            }
+            dev->txq[i].tail = next_tail;
+            mmio_write32(dev->mmio, I40E_QTX_TAIL(i), dev->txq[i].tail);
+
+            /* Packets Transmitted [64 Bytes] Count Low GLPRT_PTC64L:
+               0x003006A0 */
+        }
+    }
+
+    return 0;
+}
+
+int
+i40e_forwarding_test(struct netdev *netdev1, struct netdev *netdev2)
+{
+    struct i40e_device *dev1;
+    struct i40e_device *dev2;
+    union i40e_rx_desc * rxdesc;
+    struct i40e_tx_desc_data *txdesc;
+    int i;
+    u8 *txpkt;
+
+    dev1 = (struct i40e_device *)netdev1->vendor;
+    dev2 = (struct i40e_device *)netdev2->vendor;
+    for ( ;; ) {
+
+        rxdesc = (union i40e_rx_desc *)
+            (dev1->rx_base + dev1->rx_tail * sizeof(union i40e_rx_desc));
+        txdesc = (struct i40e_tx_desc_data *)
+            (dev2->tx_base + dev2->tx_tail * sizeof(struct i40e_tx_desc_data));
+
+        if ( rxdesc->read.hdr_addr & 0x1 ) {
+
+            txpkt = (u8 *)dev1->rx_read[dev1->rx_tail].pkt_addr;
+            *(u32 *)(txpkt + 0) =  0x67664000LLU;
+            *(u16 *)(txpkt + 4) =  0x2472LLU;
+            /* src */
+            *(u16 *)(txpkt + 6) =  *((u16 *)netdev2->macaddr);
+            *(u32 *)(txpkt + 8) =  *((u32 *)(netdev2->macaddr + 2));
+
+#if 0
+            /* TTL -= 1 */
+            txpkt[22]--;
+            /* Compute checksum */
+            u16 *ctmp;
+            u32 cs;
+            txpkt[24] = 0x0;
+            txpkt[25] = 0x0;
+            ctmp = (u16 *)txpkt;
+            cs = 0;
+            for ( i = 7; i < 17; i++ ) {
+                cs += (u32)ctmp[i];
+                cs = (cs & 0xffff) + (cs >> 16);
+            }
+            cs = 0xffff - cs;
+            txpkt[24] = cs & 0xff;
+            txpkt[25] = cs >> 8;
+#endif
+
+            /* Save Tx */
+            u8 *tmp = (u8 *)((u64)txdesc->pkt_addr & 0xfffffffffffffff0ULL);
+
+            txdesc->pkt_addr = (u64)txpkt;
+            txdesc->l2tag = 0;
+            txdesc->txbufsz_offset
+                = (((rxdesc->wb.len_ptype_err_status >> 38) & 0x3ffffffULL) << 18)
+                | 14;
+            txdesc->rsv_cmd_dtyp = 0 | (((1) | (1<<1)) << 4);
+
+            dev1->rx_read[dev1->rx_tail].pkt_addr = (u64)tmp;
+            rxdesc->read.pkt_addr = dev1->rx_read[dev1->rx_tail].pkt_addr;
+            rxdesc->read.hdr_addr = dev1->rx_read[dev1->rx_tail].hdr_addr;
+
+            //kprintf("%x %x\r\n", dev1->rx_tail, dev2->tx_tail);
+            dev2->tx_tail = (dev2->tx_tail + 1) & dev2->tx_bufmask;
+            if ( (dev2->tx_tail & 0xff) == 0 ) {
+                mmio_write32(dev2->mmio, I40E_QTX_TAIL(0), dev2->tx_tail);
+                mmio_write32(dev1->mmio, I40E_QRX_TAIL(0), dev1->rx_tail);
+            }
+            dev1->rx_tail = (dev1->rx_tail + 1) & dev1->rx_bufmask;
+        }
+    }
+
+    return 0;
+}
+
+/*
+ * Local variables:
+ * tab-width: 4
+ * c-basic-offset: 4
+ * End:
+ * vim600: sw=4 ts=4 fdm=marker
+ * vim<600: sw=4 ts=4
+ */
