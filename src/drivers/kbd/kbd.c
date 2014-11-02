@@ -170,6 +170,11 @@ kbd_driver_main(int argc, char *argv[])
     wpos = 0;
     lock = 0;
 
+    /* Until the status register tells no data on buffer */
+    while ( arch_inb(0x0064) & 1 ) {
+        (void)kbd_enc_read_buf();
+    }
+
     /* Register IRQ handler */
     register_irq_handler(1, &kbd_irq_handler, &stat);
 

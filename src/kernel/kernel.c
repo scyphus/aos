@@ -91,6 +91,7 @@ kmain(void)
     ktask_init();
 
     sched();
+
     task_restart();
 }
 

@@ -125,6 +125,9 @@ wait:
 
 /* Boot */
 boot:
+	/* Disable PIC */
+	call	disable_pic
+
 	/* Check the CPU specification */
 	movl	$1,%eax
 	cpuid
@@ -449,6 +452,15 @@ intr_int33:
 	popw	%ax
 	iret
 
+/* Disable i8259 PIC */
+disable_pic:
+	pushw	%ax
+	movb	$0xff,%al
+	outb	%al,$0xa1
+	movb	$0xff,%al
+	outb	%al,$0x21
+	popw	%ax
+	ret
 
 
 /* Enable A20 */
@@ -530,6 +542,9 @@ load_mm.done:
 
 /* Shutoff the machine using APM */
 shutoff16:
+/* Disable PIC */
+	call	disable_pic
+
 /* Power off with APM */
 	movw	$0x5301,%ax	/* Connect APM interface */
 	movw	$0x0,%bx	/* Specify system BIOS */

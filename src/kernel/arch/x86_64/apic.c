@@ -199,7 +199,6 @@ ioapic_init(void)
     /* Disable i8259 PIC */
     outb(0xa1, 0xff);
     outb(0x21, 0xff);
-
 }
 
 /*

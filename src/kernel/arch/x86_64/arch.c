@@ -195,6 +195,7 @@ arch_bsp_init(void)
     e1000e_init();
     ixgbe_init();
     i40e_init();
+
     arch_dbg_printf("Initializing AHCI.\r\n");
     ahci_init();
 
