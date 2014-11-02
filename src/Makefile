@@ -67,6 +67,7 @@ kpack: kernel/arch/$(ARCH)/asm.o \
 	kernel/arch/$(ARCH)/console.o \
 	kernel/arch/$(ARCH)/cmos.o \
 	kernel/arch/$(ARCH)/i8254.o \
+	kernel/netsc.o \
 	kernel/ptcam.o \
 	drivers/kbd/kbd.o \
 	drivers/rng/rng.o \
