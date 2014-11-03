@@ -11,6 +11,7 @@
 #include "../../kernel/kernel.h"
 
 #define KBD_ENC_BUF_PORT        0x0060
+#define KBD_ENC_STAT_PORT       0x0064
 
 struct kbd_status {
     int lshift;
@@ -78,74 +79,76 @@ kbd_irq_handler(int irq, void *user)
 
     stat = (struct kbd_status *)user;
 
-    scan_code = kbd_enc_read_buf();
-    if ( !(0x80 & scan_code) ) {
-        if ( scan_code == 1 ) {
-            /* Escape key */
-            arch_poweroff();
-            return;
-        }
-        /* Pressed */
-        switch ( scan_code ) {
-        case 0x1d:
-            /* Left ctrl */
-            stat->lctrl = 1;
-            break;
-        case 0x2a:
-            /* Left shift */
-            stat->lshift = 1;
-            break;
-        case 0x36:
-            /* Right shift */
-            stat->rshift = 1;
-            break;
-        case 0x3a:
-            /* Caps lock */
-            break;
-        case 0x5a:
-            /* Right ctrl */
-            stat->rctrl = 1;
-            break;
-        default:
-            if ( (stat->lctrl || stat->rctrl)
-                 && 'h' == keymap_base[scan_code] ) {
-                buf[wpos++] = 0x08;
-                putc_buffer_irq(0, 0x08);
-            } else {
-                if ( (stat->lshift | stat->rshift) ^ stat->capslock ) {
-                    buf[wpos++] = keymap_shift[scan_code];
-                    putc_buffer_irq(0, keymap_shift[scan_code]);
+    while ( arch_inb(KBD_ENC_STAT_PORT) & 1 ) {
+        scan_code = kbd_enc_read_buf();
+        if ( !(0x80 & scan_code) ) {
+            if ( scan_code == 1 ) {
+                /* Escape key */
+                arch_poweroff();
+                return;
+            }
+            /* Pressed */
+            switch ( scan_code ) {
+            case 0x1d:
+                /* Left ctrl */
+                stat->lctrl = 1;
+                break;
+            case 0x2a:
+                /* Left shift */
+                stat->lshift = 1;
+                break;
+            case 0x36:
+                /* Right shift */
+                stat->rshift = 1;
+                break;
+            case 0x3a:
+                /* Caps lock */
+                break;
+            case 0x5a:
+                /* Right ctrl */
+                stat->rctrl = 1;
+                break;
+            default:
+                if ( (stat->lctrl || stat->rctrl)
+                     && 'h' == keymap_base[scan_code] ) {
+                    buf[wpos++] = 0x08;
+                    putc_buffer_irq(0, 0x08);
                 } else {
-                    buf[wpos++] = keymap_base[scan_code];
-                    putc_buffer_irq(0, keymap_base[scan_code]);
+                    if ( (stat->lshift | stat->rshift) ^ stat->capslock ) {
+                        buf[wpos++] = keymap_shift[scan_code];
+                        putc_buffer_irq(0, keymap_shift[scan_code]);
+                    } else {
+                        buf[wpos++] = keymap_base[scan_code];
+                        putc_buffer_irq(0, keymap_base[scan_code]);
+                    }
                 }
             }
-        }
-    } else {
-        /* Released */
-        switch ( scan_code ) {
-        case 0x9d:
-            /* Left ctrl */
-            stat->lctrl = 0;
-            break;
-        case 0xaa:
-            /* Left shift */
-            stat->lshift = 0;
-            break;
-        case 0xb6:
-            /* Right shift */
-            stat->rshift = 0;
-            break;
-        case 0xba:
-            /* Caps lock */
-            stat->capslock ^= 1;
-            break;
-        case 0xda:
-            /* Right ctrl */
-            stat->rctrl = 0;
-            break;
-        default:
-            ;
+        } else {
+            /* Released */
+            switch ( scan_code ) {
+            case 0x9d:
+                /* Left ctrl */
+                stat->lctrl = 0;
+                break;
+            case 0xaa:
+                /* Left shift */
+                stat->lshift = 0;
+                break;
+            case 0xb6:
+                /* Right shift */
+                stat->rshift = 0;
+                break;
+            case 0xba:
+                /* Caps lock */
+                stat->capslock ^= 1;
+                break;
+            case 0xda:
+                /* Right ctrl */
+                stat->rctrl = 0;
+                break;
+            default:
+                ;
+            }
         }
     }
 }
@@ -171,7 +174,7 @@ kbd_driver_main(int argc, char *argv[])
     lock = 0;
 
     /* Until the status register tells no data on buffer */
-    while ( arch_inb(0x0064) & 1 ) {
+    while ( arch_inb(KBD_ENC_STAT_PORT) & 1 ) {
         (void)kbd_enc_read_buf();
     }
 
