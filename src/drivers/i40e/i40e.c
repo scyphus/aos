@@ -54,6 +54,11 @@
 //GLTPH_CTRL.Desc_PH
 //GLHMC_LANQMAX
 
+// GLSCD_QUANTA: 0x000B2080 /* RW */
+// GLNVM_SRCTL
+// GLLAN_RCTL_0 0x0012A500
+
+
 struct i40e_tx_desc_data {
     u64 pkt_addr;
     volatile u16 rsv_cmd_dtyp;            /* rsv:2 cmd:10 dtyp:4 */
@@ -101,6 +106,8 @@ struct i40e_device {
         u32 bufsz;
         u32 bufmask;
         u32 head_cache;
+
+        u32 headwb;
     } txq[4];
 
     u64 tx_base;
@@ -429,6 +436,7 @@ i40e_init_fpm(struct i40e_device *dev)
     kprintf("HMC: %llx, Tx: %llx, Rx: %llx\r\n", hmcint, dev->tx_base, dev->rx_base);
 
     struct i40e_lan_txq_ctx *txq_ctx;
+    u32 head;
     for ( i = 0; i < 4; i++ ){
         txq_ctx = (struct i40e_lan_txq_ctx *)(hmcint + txbase * 512 + i * 128);
         txq_ctx->head = 0;
@@ -438,7 +446,7 @@ i40e_init_fpm(struct i40e_device *dev)
         txq_ctx->thead_wb = 0;
         txq_ctx->head_wben = 0;
         txq_ctx->qlen = dev->txq[i].bufsz;
-        txq_ctx->head_wbaddr = 0;
+        txq_ctx->head_wbaddr = (u64)&dev->txq[i].headwb;
         txq_ctx->tphrdesc = 1;
         txq_ctx->tphrpacket = 1;
         txq_ctx->tphwdesc = 1;
