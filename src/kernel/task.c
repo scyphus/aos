@@ -61,7 +61,7 @@ sched(void)
     /* Obtain the current task */
     t = arch_get_current_task();
     if ( NULL != t && TASK_STATE_RUNNING == t->state ) {
-        /* Decrement the credit */
+        /* Still running, then decrement the preempted credit */
         t->cred--;
         if ( t->cred > 0 ) {
             return;
