@@ -493,8 +493,10 @@ arch_task_switched(struct arch_task *cur, struct arch_task *next)
     if ( NULL != cur && TASK_STATE_RUNNING == cur->ktask->state ) {
         /* Previous task is changed from running */
         ktask_change_state(cur->ktask, TASK_STATE_READY);
+        cur->ktask->scheduled = -1;
     } else if ( NULL != cur ) {
         /* cur->ktask->state == TASK_STATE_BLOCKED */
+        cur->ktask->scheduled = -1;
     }
     ktask_change_state(next->ktask, TASK_STATE_RUNNING);
 }

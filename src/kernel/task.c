@@ -122,6 +122,8 @@ sched_ktask_enqueue(struct ktask_queue_entry *e)
     ret = 0;
     arch_spin_lock(&ktask_lock);
 
+    e->ktask->scheduled = 1;
+
     e->next = NULL;
     if ( NULL == ktaskq->tail ) {
         /* Empty */
@@ -300,7 +302,7 @@ ktask_change_state(struct ktask *t, int state)
     if ( TASK_STATE_READY != old && TASK_STATE_READY == state ) {
         /* Not ready => Ready, then schedule this */
         /* FIXME: This should be done in the scheduler */
-        sched_ktask_enqueue(t->qe);
+        //sched_ktask_enqueue(t->qe);
     }
 
     return 0;
@@ -399,6 +401,7 @@ int
 ktask_kernel_main(int argc, char *argv[])
 {
     int tid;
+    int i;
 
     /* Launch the keyboard driver */
     tid = ktask_fork_execv(TASK_POLICY_DRIVER, &kbd_driver_main, NULL);
@@ -421,6 +424,16 @@ ktask_kernel_main(int argc, char *argv[])
 #endif
 
     while ( 1 ) {
+        /* Run scheduling from task table */
+        for ( i = 0; i < TASK_TABLE_SIZE; i++ ) {
+            if ( NULL == ktasks->tasks[i].ktask
+                 && ktasks->tasks[i].ktask->scheduled < 0 ) {
+                /* Schedule here */
+                if ( TASK_STATE_READY == ktasks->tasks[i].ktask->state ) {
+                    sched_ktask_enqueue(&ktasks->tasks[i]);
+                }
+            }
+        }
         arch_scall(SYSCALL_HLT);
     }
 
