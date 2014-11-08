@@ -540,6 +540,7 @@ struct ktask {
     /* Message */
     struct kmsg msg;
 
+    /* Queue entry */
     struct ktask_queue_entry *qe;
 };
 

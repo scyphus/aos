@@ -491,13 +491,12 @@ void
 arch_task_switched(struct arch_task *cur, struct arch_task *next)
 {
     if ( NULL != cur && TASK_STATE_RUNNING == cur->ktask->state ) {
+        /* Previous task is changed from running */
         ktask_change_state(cur->ktask, TASK_STATE_READY);
-        //kprintf("RUNNING => READY : %d\r\n", cur->ktask->id);
-    } else if ( cur ) {
-        //kprintf("RUNNING => %d : %d\r\n", cur->ktask->state, cur->ktask->id);
+    } else if ( NULL != cur ) {
+        /* cur->ktask->state == TASK_STATE_BLOCKED */
     }
-    next->ktask->state = TASK_STATE_RUNNING;
-    //kprintf("READY => RUNNING : %d\r\n", next->ktask->id);
+    ktask_change_state(next->ktask, TASK_STATE_RUNNING);
 }
 
 /*
@@ -658,18 +657,27 @@ arch_cpu_active(u16 id)
     }
 }
 
+/*
+ * Disable interrupts on the current processor core
+ */
 void
 arch_disable_interrupts(void)
 {
     disable_interrupts();
 }
 
+/*
+ * Enable interrupts on the current processor core
+ */
 void
 arch_enable_interrupts(void)
 {
     enable_interrupts();
 }
 
+/*
+ * Call a system call
+ */
 void
 arch_scall(u64 nr)
 {
