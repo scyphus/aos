@@ -295,6 +295,24 @@ ktask_fork_execv(int policy, int (*main)(int, char *[]), char **argv)
 }
 
 /*
+ * Change the state of a kernel task
+ */
+int
+ktask_change_state(struct ktask *t, int state)
+{
+    int old;
+
+    old = t->state;
+    t->state = state;
+
+    if ( TASK_STATE_RUNNING == old && TASK_STATE_BLOCKED == state ) {
+        /* Running => Blocked */
+    }
+
+    return 0;
+}
+
+/*
  * Entry point for kernel task
  */
 void
@@ -387,13 +405,13 @@ ktask_kernel_main(int argc, char *argv[])
 {
     int tid;
 
-    /* Keyboard */
+    /* Launch the keyboard driver */
     tid = ktask_fork_execv(TASK_POLICY_DRIVER, &kbd_driver_main, NULL);
     if ( tid < 0 ) {
         kprintf("Cannot fork-exec keyboard driver.\r\n");
     }
-    /* Shell */
-    tid = ktask_fork_execv(TASK_POLICY_KERNEL, &proc_shell, NULL);
+    /* Launch the shell process */
+    tid = ktask_fork_execv(TASK_POLICY_KERNEL, &shell_main, NULL);
     if ( tid < 0 ) {
         kprintf("Cannot fork-exec a shell.\r\n");
     }

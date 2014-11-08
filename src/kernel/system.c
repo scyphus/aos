@@ -77,7 +77,6 @@ ssize_t
 read(int fd, void *buf, size_t n)
 {
     struct ktask *self;
-    struct ktask *src;
     ssize_t nr;
 
     for ( ;; ) {
@@ -105,6 +104,8 @@ read(int fd, void *buf, size_t n)
             /* FIXME: Invokes a context switch  */
             __asm__ __volatile__ ("int $0x40");
         } else {
+            /* FIXME: Check if the buffer becomes not full to tell it to
+               the corresponding kernel process */
             if ( fds[fd].wpos > fds[fd].rpos ) {
                 nr = fds[fd].wpos - fds[fd].rpos;
                 if ( nr > n ) {
@@ -136,7 +137,6 @@ read(int fd, void *buf, size_t n)
         }
         /* pause */
     }
-
 
     return -1;
 }
@@ -189,7 +189,9 @@ write(int fd, const void *buf, size_t n)
     self = arch_get_current_task();
 
     /* Get the destination task */
+    dst = fds[fd].owner;
 
+#if 0
     if ( TASK_STATE_BLOCKED == dst->state ) {
         /* Change the state to ready */
         dst->state = TASK_STATE_READY;
@@ -198,6 +200,7 @@ write(int fd, const void *buf, size_t n)
            this */
         self->state = TASK_STATE_BLOCKED;
     }
+#endif
 
     /* Enable interrupts */
     arch_enable_interrupts();
@@ -309,7 +312,7 @@ kmsg_recv(struct ktask *src, struct kmsg *msg)
 void
 shalt(void)
 {
-    arch_scall(1);
+    arch_scall(SYSCALL_HLT);
 }
 
 /*

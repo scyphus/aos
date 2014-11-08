@@ -15,9 +15,6 @@ extern struct processor_table *processors;
 
 struct syscall *syscall_table;
 
-struct arch_call_set acalls;
-struct kernel_call_set kcalls;
-
 /* FIXME */
 struct ptcam *tcam;
 #if DXR
@@ -46,7 +43,7 @@ void
 panic(const char *s)
 {
     kprintf("%s\r\n", s);
-    acalls.crash();
+    arch_crash();
 }
 
 /*
@@ -57,10 +54,6 @@ kmain(void)
 {
     /* Initialize the lock varialbe */
     lock = 0;
-
-    kcalls.tick = kintr_loc_tmr;
-
-    arch_init(&acalls);
 
     /* Initialize architecture-related devices */
     arch_bsp_init();
@@ -118,11 +111,6 @@ apmain(void)
     task_restart();
 }
 
-
-#define SYSCALL_MAX_NR  0x10
-#define SYSCALL_HLT     1
-#define SYSCALL_READ    2
-#define SYSCALL_WRITE   3
 
 /*
  * System calls
@@ -296,6 +284,7 @@ kintr_isr(u64 vec)
         }
         break;
     case IV_IRQ(32):
+        /* Task event */
         if ( irq_handler_table[32].handler ) {
             irq_handler_table[32].handler(32, irq_handler_table[32].user);
         }

@@ -22,8 +22,13 @@
 #define PAGESIZE        4096
 
 
+#define SYSCALL_MAX_NR  0x10
+#define SYSCALL_HLT     0x01
+#define SYSCALL_READ    0x02
+#define SYSCALL_WRITE   0x03
 
 
+#if 0
 struct arch_call_set {
     int (*get_this_cpu)(void);
     void (*crash)(void);
@@ -35,10 +40,7 @@ struct arch_call_set {
 struct kernel_call_set {
     void (*tick)(void);
 };
-
-extern struct kernel_call_set kernel;
-extern struct arch_call_set arch;
-
+#endif
 
 /* tCAM module */
 #define LEAF_COMPRESSION        1
@@ -694,6 +696,7 @@ int register_irq_handler(int, void (*)(int, void *), void *);
 
 /* in task.c */
 int ktask_init(void);
+int ktask_change_state(struct ktask *, int);
 int sched_init(void);
 void sched_tickless_prepare(void);
 void sched(void);
@@ -709,13 +712,12 @@ struct processor * processor_get(u8);
 
 
 /* in shell.c */
-int proc_shell(int, char *[]);
+int shell_main(int, char *[]);
 /* in router.c */
 void proc_router(void);
 
 
 /* Architecture-dependent functions in arch.c */
-void arch_init(struct arch_call_set *);
 void arch_bsp_init(void);
 void arch_ap_init(void);
 

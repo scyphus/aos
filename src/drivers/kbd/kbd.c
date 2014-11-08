@@ -50,25 +50,6 @@ static unsigned char keymap_shift[] =
     "                                                                             ";
 
 /*
- * Read one character from the buffer
- */
-volatile int
-kbd_read(void)
-{
-    int c;
-
-    arch_spin_lock_intr(&lock);
-    if ( rpos != wpos ) {
-        c = buf[rpos++];
-    } else {
-        c = -1;
-    }
-    arch_spin_unlock_intr(&lock);
-
-    return c;
-}
-
-/*
  * IRQ handler
  */
 void
@@ -161,7 +142,7 @@ kbd_driver_main(int argc, char *argv[])
 {
     /* Hold keyboard stats and buffer */
     struct kbd_status stat;
-    int c;
+    //int c;
 
     /* Initialize the keyboard status */
     stat.lshift = 0;
@@ -182,23 +163,15 @@ kbd_driver_main(int argc, char *argv[])
     register_irq_handler(1, &kbd_irq_handler, &stat);
 
     while ( 1 ) {
+        /* FIXME */
         if ( rpos != wpos ) {
             /* Send */
-            c = buf[rpos++];
-            write(0, &c, 1);
+            //c = buf[rpos++];
+            //write(0, &c, 1);
         } else {
             /* Sleep */
         }
-
-        struct ktask *self;
-        /* Disable interrupts */
-        arch_disable_interrupts();
-        /* Get current task */
-        self = arch_get_current_task();
-        self->state = TASK_STATE_BLOCKED;
-        /* Enable interrupts */
-        arch_enable_interrupts();
-        __asm__ __volatile__ ("int $0x40");
+        ktask_change_state(arch_get_current_task(), TASK_STATE_BLOCKED);
     }
 
     return 0;

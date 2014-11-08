@@ -484,8 +484,8 @@ _mgmt_operate(u8 *data)
         __asm__ __volatile__ ("rdpmc" : "=a"(aa), "=d"(dd)  : "c"(cc) );
         cf0 = (dd<<32) | aa;
 
-        u64 tmp;
 #if 0
+        u64 tmp;
         t0 = rdtsc();
         tmp = ptcam_lookup(tcam, ipaddr);
         t1 = rdtsc();
@@ -1699,7 +1699,7 @@ _exec_cmd(struct kshell *kshell)
  * Shell process
  */
 int
-proc_shell(int argc, char *argv[])
+shell_main(int argc, char *argv[])
 {
     struct kshell kshell;
     volatile int c;
@@ -1745,7 +1745,6 @@ proc_shell(int argc, char *argv[])
     for ( ;; ) {
         c = 0;
         ret = read(fd, &c, 1);
-        //ret = c = kbd_read();
         if ( ret > 0 ) {
             if ( c == 0x08 ) {
                 /* Backspace */

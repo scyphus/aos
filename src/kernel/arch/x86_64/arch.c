@@ -61,21 +61,6 @@ arch_dbg_printf(const char *fmt, ...)
 }
 
 /*
- * Initialize arch
- */
-void
-arch_init(struct arch_call_set *a)
-{
-    a->get_this_cpu = this_cpu;
-    a->crash = arch_crash;
-    a->get_current_task = arch_get_current_task;
-    a->set_next_task = arch_set_next_task;
-    a->set_next_task_other_cpu = arch_set_next_task_other_cpu;
-    a->get_next_task = arch_get_next_task;
-}
-
-
-/*
  * Initialize BSP
  */
 void
