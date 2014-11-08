@@ -102,6 +102,9 @@ sched(void)
     arch_set_next_task(e->ktask);
 }
 
+/*
+ * Prepare tickless processor
+ */
 void
 sched_tickless_prepare(void)
 {
