@@ -506,6 +506,7 @@ struct kmsg {
 };
 
 
+#define TASK_STATE_ALLOC        0
 #define TASK_STATE_READY        1
 #define TASK_STATE_RUNNING      2
 #define TASK_STATE_BLOCKED      3
@@ -525,6 +526,7 @@ struct ktask {
     /* For scheduler */
     int pri;
     int cred;
+    int scheduled;
 
     /* State */
     int state;
@@ -537,6 +539,8 @@ struct ktask {
 
     /* Message */
     struct kmsg msg;
+
+    struct ktask_queue_entry *qe;
 };
 
 /*
@@ -556,7 +560,7 @@ struct ktask_queue {
  */
 struct ktask_table {
     /* Kernel tasks */
-    struct ktask *tasks[TASK_TABLE_SIZE];
+    struct ktask_queue_entry tasks[TASK_TABLE_SIZE];
 };
 
 /*

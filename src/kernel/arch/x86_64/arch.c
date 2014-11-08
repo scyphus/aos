@@ -491,7 +491,7 @@ void
 arch_task_switched(struct arch_task *cur, struct arch_task *next)
 {
     if ( NULL != cur && TASK_STATE_RUNNING == cur->ktask->state ) {
-        cur->ktask->state = TASK_STATE_READY;
+        ktask_change_state(cur->ktask, TASK_STATE_READY);
         //kprintf("RUNNING => READY : %d\r\n", cur->ktask->id);
     } else if ( cur ) {
         //kprintf("RUNNING => %d : %d\r\n", cur->ktask->state, cur->ktask->id);

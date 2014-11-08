@@ -167,7 +167,7 @@ putc_buffer_irq(int fd, unsigned char c)
     fds[fd].wpos = nwpos;
 
     /* Notify */
-    fds[fd].owner->state = TASK_STATE_READY;
+    ktask_change_state(fds[fd].owner, TASK_STATE_READY);
 
     return 0;
 }

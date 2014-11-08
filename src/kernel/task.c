@@ -17,6 +17,8 @@ static volatile int ktask_fork_lock;
 static struct ktask_queue *ktaskq;
 static struct ktask_table *ktasks;
 
+extern struct processor_table *processors;
+
 int ktask_idle_main(int argc, char *argv[]);
 int ktask_init_main(int argc, char *argv[]);
 void ktask_free(struct ktask *);
@@ -50,7 +52,6 @@ sched_init(void)
 /*
  * Scheduler
  */
-extern struct processor_table *processors;
 void
 sched(void)
 {
@@ -92,20 +93,14 @@ sched(void)
     t = arch_get_current_task();
     while ( TASK_STATE_READY != e->ktask->state ) {
         /* Schedule it again */
-        sched_ktask_enqueue(e);
-        if ( t == e->ktask ) {
-            /* Loop detected */
-            processor_this()->idle->cred = DEFAULT_CREDIT;
-            arch_set_next_task(processor_this()->idle);
-            return;
-        }
+        e->ktask->scheduled = -1;
         e = sched_ktask_dequeue();
     }
 
     /* Set the next task */
     e->ktask->cred = DEFAULT_CREDIT;
     arch_set_next_task(e->ktask);
-    sched_ktask_enqueue(e);
+    //sched_ktask_enqueue(e);
 }
 
 void
@@ -209,7 +204,8 @@ ktask_init(void)
     if ( NULL == ktasks ) {
         return -1;
     }
-    (void)kmemset(ktasks->tasks, 0, sizeof(struct ktask *) * TASK_TABLE_SIZE);
+    (void)kmemset(ktasks->tasks, 0,
+                  sizeof(struct ktask_queue_entry *) * TASK_TABLE_SIZE);
 
     /* Initialize the kernel main task */
     argv = kmalloc(sizeof(char *) * 2);
@@ -242,7 +238,6 @@ int
 ktask_fork_execv(int policy, int (*main)(int, char *[]), char **argv)
 {
     struct ktask *t;
-    struct ktask_queue_entry *e;
     int i;
     int tid;
 
@@ -252,7 +247,7 @@ ktask_fork_execv(int policy, int (*main)(int, char *[]), char **argv)
     /* Search available PID from the table */
     tid = -1;
     for ( i = 0; i < TASK_TABLE_SIZE; i++ ) {
-        if ( NULL ==  ktasks->tasks[i] ) {
+        if ( NULL ==  ktasks->tasks[i].ktask ) {
             /* Found an available space */
             tid = i;
             break;
@@ -277,16 +272,11 @@ ktask_fork_execv(int policy, int (*main)(int, char *[]), char **argv)
     t->name = NULL;
     t->state = TASK_STATE_READY;
 
-    ktasks->tasks[tid] = t;
+    ktasks->tasks[tid].ktask = t;
+    t->qe = &ktasks->tasks[tid];
 
     /* Enqueue to the scheduler */
-    e = ktask_queue_entry_new(t);
-    if ( NULL == e ) {
-        ktask_free(t);
-        arch_spin_unlock_intr(&ktask_fork_lock);
-        return -1;
-    }
-    sched_ktask_enqueue(e);
+    sched_ktask_enqueue(&ktasks->tasks[tid]);
 
     /* Unlock and enable interrupts */
     arch_spin_unlock_intr(&ktask_fork_lock);
@@ -305,8 +295,10 @@ ktask_change_state(struct ktask *t, int state)
     old = t->state;
     t->state = state;
 
-    if ( TASK_STATE_RUNNING == old && TASK_STATE_BLOCKED == state ) {
-        /* Running => Blocked */
+    if ( TASK_STATE_READY != old && TASK_STATE_READY == state ) {
+        /* Not ready => Ready, then schedule this */
+        /* FIXME: This should be done in the scheduler */
+        sched_ktask_enqueue(t->qe);
     }
 
     return 0;
@@ -358,7 +350,8 @@ ktask_alloc(int policy)
     t->name = NULL;
     t->pri = 0;
     t->cred = 0;
-    t->state = TASK_STATE_READY;
+    t->scheduled = -1;
+    t->state = TASK_STATE_ALLOC;
     t->arch = arch_alloc_task(t, &ktask_entry, policy);
 
     t->main = NULL;
