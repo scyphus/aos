@@ -108,8 +108,8 @@ sched(void)
     sched_ktask_enqueue(e);
 }
 
-int
-sched_tickless_prepare()
+void
+sched_tickless_prepare(void)
 {
     arch_set_next_task(processor_this()->idle);
 }

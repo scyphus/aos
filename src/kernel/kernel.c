@@ -15,6 +15,9 @@ extern struct processor_table *processors;
 
 struct syscall *syscall_table;
 
+struct arch_call_set acalls;
+struct kernel_call_set kcalls;
+
 /* FIXME */
 struct ptcam *tcam;
 #if DXR
@@ -30,6 +33,8 @@ void e1000_init(void);
 
 int irq_handler_table_init(void);
 
+void kintr_loc_tmr(void);
+
 
 /* arch.c */
 void arch_bsp_init(void);
@@ -41,7 +46,7 @@ void
 panic(const char *s)
 {
     kprintf("%s\r\n", s);
-    arch_crash();
+    acalls.crash();
 }
 
 /*
@@ -52,6 +57,10 @@ kmain(void)
 {
     /* Initialize the lock varialbe */
     lock = 0;
+
+    kcalls.tick = kintr_loc_tmr;
+
+    arch_init(&acalls);
 
     /* Initialize architecture-related devices */
     arch_bsp_init();
@@ -133,7 +142,7 @@ syscall_dummy(void)
 void
 syscall_hlt(void)
 {
-    __asm__ __volatile__ ("sti;hlt;cli;");
+    __asm__ __volatile__ ("sti;hlt;");
 }
 
 void
@@ -255,23 +264,23 @@ kintr_isr(u64 vec)
 {
     /* FIXME: Separate IRQ from this switch block */
     switch ( vec ) {
-    case IV_IRQ0:
+    case IV_IRQ(0):
         if ( irq_handler_table[0].handler ) {
             irq_handler_table[0].handler(0, irq_handler_table[0].user);
         }
         kintr_int32();
         break;
-    case IV_IRQ1:
+    case IV_IRQ(1):
         if ( irq_handler_table[1].handler ) {
             irq_handler_table[1].handler(1, irq_handler_table[1].user);
         }
         break;
-    case IV_IRQ2:
+    case IV_IRQ(2):
         if ( irq_handler_table[2].handler ) {
             irq_handler_table[2].handler(2, irq_handler_table[2].user);
         }
         break;
-    case IV_IRQ3:
+    case IV_IRQ(3):
         if ( irq_handler_table[3].handler ) {
             irq_handler_table[3].handler(3, irq_handler_table[3].user);
         }
@@ -286,7 +295,7 @@ kintr_isr(u64 vec)
             irq_handler_table[17].handler(17, irq_handler_table[17].user);
         }
         break;
-    case IV_IRQ32:
+    case IV_IRQ(32):
         if ( irq_handler_table[32].handler ) {
             irq_handler_table[32].handler(32, irq_handler_table[32].user);
         }

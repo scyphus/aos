@@ -15,23 +15,6 @@
 #define MAX_PROCESSORS  256
 
 #define IV_IRQ(n)       (0x20 + (n))
-#define IV_IRQ0         0x20
-#define IV_IRQ1         0x21
-#define IV_IRQ2         0x22
-#define IV_IRQ3         0x23
-#define IV_IRQ4         0x24
-#define IV_IRQ5         0x25
-#define IV_IRQ6         0x26
-#define IV_IRQ7         0x27
-#define IV_IRQ8         0x28
-#define IV_IRQ9         0x29
-#define IV_IRQ10        0x2a
-#define IV_IRQ11        0x2b
-#define IV_IRQ12        0x2c
-#define IV_IRQ13        0x2d
-#define IV_IRQ14        0x2e
-#define IV_IRQ15        0x2f
-#define IV_IRQ32        0x40
 #define IV_LOC_TMR      0x50
 #define IV_IPI          0x51
 #define IV_CRASH        0xfe
@@ -40,6 +23,21 @@
 
 
 
+
+struct arch_call_set {
+    int (*get_this_cpu)(void);
+    void (*crash)(void);
+    struct ktask * (*get_current_task)(void);
+    int (*set_next_task)(struct ktask *);
+    int (*set_next_task_other_cpu)(struct ktask *, int);
+    struct ktask * (*get_next_task)(void);
+};
+struct kernel_call_set {
+    void (*tick)(void);
+};
+
+extern struct kernel_call_set kernel;
+extern struct arch_call_set arch;
 
 
 /* tCAM module */
@@ -717,7 +715,7 @@ void proc_router(void);
 
 
 /* Architecture-dependent functions in arch.c */
-void arch_init(void);
+void arch_init(struct arch_call_set *);
 void arch_bsp_init(void);
 void arch_ap_init(void);
 

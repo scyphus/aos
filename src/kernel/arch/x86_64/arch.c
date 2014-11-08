@@ -61,6 +61,21 @@ arch_dbg_printf(const char *fmt, ...)
 }
 
 /*
+ * Initialize arch
+ */
+void
+arch_init(struct arch_call_set *a)
+{
+    a->get_this_cpu = this_cpu;
+    a->crash = arch_crash;
+    a->get_current_task = arch_get_current_task;
+    a->set_next_task = arch_set_next_task;
+    a->set_next_task_other_cpu = arch_set_next_task_other_cpu;
+    a->get_next_task = arch_get_next_task;
+}
+
+
+/*
  * Initialize BSP
  */
 void
@@ -165,7 +180,7 @@ arch_bsp_init(void)
     for ( i = 0; i < 32; i++ ) {
         ioapic_map_intr(IV_IRQ(i), i, acpi_ioapic_base); /* IRQn */
     }
-    ioapic_map_intr(IV_IRQ32, 32, acpi_ioapic_base); /* IRQ32 */
+    ioapic_map_intr(IV_IRQ(32), 32, acpi_ioapic_base); /* IRQ32 */
     ioapic_init();
 
     lldt(0);
