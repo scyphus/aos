@@ -100,7 +100,6 @@ sched(void)
     /* Set the next task */
     e->ktask->cred = DEFAULT_CREDIT;
     arch_set_next_task(e->ktask);
-    //sched_ktask_enqueue(e);
 }
 
 void
@@ -419,7 +418,7 @@ ktask_kernel_main(int argc, char *argv[])
 #endif
 
     while ( 1 ) {
-        arch_scall(1);
+        arch_scall(SYSCALL_HLT);
     }
 
     return 0;
