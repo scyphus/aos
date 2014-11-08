@@ -1,14 +1,17 @@
 /*_
- * Copyright 2013 Scyphus Solutions Co. Ltd.  All rights reserved.
+ * Copyright (c) 2013 Scyphus Solutions Co. Ltd.
+ * Copyright (c) 2014 Hirochika Asai
+ * All rights reserved.
  *
  * Authors:
- *      Hirochika Asai  <asai@scyphus.co.jp>
+ *      Hirochika Asai  <asai@jar.jp>
  */
-
-/* $Id$ */
 
 #ifndef _AOS_CONST_H
 #define _AOS_CONST_H
+
+#define VERSION_MAJOR   0
+#define VERSION_MINOR   0
 
 #if __LP64__
 

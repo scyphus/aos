@@ -104,8 +104,8 @@ apmain(void)
     /* Initialize this AP */
     arch_ap_init();
 
-    //sched();
-    arch_set_next_task(processor_this()->idle);
+    /* Tickless scheduler */
+    sched_tickless_prepare();
     task_restart();
 }
 

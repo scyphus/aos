@@ -697,6 +697,7 @@ int register_irq_handler(int, void (*)(int, void *), void *);
 /* in task.c */
 int ktask_init(void);
 int sched_init(void);
+void sched_tickless_prepare(void);
 void sched(void);
 int sched_ktask_enqueue(struct ktask_queue_entry *);
 struct ktask_queue_entry * sched_ktask_dequeue(void);

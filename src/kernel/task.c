@@ -108,6 +108,12 @@ sched(void)
     sched_ktask_enqueue(e);
 }
 
+int
+sched_tickless_prepare()
+{
+    arch_set_next_task(processor_this()->idle);
+}
+
 /*
  * Enqueue a kernel task
  */
