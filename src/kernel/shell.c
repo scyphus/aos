@@ -1756,6 +1756,7 @@ shell_main(int argc, char *argv[])
             } else if ( c == 0x83 ) {
                 /* Left */
                 if ( kshell.pos > 0 ) {
+                    /* FIXME */
                     arch_putc(0x08);
                     kshell.pos--;
                     kshell.cmdbuf[kshell.pos] = '\0';
