@@ -1753,6 +1753,13 @@ shell_main(int argc, char *argv[])
                     kshell.pos--;
                     kshell.cmdbuf[kshell.pos] = '\0';
                 }
+            } else if ( c == 0x83 ) {
+                /* Left */
+                if ( kshell.pos > 0 ) {
+                    arch_putc(0x08);
+                    kshell.pos--;
+                    kshell.cmdbuf[kshell.pos] = '\0';
+                }
             } else if ( c == '\r' ) {
                 /* Exec */
                 kprintf("\r\n");

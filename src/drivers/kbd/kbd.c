@@ -89,6 +89,26 @@ kbd_irq_handler(int irq, void *user)
                 /* Right ctrl */
                 stat->rctrl = 1;
                 break;
+            case 0x48:
+                /* Up */
+                buf[wpos++] = 0x86;
+                putc_buffer_irq(0, 0x86);
+                break;
+            case 0x4b:
+                /* Left */
+                buf[wpos++] = 0x83;
+                putc_buffer_irq(0, 0x83);
+                break;
+            case 0x4d:
+                /* Right */
+                buf[wpos++] = 0x84;
+                putc_buffer_irq(0, 0x84);
+                break;
+            case 0x50:
+                /* Down */
+                buf[wpos++] = 0x85;
+                putc_buffer_irq(0, 0x85);
+                break;
             default:
                 if ( (stat->lctrl || stat->rctrl)
                      && 'h' == keymap_base[scan_code] ) {
