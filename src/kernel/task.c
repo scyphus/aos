@@ -53,7 +53,7 @@ sched_init(void)
  * Scheduler
  */
 void
-sched(void)
+sched_switch(void)
 {
     struct ktask_queue_entry *e;
     struct ktask *t;
@@ -100,6 +100,26 @@ sched(void)
     /* Set the next task */
     e->ktask->cred = DEFAULT_CREDIT;
     arch_set_next_task(e->ktask);
+}
+
+/*
+ *
+ */
+void
+sched(void)
+{
+    int i;
+
+    /* Run scheduling from task table */
+    for ( i = 0; i < TASK_TABLE_SIZE; i++ ) {
+        if ( NULL == ktasks->tasks[i].ktask
+             && ktasks->tasks[i].ktask->scheduled < 0 ) {
+            /* Schedule here */
+            if ( TASK_STATE_READY == ktasks->tasks[i].ktask->state ) {
+                sched_ktask_enqueue(&ktasks->tasks[i]);
+            }
+        }
+    }
 }
 
 /*
@@ -424,6 +444,7 @@ ktask_kernel_main(int argc, char *argv[])
 #endif
 
     while ( 1 ) {
+#if 0
         /* Run scheduling from task table */
         for ( i = 0; i < TASK_TABLE_SIZE; i++ ) {
             if ( NULL == ktasks->tasks[i].ktask
@@ -434,6 +455,7 @@ ktask_kernel_main(int argc, char *argv[])
                 }
             }
         }
+#endif
         arch_scall(SYSCALL_HLT);
     }
 

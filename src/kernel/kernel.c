@@ -92,7 +92,7 @@ kmain(void)
 
     ktask_init();
 
-    sched();
+    sched_switch();
 
     task_restart();
 }
@@ -231,6 +231,7 @@ kintr_loc_tmr(void)
 {
     arch_clock_update();
     sched();
+    sched_switch();
     //mfence();
 }
 
@@ -288,12 +289,13 @@ kintr_isr(u64 vec)
         if ( irq_handler_table[32].handler ) {
             irq_handler_table[32].handler(32, irq_handler_table[32].user);
         }
-        sched();
+        sched_switch();
         break;
     case IV_LOC_TMR:
         kintr_loc_tmr();
         /* Run task scheduler */
-        //sched();
+        sched();
+        sched_switch();
         break;
     case IV_IPI:
         kintr_ipi();

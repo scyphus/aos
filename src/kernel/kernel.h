@@ -705,6 +705,7 @@ int ktask_change_state(struct ktask *, int);
 int sched_init(void);
 void sched_tickless_prepare(void);
 void sched(void);
+void sched_switch(void);
 int sched_ktask_enqueue(struct ktask_queue_entry *);
 struct ktask_queue_entry * sched_ktask_dequeue(void);
 struct ktask_queue_entry * ktask_queue_entry_new(struct ktask *);
