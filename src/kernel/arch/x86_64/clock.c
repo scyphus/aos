@@ -33,7 +33,7 @@ clock_init(void)
 u64
 clock_get(void)
 {
-    return 1000000000 * clock_acpi_cnt / acpi_get_timer_hz();
+    return 1000000000ULL * clock_acpi_cnt / acpi_get_timer_hz();
 }
 
 /*
