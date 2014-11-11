@@ -174,6 +174,9 @@ kprintf_hexdecimal(unsigned long long int val, int zero, int pad, int prec,
 int
 kprintf_string(const char *s)
 {
+    if ( NULL == s ) {
+        s = "(null)";
+    }
     while ( *s ) {
         kputc(*s);
         s++;
