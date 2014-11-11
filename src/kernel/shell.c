@@ -1422,79 +1422,46 @@ int
 _builtin_start(char *const argv[])
 {
     u8 id;
-    struct ktask *t;
 
-
-    //ktask_fork_execv(TASK_POLICY_KERNEL, _mgmt_main, argv);
-
-    id = 1;
-
-    /* FIXME: This is experimental. This must be free but...  */
-    t = ktask_alloc(TASK_POLICY_KERNEL);
-    t->argv = NULL;
-    t->id = -2;
-    t->name = NULL;
-    t->state = TASK_STATE_READY;
+    /* Processor ID */
+    id = atoi(argv[2]);
 
     /* Start command */
     if ( 0 == kstrcmp("mgmt", argv[1]) ) {
         /* Start management process */
-        ktltask_fork_execv(TASK_POLICY_KERNEL, atoi(argv[2]), &_mgmt_main,
-                           NULL);
-#if 0
-        id = atoi(argv[2]);
-        t->main = &_mgmt_main;
-        arch_set_next_task_other_cpu(t, id);
+        ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_mgmt_main, NULL);
         kprintf("Launch mgmt @ CPU #%d\r\n", id);
-        lapic_send_ns_fixed_ipi(id, IV_IPI);
-#endif
     } else if ( 0 == kstrcmp("tx", argv[1]) ) {
         /* Start Tx */
-        id = atoi(argv[2]);
-        t->main = &_tx_main;
-        t->argv = kmalloc(sizeof(char *) * 4);
-        t->argv[0] = "tx";
-        t->argv[1] = argv[3] ? kstrdup(argv[3]) : NULL;
-        t->argv[2] = argv[4] ? kstrdup(argv[4]) : NULL;
-        t->argv[3] = NULL;
-        arch_set_next_task_other_cpu(t, id);
+        char **argv = kmalloc(sizeof(char *) * 4);
+        argv[0] = "tx";
+        argv[1] = argv[3] ? kstrdup(argv[3]) : NULL;
+        argv[2] = argv[4] ? kstrdup(argv[4]) : NULL;
+        argv[3] = NULL;
+        ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_tx_main, argv);
         kprintf("Launch tx @ CPU #%d\r\n", id);
-        lapic_send_ns_fixed_ipi(id, IV_IPI);
     } else if ( 0 == kstrcmp("tx2", argv[1]) ) {
         /* Start Tx */
-        id = atoi(argv[2]);
-        t->main = &_tx2_main;
-        t->argv = kmalloc(sizeof(char *) * 4);
-        t->argv[0] = "tx2";
-        t->argv[1] = argv[3] ? kstrdup(argv[3]) : NULL;
-        t->argv[2] = argv[4] ? kstrdup(argv[4]) : NULL;
-        t->argv[3] = NULL;
-        arch_set_next_task_other_cpu(t, id);
+        char **argv = kmalloc(sizeof(char *) * 4);
+        argv[0] = "tx";
+        argv[1] = argv[3] ? kstrdup(argv[3]) : NULL;
+        argv[2] = argv[4] ? kstrdup(argv[4]) : NULL;
+        argv[3] = NULL;
+        ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_tx2_main, argv);
         kprintf("Launch tx2 @ CPU #%d\r\n", id);
-        lapic_send_ns_fixed_ipi(id, IV_IPI);
     } else if ( 0 == kstrcmp("routing", argv[1]) ) {
         /* Start routing */
-        id = atoi(argv[2]);
-        t->main = &_routing_main;
-        arch_set_next_task_other_cpu(t, id);
+        ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_routing_main, NULL);
         kprintf("Launch routing @ CPU #%d\r\n", id);
-        lapic_send_ns_fixed_ipi(id, IV_IPI);
     } else if ( 0 == kstrcmp("subrouting", argv[1]) ) {
         /* Start routing */
-        id = atoi(argv[2]);
-        t->main = &_subrouting_main;
-        arch_set_next_task_other_cpu(t, id);
+        ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_subrouting_main, NULL);
         kprintf("Launch subrouting @ CPU #%d\r\n", id);
-        lapic_send_ns_fixed_ipi(id, IV_IPI);
     } else if ( 0 == kstrcmp("net", argv[1]) ) {
         /* Start TCP testing process */
-        id = atoi(argv[2]);
-        t->main = &_net_test_main;
-        arch_set_next_task_other_cpu(t, id);
+        ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_net_test_main, NULL);
         kprintf("Launch TCP @ CPU #%d\r\n", id);
-        lapic_send_ns_fixed_ipi(id, IV_IPI);
     } else {
-        ktask_free(t);
         kprintf("start <routing|mgmt> <id>\r\n");
     }
 
