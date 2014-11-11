@@ -15,8 +15,8 @@
 static volatile int ktask_lock;
 static volatile int ktask_fork_lock;
 static struct ktask_queue *ktaskq;
-static struct ktask_table *ktasks;
-static struct ktltask_table *ktltasks;
+struct ktask_table *ktasks;
+struct ktltask_table *ktltasks;
 
 extern struct processor_table *processors;
 

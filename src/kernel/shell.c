@@ -17,6 +17,9 @@
 extern struct netdev_list *netdev_head;
 volatile static u64 globaldata;
 
+extern struct ktask_table *ktasks;
+extern struct ktltask_table *ktltasks;
+
 /*
  * Temporary: Keyboard drivers
  */
@@ -151,7 +154,14 @@ _builtin_show(char *const argv[])
                 kprintf("Processor #%d is active.\r\n", i);
             }
         }
-
+    } else if ( 0 == kstrcmp("processes", argv[1]) ) {
+        int i;
+        for ( i = 0; i < TASK_TABLE_SIZE; i++ ) {
+            if ( NULL != ktasks->tasks[i].ktask ) {
+                kprintf("[%.4d] %.10s %d\r\n", ktasks->tasks[i].ktask->name,
+                        ktasks->tasks[i].ktask->state);
+            }
+        }
     } else {
         kprintf("show <interfaces|pci|processors>\r\n");
     }
