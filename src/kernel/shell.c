@@ -1422,14 +1422,20 @@ int
 _builtin_start(char *const argv[])
 {
     u8 id;
+    int ret;
 
     /* Processor ID */
     id = atoi(argv[2]);
+    kprintf("%d \r\n", id);
 
     /* Start command */
     if ( 0 == kstrcmp("mgmt", argv[1]) ) {
         /* Start management process */
-        ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_mgmt_main, NULL);
+        ret = ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_mgmt_main, NULL);
+        if ( ret < 0 ) {
+            kprintf("Cannot launch mgmt\r\n");
+            return -1;
+        }
         kprintf("Launch mgmt @ CPU #%d\r\n", id);
     } else if ( 0 == kstrcmp("tx", argv[1]) ) {
         /* Start Tx */
@@ -1438,7 +1444,11 @@ _builtin_start(char *const argv[])
         argv[1] = argv[3] ? kstrdup(argv[3]) : NULL;
         argv[2] = argv[4] ? kstrdup(argv[4]) : NULL;
         argv[3] = NULL;
-        ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_tx_main, argv);
+        ret = ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_tx_main, argv);
+        if ( ret < 0 ) {
+            kprintf("Cannot launch tx\r\n");
+            return -1;
+        }
         kprintf("Launch tx @ CPU #%d\r\n", id);
     } else if ( 0 == kstrcmp("tx2", argv[1]) ) {
         /* Start Tx */
@@ -1447,19 +1457,36 @@ _builtin_start(char *const argv[])
         argv[1] = argv[3] ? kstrdup(argv[3]) : NULL;
         argv[2] = argv[4] ? kstrdup(argv[4]) : NULL;
         argv[3] = NULL;
-        ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_tx2_main, argv);
+        ret = ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_tx2_main, argv);
+        if ( ret < 0 ) {
+            kprintf("Cannot launch tx2\r\n");
+            return -1;
+        }
         kprintf("Launch tx2 @ CPU #%d\r\n", id);
     } else if ( 0 == kstrcmp("routing", argv[1]) ) {
         /* Start routing */
-        ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_routing_main, NULL);
+        ret = ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_routing_main, NULL);
+        if ( ret < 0 ) {
+            kprintf("Cannot launch routing\r\n");
+            return -1;
+        }
         kprintf("Launch routing @ CPU #%d\r\n", id);
     } else if ( 0 == kstrcmp("subrouting", argv[1]) ) {
         /* Start routing */
-        ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_subrouting_main, NULL);
+        ret = ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_subrouting_main,
+                                 NULL);
+        if ( ret < 0 ) {
+            kprintf("Cannot launch subrouting\r\n");
+            return -1;
+        }
         kprintf("Launch subrouting @ CPU #%d\r\n", id);
     } else if ( 0 == kstrcmp("net", argv[1]) ) {
         /* Start TCP testing process */
-        ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_net_test_main, NULL);
+        ret = ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_net_test_main, NULL);
+        if ( ret < 0 ) {
+            kprintf("Cannot launch TCP\r\n");
+            return -1;
+        }
         kprintf("Launch TCP @ CPU #%d\r\n", id);
     } else {
         kprintf("start <routing|mgmt> <id>\r\n");

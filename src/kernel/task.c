@@ -439,6 +439,11 @@ ktltask_fork_execv(int policy, int pid, int (*main)(int, char *[]), char **argv)
     int i;
     int tid;
 
+    /* Check the processor ID */
+    if ( PROCESSOR_AP_TICKLESS != processor_get(pid)->type ) {
+        return -1;
+    }
+
     /* Disable interrupts and lock */
     arch_spin_lock_intr(&ktask_fork_lock);
 
