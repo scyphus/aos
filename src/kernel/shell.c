@@ -1426,7 +1426,6 @@ _builtin_start(char *const argv[])
 
     /* Processor ID */
     id = atoi(argv[2]);
-    kprintf("%d \r\n", id);
 
     /* Start command */
     if ( 0 == kstrcmp("mgmt", argv[1]) ) {
