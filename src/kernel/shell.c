@@ -23,9 +23,6 @@ extern struct ktltask_table *ktltasks;
 /*
  * Temporary: Keyboard drivers
  */
-void kbd_event(void);
-volatile int kbd_read(void);
-void hlt1(void);
 ssize_t read(int, void *, size_t);
 
 struct kshell {
