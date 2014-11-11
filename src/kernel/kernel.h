@@ -775,6 +775,7 @@ void syscall_setup(void);
 /* Clock and timer */
 void arch_clock_update(void);
 u64 arch_clock_get(void);
+u64 arch_time(void);
 
 /* Physical memory management */
 int phys_mem_wire(void *, u64);

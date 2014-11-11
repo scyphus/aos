@@ -483,6 +483,11 @@ arch_clock_get(void)
 {
     return clock_get();
 }
+u64
+arch_time(void)
+{
+    return cmos_rtc_read_datetime(0);
+}
 
 /*
  * arch_task_switched
