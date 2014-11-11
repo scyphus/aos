@@ -99,48 +99,9 @@ int
 _builtin_uptime(char *const argv[])
 {
     u64 clk;
-    u64 ts;
-    int s;
-    int h;
-    int m;
-    int x;
-    int b;
-    int c;
-    int d;
-    int e;
-    int f;
-
-    int yy;
-    int mm;
-    int dd;
-
-    ts = arch_time();
-
-    s = ts % 86400;
-    ts /= 86400;
-    h = s / 3600;
-    m = (s / 60) % 60;
-    s = s % 60;
-    x = (ts * 4 + 102032) / 146097 + 15;
-    b = ts + 2442113 + x - (x / 4);
-    c = (b * 20 - 2442) / 7305;
-    d = b - 365 * c - c / 4;
-    e = d * 1000 / 30601;
-    f = d - e * 30 - e * 601 / 1000;
-
-    if ( e < 14 ) {
-        yy = c - 4716;
-        mm = e - 1;
-        dd = f;
-    } else {
-        yy = c - 4715;
-        mm = e - 13;
-        dd = f;
-    }
 
     clk = arch_clock_get();
-    kprintf("Uptime: %llu.%.9llu sec (%04d-%02d-%02d %02d:%02d:%02d)\r\n",
-            clk / 1000000000, clk % 1000000000, yy, mm, dd, h, m, s);
+    kprintf("Uptime: %llu.%.9llu sec\r\n", clk / 1000000000, clk % 1000000000);
 
     return 0;
 }
@@ -236,8 +197,47 @@ _builtin_show(char *const argv[])
                         ktltasks->tasks[i]->name, sstr);
             }
         }
+    } else if ( 0 == kstrcmp("clock", argv[1]) ) {
+        u64 ts;
+        int s;
+        int h;
+        int m;
+        int x;
+        int b;
+        int c;
+        int d;
+        int e;
+        int f;
+        int yy;
+        int mm;
+        int dd;
+
+        ts = arch_time();
+
+        s = ts % 86400;
+        ts /= 86400;
+        h = s / 3600;
+        m = (s / 60) % 60;
+        s = s % 60;
+        x = (ts * 4 + 102032) / 146097 + 15;
+        b = ts + 2442113 + x - (x / 4);
+        c = (b * 20 - 2442) / 7305;
+        d = b - 365 * c - c / 4;
+        e = d * 1000 / 30601;
+        f = d - e * 30 - e * 601 / 1000;
+
+        if ( e < 14 ) {
+            yy = c - 4716;
+            mm = e - 1;
+            dd = f;
+        } else {
+            yy = c - 4715;
+            mm = e - 13;
+            dd = f;
+        }
+        kprintf("%04d-%02d-%02d %02d:%02d:%02d\r\n", yy, mm, dd, h, m, s);
     } else {
-        kprintf("show <interfaces|pci|processors>\r\n");
+        kprintf("show <interfaces|pci|processors|processes|clock>\r\n");
     }
 
     return 0;
