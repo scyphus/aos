@@ -11,7 +11,6 @@
 #include "kernel.h"
 
 static volatile int lock;
-extern struct processor_table *processors;
 
 struct syscall *syscall_table;
 

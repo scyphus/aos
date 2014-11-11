@@ -26,7 +26,6 @@ void ktask_free(struct ktask *);
 
 /* FIXME: To be moved to somewhere else */
 int kbd_driver_main(int argc, char *argv[]);
-int this_cpu(void);
 
 /*
  * Initialize the scheduler
@@ -104,7 +103,7 @@ sched_switch(void)
 }
 
 /*
- *
+ * Run scheduling
  */
 void
 sched(void)
@@ -322,61 +321,6 @@ ktask_fork_execv(int policy, int (*main)(int, char *[]), char **argv)
 }
 
 /*
- * New tickless task
- */
-int
-ktltask_fork_execv(int policy, int pid, int (*main)(int, char *[]), char **argv)
-{
-    struct ktask *t;
-    int i;
-    int tid;
-
-    /* Disable interrupts and lock */
-    arch_spin_lock_intr(&ktask_fork_lock);
-
-    /* Search available PID from the table */
-    tid = -1;
-    for ( i = 0; i < TL_TASK_TABLE_SIZE; i++ ) {
-        if ( NULL ==  ktltasks->tasks[i] ) {
-            /* Found an available space */
-            tid = i;
-            break;
-        }
-    }
-
-    /* Corresponding task ID found? */
-    if ( tid < 0 ) {
-        arch_spin_unlock_intr(&ktask_fork_lock);
-        return -1;
-    }
-
-    /* Allocate task */
-    t = ktask_alloc(policy);
-    if ( NULL == t ) {
-        arch_spin_unlock_intr(&ktask_fork_lock);
-        return -1;
-    }
-    t->main = main;
-    t->argv = argv;
-    t->id = tid;
-    t->name = NULL;
-    t->state = TASK_STATE_READY;
-
-    ktltasks->tasks[tid] = t;
-
-    /* Enqueue to the scheduler */
-    arch_set_next_task_other_cpu(ktltasks->tasks[tid], pid);
-
-    /* Unlock and enable interrupts */
-    arch_spin_unlock_intr(&ktask_fork_lock);
-
-    /* Run at the processor */
-    lapic_send_ns_fixed_ipi(pid, IV_IPI);
-
-    return 0;
-}
-
-/*
  * Change the state of a kernel task
  */
 int
@@ -482,6 +426,82 @@ ktask_destroy(struct ktask *t)
 }
 
 
+
+
+
+/*
+ * New tickless task
+ */
+int
+ktltask_fork_execv(int policy, int pid, int (*main)(int, char *[]), char **argv)
+{
+    struct ktask *t;
+    int i;
+    int tid;
+
+    /* Disable interrupts and lock */
+    arch_spin_lock_intr(&ktask_fork_lock);
+
+    /* Search available PID from the table */
+    tid = -1;
+    for ( i = 0; i < TL_TASK_TABLE_SIZE; i++ ) {
+        if ( NULL ==  ktltasks->tasks[i] ) {
+            /* Found an available space */
+            tid = i;
+            break;
+        }
+    }
+
+    /* Corresponding task ID found? */
+    if ( tid < 0 ) {
+        arch_spin_unlock_intr(&ktask_fork_lock);
+        return -1;
+    }
+
+    /* Allocate task */
+    t = ktask_alloc(policy);
+    if ( NULL == t ) {
+        arch_spin_unlock_intr(&ktask_fork_lock);
+        return -1;
+    }
+    t->main = main;
+    t->argv = argv;
+    t->id = tid;
+    t->name = NULL;
+    t->state = TASK_STATE_READY;
+
+    ktltasks->tasks[tid] = t;
+
+    /* Enqueue to the scheduler */
+    arch_set_next_task_other_cpu(ktltasks->tasks[tid], pid);
+
+    /* Unlock and enable interrupts */
+    arch_spin_unlock_intr(&ktask_fork_lock);
+
+    /* Run at the processor */
+    lapic_send_ns_fixed_ipi(pid, IV_IPI);
+
+    return 0;
+}
+
+
+/*
+ * New tickless task
+ */
+int
+ktltask_stop(int pid)
+{
+    /* Stop command */
+    processor_get(pid)->idle->cred = 16;
+    arch_set_next_task_other_cpu(processor_get(pid)->idle, pid);
+    /* IPI */
+    lapic_send_ns_fixed_ipi(pid, IV_IPI);
+
+    return 0;
+}
+
+
+
 /*
  * Kernel main task
  */
@@ -489,7 +509,6 @@ int
 ktask_kernel_main(int argc, char *argv[])
 {
     int tid;
-    int i;
 
     /* Launch the keyboard driver */
     tid = ktask_fork_execv(TASK_POLICY_DRIVER, &kbd_driver_main, NULL);
