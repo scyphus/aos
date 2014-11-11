@@ -16,6 +16,7 @@ static volatile int ktask_lock;
 static volatile int ktask_fork_lock;
 static struct ktask_queue *ktaskq;
 static struct ktask_table *ktasks;
+static struct ktltask_table *ktltasks;
 
 extern struct processor_table *processors;
 
@@ -223,9 +224,18 @@ ktask_init(void)
         processors->prs[i].idle = t;
     }
 
+    /* Allocate and initialize the tickless task table */
+    ktltasks = kmalloc(sizeof(struct ktltask_table));
+    if ( NULL == ktltasks ) {
+        return -1;
+    }
+    (void)kmemset(ktltasks->tasks, 0,
+                  sizeof(struct ktask *) * TL_TASK_TABLE_SIZE);
+
     /* Allocate and initialize the task table */
     ktasks = kmalloc(sizeof(struct ktask_table));
     if ( NULL == ktasks ) {
+        kfree(ktltasks);
         return -1;
     }
     (void)kmemset(ktasks->tasks, 0,
@@ -235,6 +245,7 @@ ktask_init(void)
     argv = kmalloc(sizeof(char *) * 2);
     if ( NULL == argv ) {
         kfree(ktasks);
+        kfree(ktltasks);
         return -1;
     }
     argv[0] = kstrdup("kernel");
@@ -242,6 +253,7 @@ ktask_init(void)
     if ( NULL == argv[0] ) {
         kfree(argv);
         kfree(ktasks);
+        kfree(ktltasks);
         return -1;
     }
     ret = ktask_fork_execv(TASK_POLICY_KERNEL, &ktask_kernel_main, argv);
@@ -249,6 +261,7 @@ ktask_init(void)
         kfree(argv[0]);
         kfree(argv);
         kfree(ktasks);
+        kfree(ktltasks);
         return -1;
     }
 
@@ -285,7 +298,7 @@ ktask_fork_execv(int policy, int (*main)(int, char *[]), char **argv)
     }
 
     /* Allocate task */
-    t = ktask_alloc(TASK_POLICY_KERNEL);
+    t = ktask_alloc(policy);
     if ( NULL == t ) {
         arch_spin_unlock_intr(&ktask_fork_lock);
         return -1;
@@ -304,6 +317,61 @@ ktask_fork_execv(int policy, int (*main)(int, char *[]), char **argv)
 
     /* Unlock and enable interrupts */
     arch_spin_unlock_intr(&ktask_fork_lock);
+
+    return 0;
+}
+
+/*
+ * New tickless task
+ */
+int
+ktltask_fork_execv(int policy, int pid, int (*main)(int, char *[]), char **argv)
+{
+    struct ktask *t;
+    int i;
+    int tid;
+
+    /* Disable interrupts and lock */
+    arch_spin_lock_intr(&ktask_fork_lock);
+
+    /* Search available PID from the table */
+    tid = -1;
+    for ( i = 0; i < TL_TASK_TABLE_SIZE; i++ ) {
+        if ( NULL ==  ktltasks->tasks[i] ) {
+            /* Found an available space */
+            tid = i;
+            break;
+        }
+    }
+
+    /* Corresponding task ID found? */
+    if ( tid < 0 ) {
+        arch_spin_unlock_intr(&ktask_fork_lock);
+        return -1;
+    }
+
+    /* Allocate task */
+    t = ktask_alloc(policy);
+    if ( NULL == t ) {
+        arch_spin_unlock_intr(&ktask_fork_lock);
+        return -1;
+    }
+    t->main = main;
+    t->argv = argv;
+    t->id = tid;
+    t->name = NULL;
+    t->state = TASK_STATE_READY;
+
+    ktltasks->tasks[tid] = t;
+
+    /* Enqueue to the scheduler */
+    arch_set_next_task_other_cpu(ktltasks->tasks[tid], pid);
+
+    /* Unlock and enable interrupts */
+    arch_spin_unlock_intr(&ktask_fork_lock);
+
+    /* Run at the processor */
+    lapic_send_ns_fixed_ipi(pid, IV_IPI);
 
     return 0;
 }

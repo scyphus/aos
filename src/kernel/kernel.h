@@ -15,6 +15,7 @@
 #define MAX_PROCESSORS  256
 
 #define IV_IRQ(n)       (0x20 + (n))
+#define IV_TASK_EVENT   0x40
 #define IV_LOC_TMR      0x50
 #define IV_IPI          0x51
 #define IV_CRASH        0xfe
@@ -484,6 +485,8 @@ u32 rng_random(void);
 #define TASK_USTACK_SIZE        4096 * 0x10
 #define TASK_STACK_GUARD        16
 #define TASK_QUEUE_LEN          0x10
+
+#define TL_TASK_TABLE_SIZE      0x100
 void task_restart(void);
 void halt(void);
 
@@ -562,6 +565,14 @@ struct ktask_queue {
 struct ktask_table {
     /* Kernel tasks */
     struct ktask_queue_entry tasks[TASK_TABLE_SIZE];
+};
+
+/*
+ * Tickless task table
+ */
+struct ktltask_table {
+    /* Kernel tasks */
+    struct ktask *tasks[TL_TASK_TABLE_SIZE];
 };
 
 /*
@@ -710,6 +721,7 @@ int sched_ktask_enqueue(struct ktask_queue_entry *);
 struct ktask_queue_entry * sched_ktask_dequeue(void);
 struct ktask_queue_entry * ktask_queue_entry_new(struct ktask *);
 int ktask_fork_execv(int, int (*)(int, char *[]), char **);
+int ktltask_fork_execv(int, int, int (*)(int, char *[]), char **);
 
 /* in processor.c */
 int processor_init(void);

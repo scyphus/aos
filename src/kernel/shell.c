@@ -1424,6 +1424,9 @@ _builtin_start(char *const argv[])
     u8 id;
     struct ktask *t;
 
+
+    //ktask_fork_execv(TASK_POLICY_KERNEL, _mgmt_main, argv);
+
     id = 1;
 
     /* FIXME: This is experimental. This must be free but...  */
@@ -1436,11 +1439,15 @@ _builtin_start(char *const argv[])
     /* Start command */
     if ( 0 == kstrcmp("mgmt", argv[1]) ) {
         /* Start management process */
+        ktltask_fork_execv(TASK_POLICY_KERNEL, atoi(argv[2]), &_mgmt_main,
+                           NULL);
+#if 0
         id = atoi(argv[2]);
         t->main = &_mgmt_main;
         arch_set_next_task_other_cpu(t, id);
         kprintf("Launch mgmt @ CPU #%d\r\n", id);
         lapic_send_ns_fixed_ipi(id, IV_IPI);
+#endif
     } else if ( 0 == kstrcmp("tx", argv[1]) ) {
         /* Start Tx */
         id = atoi(argv[2]);
@@ -1512,6 +1519,8 @@ _builtin_stop(char *const argv[])
     } else {
         kprintf("stop <id>\r\n");
     }
+
+    return 0;
 }
 
 /*
