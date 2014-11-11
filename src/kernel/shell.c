@@ -156,10 +156,45 @@ _builtin_show(char *const argv[])
         }
     } else if ( 0 == kstrcmp("processes", argv[1]) ) {
         int i;
+        const char *sstr;
         for ( i = 0; i < TASK_TABLE_SIZE; i++ ) {
             if ( NULL != ktasks->tasks[i].ktask ) {
-                kprintf("[%.4d] %.10s %d\r\n", ktasks->tasks[i].ktask->name,
-                        ktasks->tasks[i].ktask->state);
+                switch ( ktasks->tasks[i].ktask->state ) {
+                case TASK_STATE_READY:
+                    sstr = "READY";
+                    break;
+                case TASK_STATE_RUNNING:
+                    sstr = "RUNNING";
+                    break;
+                case TASK_STATE_BLOCKED:
+                    sstr = "BLOCKED";
+                    break;
+                default:
+                    sstr = "Unknown";
+                    break;
+                }
+                kprintf("[%.4d] %s %s\r\n", ktasks->tasks[i].ktask->id,
+                        ktasks->tasks[i].ktask->name, sstr);
+            }
+        }
+        for ( i = 0; i < TL_TASK_TABLE_SIZE; i++ ) {
+            if ( NULL != ktltasks->tasks[i] ) {
+                switch ( ktltasks->tasks[i]->state ) {
+                case TASK_STATE_READY:
+                    sstr = "READY";
+                    break;
+                case TASK_STATE_RUNNING:
+                    sstr = "RUNNING";
+                    break;
+                case TASK_STATE_BLOCKED:
+                    sstr = "BLOCKED";
+                    break;
+                default:
+                    sstr = "Unknown";
+                    break;
+                }
+                kprintf("[*%.3d] %s %s\r\n", ktltasks->tasks[i]->id,
+                        ktltasks->tasks[i]->name, sstr);
             }
         }
     } else {
