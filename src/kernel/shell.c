@@ -1463,6 +1463,7 @@ _builtin_start(char *const argv[])
         kprintf("Launch TCP @ CPU #%d\r\n", id);
     } else {
         kprintf("start <routing|mgmt> <id>\r\n");
+        return -1;
     }
 
     return 0;
