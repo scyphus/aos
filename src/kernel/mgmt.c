@@ -20,7 +20,7 @@ int net_rib4_add(struct net_rib4 *, const u32, int, u32);
 u32 bswap32(u32);
 
 static int
-str2v4addr(const char *s, u32 *addr)
+str2v4addr(const char *s, u32 *addr, int *mask)
 {
     u32 a;
     int d;
@@ -61,11 +61,31 @@ str2v4addr(const char *s, u32 *addr)
         a <<= 8;
         a += d;
     }
-    if ( *s ) {
-        return -1;
-    }
 
-    *addr = a;
+    if ( '/' == *s ) {
+        /* With mask */
+        s++;
+        s0 = s;
+        d = 0;
+        while ( *s ) {
+            if ( *s < '0' || *s > '9' )  {
+                return -1;
+            }
+            d *= 10;
+            d += (*s) - '0';
+            s++;
+        }
+        if ( d < 0 || d > 32 ) {
+            return -1;
+        }
+        *mask = d;
+        *addr = a;
+    } else if ( *s ) {
+        return -1;
+    } else {
+        *mask = -1;
+        *addr = a;
+    }
 
     return 0;
 }
@@ -85,6 +105,11 @@ mgmt_main(int argc, char *argv[])
     char *nic;
     char *ipaddr;
     char *gw;
+    int m;
+    int ret;
+    u32 ipa;
+    int ipm;
+    u32 gwa;
 
     /* Check the argument first */
     if ( argc < 4 ) {
@@ -112,11 +137,18 @@ mgmt_main(int argc, char *argv[])
         return -1;
     }
 
-    arch_busy_usleep(100);
-    u32 a;
-    int ret;
-    ret = str2v4addr(ipaddr, &a);
-    kprintf("%x %x\r\n", ret, a);
+    ret = str2v4addr(ipaddr, &ipa, &ipm);
+    if ( ret < 0 || ipm < 0 ) {
+        /* Wrint IP address */
+        kprintf("%s is wrong IP address format\r\n", ipaddr);
+        return -1;
+    }
+    ret = str2v4addr(gw, &gwa, &m);
+    if ( ret < 0 || m >= 0 ) {
+        /* Wrint gateway address */
+        kprintf("%s is wrong gateway address format\r\n", gw);
+        return -1;
+    }
 
 
     /* Network */
