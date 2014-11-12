@@ -1717,29 +1717,24 @@ _parse_cmd(const char *cmd)
     return argv;
 }
 
-
 /*
- * Execute command
+ * Execute a command
  */
 static void
-_exec_cmd(struct kshell *kshell)
+_exec_cmdbuf(char *cmd)
 {
     char **argv;
     char **tmp;
     int ret;
 
     /* Parse the command */
-    argv = _parse_cmd(kshell->cmdbuf);
+    argv = _parse_cmd(cmd);
     if ( NULL == argv ) {
         kprintf("Error: Command could not be parsed.\r\n");
         return;
     }
     if ( NULL == argv[0] ) {
         kfree(argv);
-
-        kprintf("> ");
-        kshell->pos = 0;
-        kshell->cmdbuf[0] = 0;
         return;
     }
 
@@ -1776,6 +1771,15 @@ _exec_cmd(struct kshell *kshell)
         tmp++;
     }
     kfree(argv);
+}
+
+/*
+ * Execute command
+ */
+static void
+_exec_cmd(struct kshell *kshell)
+{
+    _exec_cmdbuf(kshell->cmdbuf);
 
     kprintf("> ");
     kshell->pos = 0;
@@ -1829,6 +1833,9 @@ shell_main(int argc, char *argv[])
         kprintf("Cannot open keyboard\r\n");
         return -1;
     }
+
+    /* Start-up script */
+    _exec_cmdbuf("start mgmt 1 e0 192.168.56.11/24 192.168.56.1");
 
     for ( ;; ) {
         c = 0;

@@ -19,6 +19,58 @@ int net_sc_rx_port_host(struct net *, u8 *, int, void *);
 int net_rib4_add(struct net_rib4 *, const u32, int, u32);
 u32 bswap32(u32);
 
+static int
+str2v4addr(const char *s, u32 *addr)
+{
+    u32 a;
+    int d;
+    const char *s0;
+    int i;
+
+    a = 0;
+
+    for ( i = 0; i < 4; i++ ) {
+        /* . */
+        if ( i != 0 ) {
+            if ( '.' != *s ) {
+                return -1;
+            }
+            s++;
+        }
+        /* Take a digit */
+        s0 = s;
+        while ( *s && *s >= '0' && *s <= '9' ) {
+            s++;
+        }
+        if ( s == s0 ) {
+            return -1;
+        } else if ( s - s0 > 3 ) {
+            return -1;
+        } else if ( s - s0 != 1 && '0' == *s0 ) {
+            return -1;
+        }
+        d = 0;
+        while ( s != s0 ) {
+            d *= 10;
+            d += (*s0) - '0';
+            s0++;
+        }
+        if ( d > 255 || d < 0 ) {
+            return -1;
+        }
+        a <<= 8;
+        a += d;
+    }
+    if ( *s ) {
+        return -1;
+    }
+
+    *addr = a;
+
+    return 0;
+}
+
+
 
 /*
  * Management process
@@ -59,6 +111,13 @@ mgmt_main(int argc, char *argv[])
         kprintf("netdev %s cannot be found\r\n", nic);
         return -1;
     }
+
+    arch_busy_usleep(100);
+    u32 a;
+    int ret;
+    ret = str2v4addr(ipaddr, &a);
+    kprintf("%x %x\r\n", ret, a);
+
 
     /* Network */
     int i;
