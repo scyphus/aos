@@ -194,7 +194,6 @@ mgmt_main(int argc, char *argv[])
             continue;
         }
         port.next.func(&net, pkt, n, port.next.data);
-        //net_rx(&net, &port, pkt, n, -1);
     }
 
     return 0;
