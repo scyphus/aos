@@ -659,16 +659,13 @@ kstrdup(const char *s)
 {
     char *ns;
     int len;
-    int i;
 
     len = kstrlen(s);
     ns = kmalloc(len + 1);
     if ( NULL == ns ) {
         return NULL;
     }
-    for ( i = 0; i < len + 1; i++ ) {
-        ns[i] = s[i];
-    }
+    kmemcpy(ns, s, len + 1);
 
     return ns;
 }
