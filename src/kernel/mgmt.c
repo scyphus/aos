@@ -168,7 +168,7 @@ mgmt_main(int argc, char *argv[])
     if ( NULL == hport.ip4addr.addrs ){
         return -1;
     }
-    hport.ip4addr.addrs[0] = bswap32(0xc0a83803UL);
+    hport.ip4addr.addrs[0] = bswap32(ipa);
     hport.arp.sz = 4096;
     hport.arp.entries = kmalloc(sizeof(struct net_arp_entry) * hport.arp.sz);
     for ( i = 0; i < hport.arp.sz; i++ ) {
@@ -185,10 +185,9 @@ mgmt_main(int argc, char *argv[])
     /* Routing table */
     hport.rib4.nr = 0;
     hport.rib4.entries = NULL;
-    net_rib4_add(&hport.rib4, bswap32(0xc0a83800UL), 24, 0);
-    net_rib4_add(&hport.rib4, 0, 0, bswap32(0xc0a83802UL));
+    net_rib4_add(&hport.rib4, bswap32(ipa & (0xffffffffULL<<(32-ipm))), ipm, 0);
+    net_rib4_add(&hport.rib4, 0, 0, bswap32(gwa));
 
-    kprintf("Start network on %s\r\n", port.netdev->name);
     for ( ;; ) {
         n = port.netdev->recvpkt(pkt, sizeof(pkt), port.netdev);
         if ( n <= 0 ) {
