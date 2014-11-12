@@ -49,10 +49,13 @@ struct cmd cmds[] = {
 };
 
 /*
-  0800277a98ea 192.168.56.2
-  0800275af6dc 192.168.56.3
+  0800277a98ea 192.168.56.11
+  0800275af6dc 192.168.56.12
  */
-const char *config = "e0 08:00:27:7a:98:ea";
+const char *config = "\
+e0 {hw 08:00:27:7a:98:ea; ip 192.168.56.11/24;}  \
+e1 {hw 08:00:27:5a:f6:dc; ip 192.168.56.12/24;}  \
+";
 
 
 
@@ -1495,6 +1498,7 @@ _net_test_main(int argc, char *argv[])
 }
 
 
+int mgmt_main(int, char *[]);
 
 /*
  * Start a process
@@ -1511,7 +1515,7 @@ _builtin_start(char *const argv[])
     /* Start command */
     if ( 0 == kstrcmp("mgmt", argv[1]) ) {
         /* Start management process */
-        ret = ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_mgmt_main, NULL);
+        ret = ktltask_fork_execv(TASK_POLICY_KERNEL, id, &mgmt_main, &argv[2]);
         if ( ret < 0 ) {
             kprintf("Cannot launch mgmt\r\n");
             return -1;
