@@ -11,6 +11,7 @@
 #include "../drivers/pci/pci.h"
 
 extern struct netdev_list *netdev_head;
+extern struct net net;
 
 int net_init(struct net *);
 int net_rx(struct net *, struct net_port *, u8 *, int, int);
@@ -19,6 +20,9 @@ int net_sc_rx_port_host(struct net *, u8 *, int, void *);
 int net_rib4_add(struct net_rib4 *, const u32, int, u32);
 u32 bswap32(u32);
 
+/*
+ * Like inet_pton
+ */
 static int
 str2v4addr(const char *s, u32 *addr, int *mask)
 {
@@ -92,6 +96,8 @@ str2v4addr(const char *s, u32 *addr, int *mask)
 
 
 
+
+
 /*
  * Management process
  * start mgmt <cpuid> <nic> <ip address/mask> <default-gw>
@@ -158,8 +164,6 @@ mgmt_main(int argc, char *argv[])
     struct net net;
     struct net_port port;
     struct net_port_host hport;
-
-    net_init(&net);
 
     /* Port */
     kmemcpy(hport.macaddr, netdev->macaddr, 6);

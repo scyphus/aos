@@ -20,6 +20,8 @@ volatile static u64 globaldata;
 extern struct ktask_table *ktasks;
 extern struct ktltask_table *ktltasks;
 
+extern struct net net;
+
 /*
  * Temporary: Keyboard drivers
  */
@@ -1179,7 +1181,6 @@ _tx2_main(int argc, char *argv[])
 
     return 0;
 }
-int net_init(struct net *);
 int net_rx(struct net *, struct net_port *, u8 *, int, int);
 int net_sc_rx_ether(struct net *, u8 *, int, void *);
 int net_sc_rx_port_host(struct net *, u8 *, int, void *);
@@ -1194,12 +1195,9 @@ _net_test_main(int argc, char *argv[])
     u8 pkt[1518];
     int n;
     /* Network */
-    struct net net;
     struct net_port port;
     struct net_port_host hport;
     int i;
-
-    net_init(&net);
 
     /* FIXME: Choose the first interface for management */
     list = netdev_head;

@@ -31,6 +31,8 @@ int irq_handler_table_init(void);
 
 void kintr_loc_tmr(void);
 
+struct net net;
+int net_init(struct net *);
 
 /* arch.c */
 void arch_bsp_init(void);
@@ -90,6 +92,8 @@ kmain(void)
     e1000_init();
 
     ktask_init();
+
+    net_init(&net);
 
     sched_switch();
 
