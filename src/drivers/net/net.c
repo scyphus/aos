@@ -423,6 +423,9 @@ _ipv4_icmp_echo_request(struct net *net, struct net_stack_chain_next *tx,
     struct icmp_hdr *icmp;
 
     mdata.hport = ((struct net_port *)(tx->data))->next.data;
+    /* FIXME: implement the source address selection */
+    //kprintf("%.8x\r\n", mdata.hport->ip4addr.addrs[0]);
+    //mdata.saddr = mdata.hport->ip4addr.addrs[0];
     mdata.saddr = bswap32(0xc0a83803ULL);
     mdata.daddr = iphdr->ip_src;
     mdata.flags = 0;
@@ -463,6 +466,28 @@ _ipv4_icmp(struct net *net, struct net_stack_chain_next *tx,
         return _ipv4_icmp_echo_request(net, tx, iphdr, icmp,
                                        pkt + sizeof(struct icmp_hdr),
                                        len - sizeof(struct icmp_hdr));
+    }
+
+    return -1;
+}
+
+/*
+ * IPv4 TCP handler
+ */
+static int
+_ipv4_tcp(struct net *net, struct net_stack_chain_next *tx,
+          struct iphdr *iphdr, u8 *pkt, int len)
+{
+    struct tcp_hdr *tcp;
+
+    if ( unlikely(len < sizeof(struct tcp_hdr)) ) {
+        return -1;
+    }
+    tcp = (struct tcp_hdr *)(pkt);
+
+    if ( tcp->flag_syn ) {
+        kprintf("Received a SYN packet %d => %d\r\n",
+                bswap16(tcp->sport), bswap16(tcp->dport));
     }
 
     return -1;
@@ -532,7 +557,7 @@ _ipv4(struct net *net, struct net_stack_chain_next *tx, u8 *pkt, int len,
         return _ipv4_icmp(net, tx, hdr, payload, iplen - hdrlen);
     case IP_TCP:
         /* TCP */
-        return -1;
+        return _ipv4_tcp(net, tx, hdr, payload, iplen - hdrlen);
     case IP_UDP:
         /* UDP */
         break;

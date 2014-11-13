@@ -11,7 +11,7 @@
 #include "../drivers/pci/pci.h"
 
 extern struct netdev_list *netdev_head;
-extern struct net net;
+extern struct net gnet;
 
 int net_init(struct net *);
 int net_rx(struct net *, struct net_port *, u8 *, int, int);
@@ -95,6 +95,42 @@ str2v4addr(const char *s, u32 *addr, int *mask)
 }
 
 
+int
+mgmt_tcp_server(void)
+{
+    struct tcp_session *sess;
+
+    /* Allocate */
+    sess = kmalloc(sizeof(struct tcp_session));
+    sess->state = TCP_CLOSED;
+    sess->rwin.sz = 1024 * 1024;
+    sess->rwin.buf = kmalloc(sizeof(u8) * sess->rwin.sz);
+    sess->twin.sz = 1024 * 1024;
+    sess->twin.buf = kmalloc(sizeof(u8) * sess->twin.sz);
+    sess->lipaddr = 0;
+    sess->lport = 80;
+    sess->ripaddr = 0;
+    sess->rport = 0;
+    sess->mss = 536;
+    sess->wscale = 1;
+
+    return 0;
+}
+
+
+/*
+ * SYN
+ */
+int
+mgmt_tcp_syn_recv(void)
+{
+    /* Send SYN+ACK */
+
+    return 0;
+}
+
+
+
 
 
 
@@ -160,10 +196,13 @@ mgmt_main(int argc, char *argv[])
     /* Network */
     int i;
     int n;
-    u8 pkt[1518];
-    struct net net;
+    u8 *pkt;
     struct net_port port;
     struct net_port_host hport;
+
+    arch_busy_usleep(1000);
+
+    pkt = alloca(gnet.sys_mtu);
 
     /* Port */
     kmemcpy(hport.macaddr, netdev->macaddr, 6);
@@ -193,11 +232,11 @@ mgmt_main(int argc, char *argv[])
     net_rib4_add(&hport.rib4, 0, 0, bswap32(gwa));
 
     for ( ;; ) {
-        n = port.netdev->recvpkt(pkt, sizeof(pkt), port.netdev);
+        n = port.netdev->recvpkt(pkt, gnet.sys_mtu, port.netdev);
         if ( n <= 0 ) {
             continue;
         }
-        port.next.func(&net, pkt, n, port.next.data);
+        port.next.func(&gnet, pkt, n, port.next.data);
     }
 
     return 0;

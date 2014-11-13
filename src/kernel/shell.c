@@ -20,7 +20,7 @@ volatile static u64 globaldata;
 extern struct ktask_table *ktasks;
 extern struct ktltask_table *ktltasks;
 
-extern struct net net;
+extern struct net gnet;
 
 /*
  * Temporary: Keyboard drivers
@@ -1237,7 +1237,7 @@ _net_test_main(int argc, char *argv[])
             __asm__ __volatile__ ("hlt");
             continue;
         }
-        port.next.func(&net, pkt, n, port.next.data);
+        port.next.func(&gnet, pkt, n, port.next.data);
         //net_rx(&net, &port, pkt, n, -1);
     }
 
@@ -1318,7 +1318,7 @@ _net_test_main(int argc, char *argv[])
         if ( n <= 0 ) {
             continue;
         }
-        port.next(&net, pkt, n, NULL);
+        port.next(&gnet, pkt, n, NULL);
         //net_rx(&net, &port, pkt, n, -1);
     }
 

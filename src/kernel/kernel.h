@@ -177,7 +177,6 @@ struct tcp_session {
     /* Window */
     u8 wscale;
 };
-
 struct ether_hdr {
     u8 dst[6];
     u8 src[6];
