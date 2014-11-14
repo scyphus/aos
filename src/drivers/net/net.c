@@ -306,11 +306,11 @@ _checksum(const u8 *buf, int len)
     nleft = len;
     sum = 0;
     cur = (const u16 *)buf;
-
     while ( nleft > 1 ) {
-        sum += *cur;
-        cur += 1;
+        sum += (u32)*cur;
+        sum = (sum & 0xffff) + (sum >> 16);
         nleft -= 2;
+        cur += 1;
     }
     if ( 1 == nleft ) {
         last.uc[0] = *(const u8 *)cur;
@@ -318,7 +318,7 @@ _checksum(const u8 *buf, int len)
         sum += last.us;
     }
     sum = (sum >> 16) + (sum & 0xffff);
-    sum += (sum >> 16);
+    //sum += (sum >> 16);
     ret = ~sum;
 
     return ret;
@@ -328,11 +328,11 @@ static u16
 _ip_checksum(const u8 *data, int len)
 {
     /* Compute checksum */
-    u16 *tmp;
+    const u16 *tmp;
     u32 cs;
     int i;
 
-    tmp = (u16 *)data;
+    tmp = (const u16 *)data;
     cs = 0;
     for ( i = 0; i < len / 2; i++ ) {
         cs += (u32)tmp[i];
@@ -424,11 +424,10 @@ _ipv4_icmp_echo_request(struct net *net, struct net_stack_chain_next *tx,
 
     mdata.hport = ((struct net_port *)(tx->data))->next.data;
     /* FIXME: implement the source address selection */
-    //kprintf("%.8x\r\n", mdata.hport->ip4addr.addrs[0]);
-    //mdata.saddr = mdata.hport->ip4addr.addrs[0];
-    mdata.saddr = bswap32(0xc0a83803ULL);
+    mdata.saddr = mdata.hport->ip4addr.addrs[0];
     mdata.daddr = iphdr->ip_src;
     mdata.flags = 0;
+    mdata.proto = IP_ICMP;
 
     /* Prepare a packet buffer */
     ret = net_hps_host_port_ip_pre(net, &mdata, buf, 4096, &p);
@@ -444,7 +443,7 @@ _ipv4_icmp_echo_request(struct net *net, struct net_stack_chain_next *tx,
     kmemcpy(p + sizeof(struct icmp_hdr), pkt, len);
     icmp->checksum = _checksum(p, sizeof(struct icmp_hdr) + len);
 
-    return net_hps_host_pore_ip_post(net, &mdata, buf,
+    return net_hps_host_port_ip_post(net, &mdata, buf,
                                      len + sizeof(struct icmp_hdr));
 }
 
@@ -487,6 +486,67 @@ _ipv4_tcp(struct net *net, struct net_stack_chain_next *tx,
 
     if ( tcp->flag_syn ) {
         kprintf("Received a SYN packet %d => %d\r\n",
+                bswap16(tcp->sport), bswap16(tcp->dport));
+
+        int ret;
+        u8 buf[4096];
+        u8 *p;
+        struct net_hps_host_port_ip_data mdata;
+        struct tcp_hdr *tcp2;
+        struct tcp_phdr4 ptcp;
+        u64 rnd;
+        ret = rdrand(&rnd);
+        if ( ret < 0 ) {
+            return ret;
+        }
+
+        mdata.hport = ((struct net_port *)(tx->data))->next.data;
+        /* FIXME: implement the source address selection */
+        mdata.saddr = iphdr->ip_dst;
+        mdata.daddr = iphdr->ip_src;
+        mdata.flags = 0;
+        mdata.proto = IP_TCP;
+
+        /* Prepare a packet buffer */
+        ret = net_hps_host_port_ip_pre(net, &mdata, buf, 4096, &p);
+        if ( ret < sizeof(struct tcp_hdr) ) {
+            return -1;
+        }
+        tcp2 = (struct tcp_hdr *)p;
+        tcp2->sport = tcp->dport;
+        tcp2->dport = tcp->sport;
+        tcp2->seqno = rnd;
+        tcp2->ackno = bswap32(bswap32(tcp->seqno) + 1);
+        tcp2->flag_ns = 0;
+        tcp2->flag_reserved = 0;
+        tcp2->offset = 5;
+        tcp2->flag_fin = 0;
+        tcp2->flag_syn = 1;
+        tcp2->flag_rst = 0;
+        tcp2->flag_psh = 0;
+        tcp2->flag_ack = 1;
+        tcp2->flag_urg = 0;
+        tcp2->flag_ece = 0;
+        tcp2->flag_cwr = 0;
+        tcp2->wsize = 0xffff;
+        tcp2->checksum = 0;
+        tcp2->urgptr = 0;
+
+        kmemcpy(&ptcp.sport, tcp2, sizeof(struct tcp_hdr));
+        ptcp.saddr = iphdr->ip_dst;
+        ptcp.daddr = iphdr->ip_src;
+        ptcp.zeros = 0;
+        ptcp.proto = IP_TCP;
+        ptcp.tcplen = bswap16(sizeof(struct tcp_hdr) + 0 /*payload*/);
+        tcp2->checksum = _checksum((u8 *)&ptcp, sizeof(struct tcp_phdr4));
+
+        return net_hps_host_port_ip_post(net, &mdata, buf,
+                                         sizeof(struct tcp_hdr));
+    } else if ( tcp->flag_fin ) {
+        kprintf("Received a FIN packet %d => %d\r\n",
+                bswap16(tcp->sport), bswap16(tcp->dport));
+    } else if ( tcp->flag_ack ) {
+        kprintf("Received an ACK packet %d => %d\r\n",
                 bswap16(tcp->sport), bswap16(tcp->dport));
     }
 
@@ -872,7 +932,7 @@ net_hps_host_port_ip_pre(struct net *net, void *data, u8 *buf, int len, u8 **p)
     iphdr->ip_id = rnd;
     iphdr->ip_off = 0;
     iphdr->ip_ttl = 64;
-    iphdr->ip_proto = IP_ICMP;
+    iphdr->ip_proto = mdata->proto;
     /* Set source address */
     iphdr->ip_src = mdata->saddr;
     /* Set destination address */
@@ -888,7 +948,7 @@ net_hps_host_port_ip_pre(struct net *net, void *data, u8 *buf, int len, u8 **p)
  * Ethernet
  */
 int
-net_hps_host_pore_ip_post(struct net *net, void *data, u8 *buf, int iplen)
+net_hps_host_port_ip_post(struct net *net, void *data, u8 *buf, int iplen)
 {
     struct iphdr *iphdr;
     struct net_hps_host_port_ip_data *mdata;

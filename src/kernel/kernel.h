@@ -216,6 +216,23 @@ struct tcp_hdr {
     u16 checksum;
     u16 urgptr;
 } __attribute__ ((packed));
+struct tcp_phdr4 {
+    u32 saddr;
+    u32 daddr;
+    u8 zeros;
+    u8 proto;
+    u16 tcplen;
+    u16 sport;
+    u16 dport;
+    u32 seqno;
+    u32 ackno;
+    u8 rsvd:4;
+    u8 offset:4;
+    u8 flags;
+    u16 wsize;
+    u16 checksum;
+    u16 urgptr;
+};
 
 
 /* ARP */
@@ -380,6 +397,7 @@ struct net_hps_host_port_ip_data {
     u32 saddr;
     u32 daddr;
     int flags;
+    int proto;
 };
 
 
