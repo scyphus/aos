@@ -81,7 +81,7 @@ arch_bsp_init(void)
     clock_init();
 
     /* Print a message */
-    kprintf("Welcome to Academic Operating System!\r\n");
+    kprintf("Welcome to mPIX!\r\n");
 
     /* Count the number of processors (APIC) */
     /* ToDo */

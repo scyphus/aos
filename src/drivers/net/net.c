@@ -488,12 +488,83 @@ _ipv4_tcp(struct net *net, struct net_stack_chain_next *tx,
         kprintf("Received a SYN packet %d => %d\r\n",
                 bswap16(tcp->sport), bswap16(tcp->dport));
 
+#if 1
+        /* Prepare new session */
+        struct tcp_session *sess;
+        sess = kmalloc(sizeof(struct tcp_session));
+        sess->state = TCP_SYN_RECEIVED;
+        sess->rwin.sz = 1024 * 1024;
+        sess->rwin.buf = kmalloc(sizeof(u8) * sess->rwin.sz);
+        sess->twin.sz = 1024 * 1024;
+        sess->twin.buf = kmalloc(sizeof(u8) * sess->twin.sz);
+        sess->lipaddr = iphdr->ip_dst;
+        sess->lport = 23;
+        sess->ripaddr = iphdr->ip_src;
+        sess->rport = tcp->sport;
+        sess->mss = 0;
+        sess->wscale = 0;
+
+        /* Parse options */
+        u8 *tcpopts = pkt + sizeof(struct tcp_hdr);
+        int optsz = (tcp->offset << 2) - sizeof(struct tcp_hdr);
+        while ( optsz > 0 ) {
+            switch ( *tcpopts ) {
+            case TCP_OPT_EOL:
+                optsz = 0;      /* not elegant */
+                break;
+            case TCP_OPT_NOP:
+                tcpopts++;
+                optsz--;
+                break;
+            case TCP_OPT_MSS:
+                tcpopts++;
+                optsz--;
+                if ( optsz < 3 || *tcpopts != 4 ) {
+                    /* Invalid */
+                    optsz = 0;
+                } else {
+                    tcpopts++;
+                    optsz--;
+                    sess->mss = bswap16(*(u16 *)tcpopts);
+                    tcpopts += 2;
+                    optsz -= 2;
+                }
+                break;
+            case TCP_OPT_WSCALE:
+                tcpopts++;
+                optsz--;
+                if ( optsz < 2 || *tcpopts != 3 ) {
+                    /* Invalid */
+                    optsz = 0;
+                } else {
+                    tcpopts++;
+                    optsz--;
+                    sess->wscale = *tcpopts;
+                    tcpopts++;
+                    optsz--;
+                }
+                break;
+            default:
+                tcpopts++;
+                optsz--;
+                if ( optsz < 1 || optsz + 1 < *tcpopts ) {
+                    /* Invalid */
+                    optsz = 0;
+                } else {
+                    optsz -= *tcpopts - 1;
+                    tcpopts += *tcpopts - 1;
+                }
+            }
+        }
+        kprintf("MSS: %d, Window scaling opt: %d\r\n", sess->mss, sess->wscale);
+#endif
+
+
         int ret;
         u8 buf[4096];
         u8 *p;
         struct net_hps_host_port_ip_data mdata;
         struct tcp_hdr *tcp2;
-        struct tcp_phdr4 ptcp;
         u64 rnd;
         ret = rdrand(&rnd);
         if ( ret < 0 ) {
@@ -509,7 +580,7 @@ _ipv4_tcp(struct net *net, struct net_stack_chain_next *tx,
 
         /* Prepare a packet buffer */
         ret = net_hps_host_port_ip_pre(net, &mdata, buf, 4096, &p);
-        if ( ret < sizeof(struct tcp_hdr) ) {
+        if ( ret < sizeof(struct tcp_hdr) + 8 ) {
             return -1;
         }
         tcp2 = (struct tcp_hdr *)p;
@@ -519,7 +590,7 @@ _ipv4_tcp(struct net *net, struct net_stack_chain_next *tx,
         tcp2->ackno = bswap32(bswap32(tcp->seqno) + 1);
         tcp2->flag_ns = 0;
         tcp2->flag_reserved = 0;
-        tcp2->offset = 5;
+        tcp2->offset = 5 + 2;
         tcp2->flag_fin = 0;
         tcp2->flag_syn = 1;
         tcp2->flag_rst = 0;
@@ -532,16 +603,31 @@ _ipv4_tcp(struct net *net, struct net_stack_chain_next *tx,
         tcp2->checksum = 0;
         tcp2->urgptr = 0;
 
-        kmemcpy(&ptcp.sport, tcp2, sizeof(struct tcp_hdr));
-        ptcp.saddr = iphdr->ip_dst;
-        ptcp.daddr = iphdr->ip_src;
-        ptcp.zeros = 0;
-        ptcp.proto = IP_TCP;
-        ptcp.tcplen = bswap16(sizeof(struct tcp_hdr) + 0 /*payload*/);
-        tcp2->checksum = _checksum((u8 *)&ptcp, sizeof(struct tcp_phdr4));
+        u8 *opt;
+        opt = p + sizeof(struct tcp_hdr);
+        opt[0] = 2;
+        opt[1] = 4;
+        opt[2] = 0x05;
+        opt[3] = 0xb4;
+        opt[4] = 3;
+        opt[5] = 3;
+        opt[6] = 14;
+        opt[7] = 0;
+
+
+        /* Pseudo checksum */
+        struct tcp_phdr4 *ptcp;
+        ptcp = alloca(sizeof(struct tcp_phdr4) + 8);
+        kmemcpy(&ptcp->sport, tcp2, sizeof(struct tcp_hdr) + 8);
+        ptcp->saddr = iphdr->ip_dst;
+        ptcp->daddr = iphdr->ip_src;
+        ptcp->zeros = 0;
+        ptcp->proto = IP_TCP;
+        ptcp->tcplen = bswap16(sizeof(struct tcp_hdr) + 8 + 0 /*payload*/);
+        tcp2->checksum = _checksum((u8 *)ptcp, sizeof(struct tcp_phdr4) + 8);
 
         return net_hps_host_port_ip_post(net, &mdata, buf,
-                                         sizeof(struct tcp_hdr));
+                                         sizeof(struct tcp_hdr) + 8);
     } else if ( tcp->flag_fin ) {
         kprintf("Received a FIN packet %d => %d\r\n",
                 bswap16(tcp->sport), bswap16(tcp->dport));

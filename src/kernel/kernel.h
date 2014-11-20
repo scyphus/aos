@@ -147,6 +147,17 @@ enum tcp_state {
     TCP_CLOSE_WAIT,
     TCP_LAST_ACK,
 };
+/* TCP options */
+#define TCP_OPT_EOL             0
+#define TCP_OPT_NOP             1
+#define TCP_OPT_MSS             2
+#define TCP_OPT_WSCALE          3
+#define TCP_OPT_SACK_PERMITTED  4
+#define TCP_OPT_SACK            5
+#define TCP_OPT_TIMESTAMP       8
+#define TCP_OPT_ALT_CS_REQ      14
+#define TCP_OPT_ALT_CS_DATA     15
+/* TCP session */
 struct tcp_session {
     enum tcp_state state;
     /* Receive window */
