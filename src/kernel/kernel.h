@@ -183,10 +183,15 @@ struct tcp_session {
     /* seq/ack number */
     u32 seq;
     u32 ack;
+    u32 rseqno;
+    u32 rackno;
     /* MSS */
     u32 mss;
     /* Window */
     u8 wscale;
+
+    /* For optimization */
+    //u8 *ackpkt;
 };
 struct ether_hdr {
     u8 dst[6];

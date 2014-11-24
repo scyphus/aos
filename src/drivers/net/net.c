@@ -101,9 +101,6 @@ static struct tcp_session sessions[TCP_MAX_SESSIONS];
 
 
 
-
-
-
 static int
 rdrand(u64 *x)
 {
@@ -119,6 +116,61 @@ rdrand(u64 *x)
     return (f & 0x1) - 1;
 }
 
+
+/*
+ * Compute checksum
+ */
+static u16
+_checksum(const u8 *buf, int len)
+{
+    int nleft;
+    u32 sum;
+    const u16 *cur;
+    union {
+        u16 us;
+        u8 uc[2];
+    } last;
+    u16 ret;
+
+    nleft = len;
+    sum = 0;
+    cur = (const u16 *)buf;
+    while ( nleft > 1 ) {
+        sum += (u32)*cur;
+        sum = (sum & 0xffff) + (sum >> 16);
+        nleft -= 2;
+        cur += 1;
+    }
+    if ( 1 == nleft ) {
+        last.uc[0] = *(const u8 *)cur;
+        last.uc[1] = 0;
+        sum += last.us;
+    }
+    sum = (sum >> 16) + (sum & 0xffff);
+    //sum += (sum >> 16);
+    ret = ~sum;
+
+    return ret;
+}
+
+static u16
+_ip_checksum(const u8 *data, int len)
+{
+    /* Compute checksum */
+    const u16 *tmp;
+    u32 cs;
+    int i;
+
+    tmp = (const u16 *)data;
+    cs = 0;
+    for ( i = 0; i < len / 2; i++ ) {
+        cs += (u32)tmp[i];
+        cs = (cs & 0xffff) + (cs >> 16);
+    }
+    cs = 0xffff - cs;
+
+    return cs;
+}
 
 
 /*
@@ -180,7 +232,95 @@ tcp_opt_parse(u8 *tcpopts, int optlen, struct tcpopts *opts)
     return 0;
 }
 
+/*
+ * Send an ACK packet
+ */
+int
+tcp_send_ack(struct net *net, struct net_stack_chain_next *tx,
+             struct tcp_session *sess, int syn, int fin)
+{
+    u8 buf[256];
+    int len;
+    int plen;
+    u8 *p;
+    struct net_hps_host_port_ip_data mdata;
+    struct tcp_hdr *tcp2;
+    int ret;
 
+    mdata.hport = ((struct net_port *)(tx->data))->next.data;
+    /* FIXME: implement the source address selection */
+    mdata.saddr = sess->lipaddr;
+    mdata.daddr = sess->ripaddr;
+    mdata.flags = 0;
+    mdata.proto = IP_TCP;
+    len = sizeof(struct tcp_hdr);
+    if ( syn ) {
+        len += 8;
+    }
+
+    /* Prepare a packet buffer for ACK */
+    ret = net_hps_host_port_ip_pre(net, &mdata, buf, 256, &p);
+    if ( ret < len ) {
+        return -1;
+    }
+    tcp2 = (struct tcp_hdr *)p;
+    tcp2->sport = sess->lport;
+    tcp2->dport = sess->rport;
+    tcp2->seqno = bswap32(sess->seq);
+    tcp2->ackno = bswap32(sess->ack);
+    tcp2->flag_ns = 0;
+    tcp2->flag_reserved = 0;
+    if ( syn ) {
+        tcp2->offset = 5 + 2;
+    } else {
+        tcp2->offset = 5;
+    }
+    tcp2->flag_fin = fin;
+    tcp2->flag_syn = syn;
+    tcp2->flag_rst = 0;
+    tcp2->flag_psh = 0;
+    tcp2->flag_ack = 1;
+    tcp2->flag_urg = 0;
+    tcp2->flag_ece = 0;
+    tcp2->flag_cwr = 0;
+    tcp2->wsize = 0xffff;
+    tcp2->checksum = 0;
+    tcp2->urgptr = 0;
+
+    if ( syn ) {
+        u8 *opt;
+        opt = p + sizeof(struct tcp_hdr);
+        opt[0] = 2;
+        opt[1] = 4;
+        opt[2] = 0x05;
+        opt[3] = 0xb4;
+        opt[4] = 3;
+        opt[5] = 3;
+        opt[6] = 14;
+        opt[7] = 0;
+    }
+
+    /* Pseudo checksum */
+    struct tcp_phdr4 *ptcp;
+    plen = sizeof(struct tcp_phdr4);
+    if ( syn ) {
+        plen += 8;
+    }
+    ptcp = alloca(plen);
+    kmemcpy(&ptcp->sport, tcp2, len);
+    ptcp->saddr = sess->lipaddr;
+    ptcp->daddr = sess->ripaddr;
+    ptcp->zeros = 0;
+    ptcp->proto = IP_TCP;
+    ptcp->tcplen = bswap16(len + 0 /*payload*/);
+    tcp2->checksum = _checksum((u8 *)ptcp, plen);
+
+    if ( syn || fin ) {
+        sess->seq++;
+    }
+
+    return net_hps_host_port_ip_post(net, &mdata, buf, len);
+}
 
 
 
@@ -365,60 +505,6 @@ net_rib4_lookup(struct net_rib4 *r, u32 addr, u32 *nh)
 
 
 
-/*
- * Compute checksum
- */
-static u16
-_checksum(const u8 *buf, int len)
-{
-    int nleft;
-    u32 sum;
-    const u16 *cur;
-    union {
-        u16 us;
-        u8 uc[2];
-    } last;
-    u16 ret;
-
-    nleft = len;
-    sum = 0;
-    cur = (const u16 *)buf;
-    while ( nleft > 1 ) {
-        sum += (u32)*cur;
-        sum = (sum & 0xffff) + (sum >> 16);
-        nleft -= 2;
-        cur += 1;
-    }
-    if ( 1 == nleft ) {
-        last.uc[0] = *(const u8 *)cur;
-        last.uc[1] = 0;
-        sum += last.us;
-    }
-    sum = (sum >> 16) + (sum & 0xffff);
-    //sum += (sum >> 16);
-    ret = ~sum;
-
-    return ret;
-}
-
-static u16
-_ip_checksum(const u8 *data, int len)
-{
-    /* Compute checksum */
-    const u16 *tmp;
-    u32 cs;
-    int i;
-
-    tmp = (const u16 *)data;
-    cs = 0;
-    for ( i = 0; i < len / 2; i++ ) {
-        cs += (u32)tmp[i];
-        cs = (cs & 0xffff) + (cs >> 16);
-    }
-    cs = 0xffff - cs;
-
-    return cs;
-}
 
 
 
@@ -636,8 +722,12 @@ _ipv4_tcp(struct net *net, struct net_stack_chain_next *tx,
         sess->state = TCP_SYN_RECEIVED;
         sess->rwin.sz = 1024 * 1024;
         sess->rwin.buf = kmalloc(sizeof(u8) * sess->rwin.sz);
+        sess->rwin.pos0 = 0;
+        sess->rwin.pos1 = 0;
         sess->twin.sz = 1024 * 1024;
         sess->twin.buf = kmalloc(sizeof(u8) * sess->twin.sz);
+        sess->twin.pos0 = 0;
+        sess->twin.pos1 = 0;
         sess->lipaddr = iphdr->ip_dst;
         sess->lport = tcp->dport;
         sess->ripaddr = iphdr->ip_src;
@@ -646,6 +736,9 @@ _ipv4_tcp(struct net *net, struct net_stack_chain_next *tx,
         sess->wscale = 0;
         /* Initial sequence number */
         sess->seq = rnd;
+        /* Received sequence number */
+        sess->rseqno =  bswap32(tcp->seqno);
+        sess->rackno = 0;
 
         /* Parse options */
         u8 *tcpopts = pkt + sizeof(struct tcp_hdr);
@@ -665,73 +758,10 @@ _ipv4_tcp(struct net *net, struct net_stack_chain_next *tx,
 
         kprintf("MSS: %d, Window scaling opt: %d\r\n", sess->mss, sess->wscale);
 
-
-        u8 buf[4096];
-        u8 *p;
-        struct net_hps_host_port_ip_data mdata;
-        struct tcp_hdr *tcp2;
-
-        mdata.hport = ((struct net_port *)(tx->data))->next.data;
-        /* FIXME: implement the source address selection */
-        mdata.saddr = iphdr->ip_dst;
-        mdata.daddr = iphdr->ip_src;
-        mdata.flags = 0;
-        mdata.proto = IP_TCP;
-
         /* Last ack number */
-        sess->ack = bswap32(tcp->seqno) + 1;
+        sess->ack = sess->rseqno + 1;
 
-        /* Prepare a packet buffer for ACK */
-        ret = net_hps_host_port_ip_pre(net, &mdata, buf, 4096, &p);
-        if ( ret < sizeof(struct tcp_hdr) + 8 ) {
-            return -1;
-        }
-        tcp2 = (struct tcp_hdr *)p;
-        tcp2->sport = tcp->dport;
-        tcp2->dport = tcp->sport;
-        tcp2->seqno = rnd;
-        tcp2->ackno = bswap32(sess->ack);
-        tcp2->flag_ns = 0;
-        tcp2->flag_reserved = 0;
-        tcp2->offset = 5 + 2;
-        tcp2->flag_fin = 0;
-        tcp2->flag_syn = 1;
-        tcp2->flag_rst = 0;
-        tcp2->flag_psh = 0;
-        tcp2->flag_ack = 1;
-        tcp2->flag_urg = 0;
-        tcp2->flag_ece = 0;
-        tcp2->flag_cwr = 0;
-        tcp2->wsize = 0xffff;
-        tcp2->checksum = 0;
-        tcp2->urgptr = 0;
-
-        u8 *opt;
-        opt = p + sizeof(struct tcp_hdr);
-        opt[0] = 2;
-        opt[1] = 4;
-        opt[2] = 0x05;
-        opt[3] = 0xb4;
-        opt[4] = 3;
-        opt[5] = 3;
-        opt[6] = 14;
-        opt[7] = 0;
-
-
-        /* Pseudo checksum */
-        struct tcp_phdr4 *ptcp;
-        ptcp = alloca(sizeof(struct tcp_phdr4) + 8);
-        kmemcpy(&ptcp->sport, tcp2, sizeof(struct tcp_hdr) + 8);
-        ptcp->saddr = iphdr->ip_dst;
-        ptcp->daddr = iphdr->ip_src;
-        ptcp->zeros = 0;
-        ptcp->proto = IP_TCP;
-        ptcp->tcplen = bswap16(sizeof(struct tcp_hdr) + 8 + 0 /*payload*/);
-        tcp2->checksum = _checksum((u8 *)ptcp, sizeof(struct tcp_phdr4) + 8);
-
-        return net_hps_host_port_ip_post(net, &mdata, buf,
-                                         sizeof(struct tcp_hdr) + 8);
-
+        return tcp_send_ack(net, tx, sess, 1, 0);
     } else if ( tcp->flag_fin ) {
         kprintf("Received a FIN packet %d => %d\r\n",
                 bswap16(tcp->sport), bswap16(tcp->dport));
@@ -742,72 +772,36 @@ _ipv4_tcp(struct net *net, struct net_stack_chain_next *tx,
         }
         kprintf("*** FIN: %d\r\n", sess->mss);
 
-        int ret;
-        u8 buf[4096];
-        u8 *p;
-        struct net_hps_host_port_ip_data mdata;
-        struct tcp_hdr *tcp2;
-        u64 rnd;
-        ret = rdrand(&rnd);
-        if ( ret < 0 ) {
-            return ret;
-        }
-
-        mdata.hport = ((struct net_port *)(tx->data))->next.data;
-        /* FIXME: implement the source address selection */
-        mdata.saddr = iphdr->ip_dst;
-        mdata.daddr = iphdr->ip_src;
-        mdata.flags = 0;
-        mdata.proto = IP_TCP;
-
-        /* Prepare a packet buffer */
-        ret = net_hps_host_port_ip_pre(net, &mdata, buf, 4096, &p);
-        if ( ret < sizeof(struct tcp_hdr) ) {
+        /* Last ack number */
+        if ( sess->ack == bswap32(tcp->seqno) ) {
+            /* Received all data */
+            sess->ack = bswap32(tcp->seqno) + 1;
+            return tcp_send_ack(net, tx, sess, 0, 0);
+        } else {
             return -1;
         }
-        tcp2 = (struct tcp_hdr *)p;
-        tcp2->sport = tcp->dport;
-        tcp2->dport = tcp->sport;
-        tcp2->seqno = tcp->ackno;
-        tcp2->ackno = 0;
-        tcp2->flag_ns = 0;
-        tcp2->flag_reserved = 0;
-        tcp2->offset = 5;
-        tcp2->flag_fin = 1;
-        tcp2->flag_syn = 0;
-        tcp2->flag_rst = 0;
-        tcp2->flag_psh = 0;
-        tcp2->flag_ack = 1;
-        tcp2->flag_urg = 0;
-        tcp2->flag_ece = 0;
-        tcp2->flag_cwr = 0;
-        tcp2->wsize = 0xffff;
-        tcp2->checksum = 0;
-        tcp2->urgptr = 0;
+    } else {
+        if ( tcp->flag_ack ) {
+            kprintf("Received an ACK packet %d => %d\r\n",
+                    bswap16(tcp->sport), bswap16(tcp->dport));
 
-        /* Pseudo checksum */
-        struct tcp_phdr4 *ptcp;
-        ptcp = alloca(sizeof(struct tcp_phdr4));
-        kmemcpy(&ptcp->sport, tcp2, sizeof(struct tcp_hdr));
-        ptcp->saddr = iphdr->ip_dst;
-        ptcp->daddr = iphdr->ip_src;
-        ptcp->zeros = 0;
-        ptcp->proto = IP_TCP;
-        ptcp->tcplen = bswap16(sizeof(struct tcp_hdr) + 0 /*payload*/);
-        tcp2->checksum = _checksum((u8 *)ptcp, sizeof(struct tcp_phdr4) + 8);
+            if ( NULL == sess ) {
+                /* Not established */
+                return -1;
+            }
+            kprintf("*** ACK: %d\r\n", sess->mss);
+            sess->rackno = bswap32(tcp->ackno);
+            sess->twin.pos0 = 0;
+        }
+        u32 paylen;
+        paylen = len - (tcp->offset << 2);
 
-        return net_hps_host_port_ip_post(net, &mdata, buf,
-                                         sizeof(struct tcp_hdr));
-    } else if ( tcp->flag_ack ) {
-        kprintf("Received an ACK packet %d => %d\r\n",
-                bswap16(tcp->sport), bswap16(tcp->dport));
-
-        if ( NULL == sess ) {
-            /* Not established */
+        if ( paylen > 0 ) {
+            sess->ack = bswap32(tcp->seqno) + paylen;
+            return tcp_send_ack(net, tx, sess, 0, 0);
+        } else {
             return -1;
         }
-        kprintf("*** ACK: %d\r\n", sess->mss);
-
     }
 
     return -1;
