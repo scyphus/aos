@@ -89,6 +89,18 @@ struct ether {
 };
 
 
+struct tcpopts {
+    int mss;
+    int wscale;
+};
+
+#define TCP_MAX_SESSIONS 64
+static struct tcp_session sessions[TCP_MAX_SESSIONS];
+
+
+
+
+
 
 
 
@@ -106,6 +118,71 @@ rdrand(u64 *x)
     /* Return carry flag */
     return (f & 0x1) - 1;
 }
+
+
+
+/*
+ * Parse TCP option
+ */
+int
+tcp_opt_parse(u8 *tcpopts, int optlen, struct tcpopts *opts)
+{
+    u8 type;
+    u8 len;
+    u8 *val;
+
+    opts->mss = -1;
+    opts->wscale = -1;
+    while ( optlen > 0 ) {
+        type = *tcpopts;
+
+        switch ( type ) {
+        case TCP_OPT_EOL:
+            /* End of option */
+            optlen = 0;         /* not elegant... */
+            continue;
+        case TCP_OPT_NOP:
+            /* NOP */
+            tcpopts++;
+            optlen--;
+            continue;
+        }
+
+        /* TLV */
+        len = *(tcpopts + 1);
+        if ( unlikely(optlen < len || len < 2) ) {
+            /* Invalid option format */
+            return -1;
+        }
+        val = tcpopts + 2;
+
+        tcpopts += len;
+        optlen -= len;
+
+        switch ( type ) {
+        case TCP_OPT_MSS:
+            /* MSS */
+            if ( 4 == len ) {
+                /* Valid MSS */
+                opts->mss = bswap16(*(u16 *)val);
+            }
+            break;
+        case TCP_OPT_WSCALE:
+            /* Window scale option */
+            if ( 3 == len ) {
+                /* Valid option */
+                opts->wscale = *val;
+            }
+            break;
+        }
+    }
+
+    return 0;
+}
+
+
+
+
 
 
 #define ARP_LIFETIME 300 * 1000
@@ -478,98 +555,121 @@ _ipv4_tcp(struct net *net, struct net_stack_chain_next *tx,
           struct iphdr *iphdr, u8 *pkt, int len)
 {
     struct tcp_hdr *tcp;
+    struct tcp_session *sess;
+    struct tcp_session *lsess;
+    int i;
 
     if ( unlikely(len < sizeof(struct tcp_hdr)) ) {
         return -1;
     }
     tcp = (struct tcp_hdr *)(pkt);
 
-    if ( tcp->flag_syn ) {
+    sess = NULL;
+    /* Find the corresponding session */
+    for ( i = 0; i < TCP_MAX_SESSIONS; i++ ) {
+        if ( TCP_CLOSED != sessions[i].state ) {
+            if ( sessions[i].lipaddr == iphdr->ip_dst
+                 && sessions[i].lport == tcp->dport
+                 && sessions[i].ripaddr == iphdr->ip_src
+                 && sessions[i].rport == tcp->sport ) {
+                /* Found */
+                sess = &sessions[i];
+                break;
+            }
+        }
+    }
+
+    if ( tcp->flag_syn && !tcp->flag_ack ) {
+        /* SYN */
+
         kprintf("Received a SYN packet %d => %d\r\n",
                 bswap16(tcp->sport), bswap16(tcp->dport));
 
-#if 1
-        /* Prepare new session */
-        struct tcp_session *sess;
-        sess = kmalloc(sizeof(struct tcp_session));
+        if ( NULL != sess ) {
+            /* Already in use */
+            return -1;
+        }
+
+        /* Find a listening port */
+        lsess = NULL;
+        for ( i = 0; i < TCP_MAX_SESSIONS; i++ ) {
+            if ( TCP_LISTEN == sessions[i].state ) {
+                if ( (sessions[i].lipaddr == iphdr->ip_dst
+                      || 0 == sessions[i].lipaddr)
+                     && sessions[i].lport == tcp->dport ) {
+                    /* Found */
+                    lsess = &sessions[i];
+                    break;
+                }
+            }
+        }
+        if ( NULL == lsess ) {
+            /* No session found */
+            return -1;
+        }
+
+        /* Find an available session */
+        sess = NULL;
+        for ( i = 0; i < TCP_MAX_SESSIONS; i++ ) {
+            if ( TCP_CLOSED == sessions[i].state ) {
+                /* Found */
+                sess = &sessions[i];
+                break;
+            }
+        }
+        if ( NULL == sess ) {
+            /* No session found */
+            return -1;
+        }
+
+        /* Copy */
+        (void)kmemcpy(sess, lsess, sizeof(struct tcp_session));
+
+
+        u64 rnd;
+        int ret;
+        ret = rdrand(&rnd);
+        if ( ret < 0 ) {
+            return ret;
+        }
+
         sess->state = TCP_SYN_RECEIVED;
         sess->rwin.sz = 1024 * 1024;
         sess->rwin.buf = kmalloc(sizeof(u8) * sess->rwin.sz);
         sess->twin.sz = 1024 * 1024;
         sess->twin.buf = kmalloc(sizeof(u8) * sess->twin.sz);
         sess->lipaddr = iphdr->ip_dst;
-        sess->lport = 23;
+        sess->lport = tcp->dport;
         sess->ripaddr = iphdr->ip_src;
         sess->rport = tcp->sport;
         sess->mss = 0;
         sess->wscale = 0;
+        /* Initial sequence number */
+        sess->seq = rnd;
 
         /* Parse options */
         u8 *tcpopts = pkt + sizeof(struct tcp_hdr);
         int optsz = (tcp->offset << 2) - sizeof(struct tcp_hdr);
-        while ( optsz > 0 ) {
-            switch ( *tcpopts ) {
-            case TCP_OPT_EOL:
-                optsz = 0;      /* not elegant */
-                break;
-            case TCP_OPT_NOP:
-                tcpopts++;
-                optsz--;
-                break;
-            case TCP_OPT_MSS:
-                tcpopts++;
-                optsz--;
-                if ( optsz < 3 || *tcpopts != 4 ) {
-                    /* Invalid */
-                    optsz = 0;
-                } else {
-                    tcpopts++;
-                    optsz--;
-                    sess->mss = bswap16(*(u16 *)tcpopts);
-                    tcpopts += 2;
-                    optsz -= 2;
-                }
-                break;
-            case TCP_OPT_WSCALE:
-                tcpopts++;
-                optsz--;
-                if ( optsz < 2 || *tcpopts != 3 ) {
-                    /* Invalid */
-                    optsz = 0;
-                } else {
-                    tcpopts++;
-                    optsz--;
-                    sess->wscale = *tcpopts;
-                    tcpopts++;
-                    optsz--;
-                }
-                break;
-            default:
-                tcpopts++;
-                optsz--;
-                if ( optsz < 1 || optsz + 1 < *tcpopts ) {
-                    /* Invalid */
-                    optsz = 0;
-                } else {
-                    optsz -= *tcpopts - 1;
-                    tcpopts += *tcpopts - 1;
-                }
-            }
+        struct tcpopts opts;
+        ret = tcp_opt_parse(tcpopts, optsz, &opts);
+        if ( ret < 0 ) {
+            /* Invalid option format */
+            return -1;
         }
+        if ( opts.mss >= 0 ) {
+            sess->mss = opts.mss;
+        }
+        if ( opts.wscale >= 0 ) {
+            sess->wscale = opts.wscale;
+        }
+
         kprintf("MSS: %d, Window scaling opt: %d\r\n", sess->mss, sess->wscale);
-#endif
 
 
-        int ret;
         u8 buf[4096];
         u8 *p;
         struct net_hps_host_port_ip_data mdata;
         struct tcp_hdr *tcp2;
-        u64 rnd;
-        ret = rdrand(&rnd);
-        if ( ret < 0 ) {
-            return ret;
-        }
 
         mdata.hport = ((struct net_port *)(tx->data))->next.data;
         /* FIXME: implement the source address selection */
@@ -578,7 +678,10 @@ _ipv4_tcp(struct net *net, struct net_stack_chain_next *tx,
         mdata.flags = 0;
         mdata.proto = IP_TCP;
 
-        /* Prepare a packet buffer */
+        /* Last ack number */
+        sess->ack = bswap32(tcp->seqno) + 1;
+
+        /* Prepare a packet buffer for ACK */
         ret = net_hps_host_port_ip_pre(net, &mdata, buf, 4096, &p);
         if ( ret < sizeof(struct tcp_hdr) + 8 ) {
             return -1;
@@ -587,7 +690,7 @@ _ipv4_tcp(struct net *net, struct net_stack_chain_next *tx,
         tcp2->sport = tcp->dport;
         tcp2->dport = tcp->sport;
         tcp2->seqno = rnd;
-        tcp2->ackno = bswap32(bswap32(tcp->seqno) + 1);
+        tcp2->ackno = bswap32(sess->ack);
         tcp2->flag_ns = 0;
         tcp2->flag_reserved = 0;
         tcp2->offset = 5 + 2;
@@ -628,12 +731,83 @@ _ipv4_tcp(struct net *net, struct net_stack_chain_next *tx,
 
         return net_hps_host_port_ip_post(net, &mdata, buf,
                                          sizeof(struct tcp_hdr) + 8);
+
     } else if ( tcp->flag_fin ) {
         kprintf("Received a FIN packet %d => %d\r\n",
                 bswap16(tcp->sport), bswap16(tcp->dport));
+
+        if ( NULL == sess ) {
+            /* Not established */
+            return -1;
+        }
+        kprintf("*** FIN: %d\r\n", sess->mss);
+
+        int ret;
+        u8 buf[4096];
+        u8 *p;
+        struct net_hps_host_port_ip_data mdata;
+        struct tcp_hdr *tcp2;
+        u64 rnd;
+        ret = rdrand(&rnd);
+        if ( ret < 0 ) {
+            return ret;
+        }
+
+        mdata.hport = ((struct net_port *)(tx->data))->next.data;
+        /* FIXME: implement the source address selection */
+        mdata.saddr = iphdr->ip_dst;
+        mdata.daddr = iphdr->ip_src;
+        mdata.flags = 0;
+        mdata.proto = IP_TCP;
+
+        /* Prepare a packet buffer */
+        ret = net_hps_host_port_ip_pre(net, &mdata, buf, 4096, &p);
+        if ( ret < sizeof(struct tcp_hdr) ) {
+            return -1;
+        }
+        tcp2 = (struct tcp_hdr *)p;
+        tcp2->sport = tcp->dport;
+        tcp2->dport = tcp->sport;
+        tcp2->seqno = tcp->ackno;
+        tcp2->ackno = 0;
+        tcp2->flag_ns = 0;
+        tcp2->flag_reserved = 0;
+        tcp2->offset = 5;
+        tcp2->flag_fin = 1;
+        tcp2->flag_syn = 0;
+        tcp2->flag_rst = 0;
+        tcp2->flag_psh = 0;
+        tcp2->flag_ack = 1;
+        tcp2->flag_urg = 0;
+        tcp2->flag_ece = 0;
+        tcp2->flag_cwr = 0;
+        tcp2->wsize = 0xffff;
+        tcp2->checksum = 0;
+        tcp2->urgptr = 0;
+
+        /* Pseudo checksum */
+        struct tcp_phdr4 *ptcp;
+        ptcp = alloca(sizeof(struct tcp_phdr4));
+        kmemcpy(&ptcp->sport, tcp2, sizeof(struct tcp_hdr));
+        ptcp->saddr = iphdr->ip_dst;
+        ptcp->daddr = iphdr->ip_src;
+        ptcp->zeros = 0;
+        ptcp->proto = IP_TCP;
+        ptcp->tcplen = bswap16(sizeof(struct tcp_hdr) + 0 /*payload*/);
+        tcp2->checksum = _checksum((u8 *)ptcp, sizeof(struct tcp_phdr4) + 8);
+
+        return net_hps_host_port_ip_post(net, &mdata, buf,
+                                         sizeof(struct tcp_hdr));
     } else if ( tcp->flag_ack ) {
         kprintf("Received an ACK packet %d => %d\r\n",
                 bswap16(tcp->sport), bswap16(tcp->dport));
+
+        if ( NULL == sess ) {
+            /* Not established */
+            return -1;
+        }
+        kprintf("*** ACK: %d\r\n", sess->mss);
+
     }
 
     return -1;
@@ -1077,6 +1251,14 @@ net_init(struct net *net)
 {
     /* Set the system MTU */
     net->sys_mtu = 9216;
+
+    int i;
+    for ( i = 0; i < TCP_MAX_SESSIONS; i++ ) {
+        sessions[i].state = TCP_CLOSED;
+    }
+    sessions[0].state = TCP_LISTEN;
+    sessions[0].lipaddr = 0;
+    sessions[0].lport = bswap16(23);
 
     return 0;
 }
