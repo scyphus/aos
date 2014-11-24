@@ -1886,7 +1886,7 @@ shell_tcp_recv(struct tcp_session *sess, const u8 *pkt, u32 len)
 {
     kprintf("Data recv %d\r\n", len);
 
-    sess->send(sess, "test\r\n", 6);
+    sess->send(sess, "> ", 2);
 
     return 0;
 }

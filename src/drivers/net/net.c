@@ -283,7 +283,8 @@ tcp_send_ack(struct net *net, struct net_stack_chain_next *tx,
     tcp2->flag_urg = 0;
     tcp2->flag_ece = 0;
     tcp2->flag_cwr = 0;
-    tcp2->wsize = 0xffff;
+    //tcp2->wsize = 0xffff;
+    tcp2->wsize = bswap16(1024);
     tcp2->checksum = 0;
     tcp2->urgptr = 0;
 
@@ -296,7 +297,7 @@ tcp_send_ack(struct net *net, struct net_stack_chain_next *tx,
         opt[3] = 0xb4;
         opt[4] = 3;
         opt[5] = 3;
-        opt[6] = 14;
+        opt[6] = 10;            /* Window scale option */
         opt[7] = 0;
     }
 
@@ -362,9 +363,12 @@ tcp_send_data(struct net *net, struct net_stack_chain_next *tx,
     tcp2->flag_urg = 0;
     tcp2->flag_ece = 0;
     tcp2->flag_cwr = 0;
-    tcp2->wsize = 0xffff;
+    //tcp2->wsize = 0xffff;
+    tcp2->wsize = bswap16(
+        ((sess->twin.sz + sess->twin.pos0 - sess->twin.pos1 - 1)
+         % sess->twin.sz) >> sess->wscale);
     tcp2->checksum = 0;
-    tcp2->urgptr = 0;
+    tcp2->urgptr = 0;    /* Check the buffer */
 
     /* Pseudo checksum */
     struct tcp_phdr4 *ptcp;
@@ -866,7 +870,7 @@ _ipv4_tcp(struct net *net, struct net_stack_chain_next *tx,
             sess->rackno = bswap32(tcp->ackno);
             if ( !tcp->flag_syn ) {
                 u32 sz = sess->rackno - sess->seq;
-                kprintf("*** %x\r\n", sz);
+                //kprintf("*** %x\r\n", sz);
                 int npos0 = (sess->twin.pos0 + sz) % sess->twin.sz;
                 if ( (sess->twin.sz + sess->twin.pos1 - npos0) % sess->twin.sz
                      < (sess->twin.sz + sess->twin.pos1 - sess->twin.pos0)
@@ -886,7 +890,9 @@ _ipv4_tcp(struct net *net, struct net_stack_chain_next *tx,
                 sess->rseqno = tmp + paylen;
                 sess->ack = sess->rseqno;
                 sess->recv(sess, pkt + (tcp->offset << 2), paylen);
-                return tcp_send_ack(net, tx, sess, sess->seq, 0, 0);
+                int ret = tcp_send_ack(net, tx, sess, sess->seq, 0, 0);
+                net_tcp_trigger(net);
+                return ret;
             } else {
                 /* Invalid: FIXME: send RST? */
                 return -1;
