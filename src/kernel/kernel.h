@@ -185,10 +185,18 @@ struct tcp_session {
     u32 ack;
     u32 rseqno;
     u32 rackno;
+    /* Received window size */
+    u16 rcvwin;
     /* MSS */
     u32 mss;
     /* Window */
     u8 wscale;
+
+    /* Payload handler */
+    int (*recv)(struct tcp_session *sess, const u8 *pkt, u32 len);
+    int (*send)(struct tcp_session *sess, const u8 *pkt, u32 len);
+    struct net *net;
+    struct net_stack_chain_next *tx;
 
     /* For optimization */
     //u8 *ackpkt;

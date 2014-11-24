@@ -1876,6 +1876,24 @@ shell_main(int argc, char *argv[])
 }
 
 
+
+
+
+
+
+int
+shell_tcp_recv(struct tcp_session *sess, const u8 *pkt, u32 len)
+{
+    kprintf("Data recv %d\r\n", len);
+
+    sess->send(sess, "test\r\n", 6);
+
+    return 0;
+}
+
+
+
+
 /*
  * Local variables:
  * tab-width: 4

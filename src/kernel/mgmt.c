@@ -132,7 +132,7 @@ mgmt_tcp_syn_recv(void)
 
 
 
-
+int net_tcp_trigger(struct net *);
 
 /*
  * Management process
@@ -231,12 +231,21 @@ mgmt_main(int argc, char *argv[])
     net_rib4_add(&hport.rib4, bswap32(ipa & (0xffffffffULL<<(32-ipm))), ipm, 0);
     net_rib4_add(&hport.rib4, 0, 0, bswap32(gwa));
 
+    u64 tsc0 = rdtsc();
+    u64 tsc1;
     for ( ;; ) {
         n = port.netdev->recvpkt(pkt, gnet.sys_mtu, port.netdev);
         if ( n <= 0 ) {
             continue;
         }
         port.next.func(&gnet, pkt, n, port.next.data);
+
+        /* Trigger for TCP transmission */
+        tsc1 = rdtsc();
+        if ( tsc1 - tsc0 > 3000 * 1000 * 100 /* ~100ms FIXME */ ) {
+            net_tcp_trigger(&gnet);
+            tsc0 = tsc1;
+        }
     }
 
     return 0;
