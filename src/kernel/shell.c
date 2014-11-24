@@ -1884,9 +1884,22 @@ shell_main(int argc, char *argv[])
 int
 shell_tcp_recv(struct tcp_session *sess, const u8 *pkt, u32 len)
 {
-    kprintf("Data recv %d\r\n", len);
+    u8 *buf = alloca(len + 1);
+    int i;
+    int j;
+    for ( i = 0, j = 0; i < len; i++ ) {
+        if ( 0xff == pkt[i] ) {
+            i += 2;
+        } else if ( '\r' == pkt[i] || '\n' == pkt[i] ) {
+            /* skip */
+        } else {
+            buf[j++] = pkt[i];
+        }
+    }
+    buf[j++] = 0;
 
-    sess->send(sess, "> ", 2);
+    _exec_cmdbuf(buf);
+    sess->send(sess, "pix> ", 5);
 
     return 0;
 }

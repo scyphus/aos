@@ -733,9 +733,10 @@ _ipv4_tcp(struct net *net, struct net_stack_chain_next *tx,
 
     if ( tcp->flag_syn && !tcp->flag_ack ) {
         /* SYN */
-
+#if 0
         kprintf("Received a SYN packet %d => %d\r\n",
                 bswap16(tcp->sport), bswap16(tcp->dport));
+#endif
 
         if ( NULL != sess ) {
             /* Already in use */
@@ -826,7 +827,9 @@ _ipv4_tcp(struct net *net, struct net_stack_chain_next *tx,
             sess->wscale = opts.wscale;
         }
 
+#if 0
         kprintf("MSS: %d, Window scaling opt: %d\r\n", sess->mss, sess->wscale);
+#endif
 
         /* Last ack number */
         sess->ack = sess->rseqno + 1;
@@ -834,8 +837,10 @@ _ipv4_tcp(struct net *net, struct net_stack_chain_next *tx,
 
         return tcp_send_ack(net, tx, sess, sess->seq, 1, 0);
     } else if ( tcp->flag_fin ) {
+#if 0
         kprintf("Received a FIN packet %d => %d\r\n",
                 bswap16(tcp->sport), bswap16(tcp->dport));
+#endif
 
         if ( NULL == sess ) {
             /* Not established */
@@ -861,8 +866,10 @@ _ipv4_tcp(struct net *net, struct net_stack_chain_next *tx,
         sess->rcvwin = bswap16(tcp->wsize);
 
         if ( tcp->flag_ack ) {
+#if 0
             kprintf("Received an ACK packet %d => %d\r\n",
                     bswap16(tcp->sport), bswap16(tcp->dport));
+#endif
 
             if ( TCP_SYN_RECEIVED == sess->state ) {
                 sess->state = TCP_ESTABLISHED;
