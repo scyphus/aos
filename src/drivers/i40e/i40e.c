@@ -730,6 +730,68 @@ i40e_tx_test2(struct netdev *netdev, u8 *pkt, int len, int blksize,
 }
 
 int
+i40e_tx_test3(struct netdev *netdev, u8 *pkt, int len, int blksize,
+              int frm, int to)
+{
+    struct i40e_device *dev;
+    struct i40e_tx_desc_data *txdesc;
+    int i;
+    int j;
+    u32 tdh;
+    u32 next_tail;
+
+    dev = (struct i40e_device *)netdev->vendor;
+
+    /* Prepare */
+    for ( i = frm; i < to; i++ ) {
+        for ( j = 0; j < dev->txq[i].bufsz; j++ ) {
+            txdesc = (struct i40e_tx_desc_data *)
+                (dev->txq[i].base + j * sizeof(struct i40e_tx_desc_data));
+            kmemcpy((void *)txdesc->pkt_addr, pkt, len);
+        }
+    }
+
+    int cnt = 0;
+    for ( ;; ) {
+
+        for ( i = frm; i < to; i++ ) {
+            tdh = dev->txq[i].head_cache;
+            next_tail = (dev->txq[i].tail + blksize) & dev->txq[i].bufmask;
+            if ( dev->txq[i].bufsz -
+                 (((dev->txq[i].bufsz - tdh + dev->txq[i].tail) & dev->txq[i].bufmask))
+                 < blksize ) {
+                tdh = mmio_read32(dev->mmio, I40E_QTX_HEAD(i));
+                dev->txq[i].head_cache = tdh;
+                if ( dev->txq[i].bufsz -
+                     (((dev->txq[i].bufsz - tdh + dev->txq[i].tail) & dev->txq[i].bufmask))
+                     < blksize ) {
+                    /* Still full */
+                    kprintf("Full: %x %x\r\n", tdh, dev->txq[i].tail);
+                    continue;
+                }
+            }
+            /* Not full */
+            for ( j = 0; j < blksize; j++ ) {
+                txdesc = (struct i40e_tx_desc_data *)
+                    (dev->txq[i].base
+                     + ((dev->txq[i].tail + j) & dev->txq[i].bufmask)
+                     * sizeof(struct i40e_tx_desc_data));
+                txdesc->l2tag = 0;
+                txdesc->txbufsz_offset = (len << 18) | 14;
+                txdesc->rsv_cmd_dtyp = 0 | (((1)/* | (1<<1)*/) << 4);
+            }
+            dev->txq[i].tail = next_tail;
+            mmio_write32(dev->mmio, I40E_QTX_TAIL(i), dev->txq[i].tail);
+
+            /* Packets Transmitted [64 Bytes] Count Low GLPRT_PTC64L:
+               0x003006A0 */
+        }
+    }
+
+    return 0;
+}
+
+int
 i40e_forwarding_test(struct netdev *netdev1, struct netdev *netdev2)
 {
     struct i40e_device *dev1;

@@ -274,6 +274,7 @@ int ixgbe_tx_test4(struct netdev *, struct netdev *, struct netdev *,
                    struct netdev *, u8 *, int, int);
 int i40e_tx_test(struct netdev *, u8 *, int, int);
 int i40e_tx_test2(struct netdev *, u8 *, int, int, int, int);
+int i40e_tx_test3(struct netdev *, u8 *, int, int, int, int);
 int
 _builtin_test(char *const argv[])
 {
@@ -1000,7 +1001,7 @@ _tx_main(int argc, char *argv[])
                    list->next->next->next->netdev,
                    pkt, pktsz + 18 - 4, blk);
 #else
-    i40e_tx_test2(list->netdev, pkt, pktsz + 18 - 4, blk, 0, 1);
+    i40e_tx_test3(list->netdev, pkt, pktsz + 18 - 4, blk, 0, 1);
 #endif
     //kprintf("%llx: pkt\r\n", list->netdev);
     //list->netdev->sendpkt(pkt, pktsz + 18 - 4, list->netdev);
