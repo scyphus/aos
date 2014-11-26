@@ -47,6 +47,19 @@
 #define I40E_PRTPM_SAL(n)       (0x001e4440 + 0x20 * (n)) /* RO */
 #define I40E_PRTPM_SAH(n)       (0x001e44c0 + 0x20 * (n)) /* RO */
 
+#define I40E_GLPCI_CNF2         0x000be494
+#define I40E_GLPCI_LINKCAP      0x000be4ac
+#define I40E_GLSCD_QUANTA       0x000b2080
+
+#define I40E_GLLAN_RCTL_0       0x0012a500
+
+#define I40E_GLPRT_GOTC(n)      (0x00300680 + 0x8 * (n))
+
+#define I40E_PRTGL_SAL          0x001e2120
+#define I40E_PRTGL_SAH          0x001e2140
+
+#define I40E_GLGEN_RTRIG        0x000b8190
+
 //PFHMC_SDCMD
 //PFHMC_SDDATALOW
 //PFHMC_SDDATAHIGH
@@ -226,6 +239,11 @@ mmio_read32(u64 base, u64 offset)
 {
     return *(volatile u32 *)(base + offset);
 }
+static __inline__ volatile u64
+mmio_read64(u64 base, u64 offset)
+{
+    return *(volatile u64 *)(base + offset);
+}
 
 /*
  * Write data to a PCI register by MMIO
@@ -303,8 +321,7 @@ i40e_init_hw(struct pci_device *pcidev)
         return NULL;
     }
 
-
-#if 1
+#if 0
     kprintf("ROM BAR: %x\r\n",
             pci_read_rom_bar(pcidev->bus, pcidev->slot, pcidev->func));
 #endif
@@ -340,6 +357,10 @@ i40e_init_fpm(struct i40e_device *dev)
     /* Get function number to determine the HMC function index */
     func = dev->pci_device->func;
 
+    /* Global/CORE reset */
+    mmio_write32(dev->mmio, I40E_GLGEN_RTRIG, 2);
+    arch_busy_usleep(20000);    /* wait 20ms */
+
     /* Read PFLAN_QALLOC register to find the base queue index and # of queues
        associated with the PF */
     qalloc = mmio_read32(dev->mmio, I40E_PFLAN_QALLOC);
@@ -362,6 +383,18 @@ i40e_init_fpm(struct i40e_device *dev)
     kprintf("LANRXBASE(1): %x %x\r\n",
             mmio_read32(dev->mmio, I40E_GLHMC_LANRXBASE(1)),
             mmio_read32(dev->mmio, I40E_GLHMC_LANRXCNT(1)));
+
+    kprintf("GLPCI_CNF2: %x\r\n", mmio_read32(dev->mmio, I40E_GLPCI_CNF2));
+    kprintf("GLPCI_LINKCAP: %x\r\n", mmio_read32(dev->mmio, I40E_GLPCI_LINKCAP));
+    kprintf("GLSCD_QUANTA: %x\r\n", mmio_read32(dev->mmio, I40E_GLSCD_QUANTA));
+
+    kprintf("PRTGL_SAL/H: %x %x\r\n", mmio_read32(dev->mmio, I40E_PRTGL_SAL),
+            mmio_read32(dev->mmio, I40E_PRTGL_SAH));
+
+    kprintf("GLLAN_RCTL_0: %x\r\n", mmio_read32(dev->mmio, I40E_GLLAN_RCTL_0));
+    mmio_write32(dev->mmio, I40E_GLLAN_RCTL_0, 1);
+    arch_busy_usleep(10000);
+    kprintf("GLLAN_RCTL_0: %x\r\n", mmio_read32(dev->mmio, I40E_GLLAN_RCTL_0));
 
 
     /* Tx descriptors */
@@ -433,8 +466,9 @@ i40e_init_fpm(struct i40e_device *dev)
     /* roundup512((TXBASE * 512) + (TXCNT * 2^TXOBJSZ)) / 512 */
     rxbase = (((txbase * 512) + (1 * (1<<txobjsz))) + 511) / 512;
 
-
-    kprintf("HMC: %llx, Tx: %llx, Rx: %llx\r\n", hmcint, dev->tx_base, dev->rx_base);
+#if 0
+    kprintf("HMC: %llx, Rx: %llx\r\n", hmcint, dev->rx_base);
+#endif
 
     struct i40e_lan_txq_ctx *txq_ctx;
     for ( i = 0; i < 4; i++ ){
@@ -512,7 +546,6 @@ i40e_init_fpm(struct i40e_device *dev)
         }
     }
 
-
     /* Invalidate */
     //mmio_write32(dev->mmio, I40E_PFHMC_PDINV, 0);
 
@@ -532,91 +565,10 @@ i40e_init_fpm(struct i40e_device *dev)
         kprintf("Error on enable a RX queue\r\n");
     }
 
-#if 0
-    txdesc = (struct i40e_tx_desc_data *)(dev->tx_base);
-    u8 *pkt = (u8 *)txdesc->pkt_addr;
-    pkt[0] = 0xff;
-    pkt[1] = 0xff;
-    pkt[2] = 0xff;
-    pkt[3] = 0xff;
-    pkt[4] = 0xff;
-    pkt[5] = 0xff;
-    pkt[6] = dev->macaddr[0];
-    pkt[7] = dev->macaddr[1];
-    pkt[8] = dev->macaddr[2];
-    pkt[9] = dev->macaddr[3];
-    pkt[10] = dev->macaddr[4];
-    pkt[11] = dev->macaddr[5];
-    pkt[12] = 0x08;
-    pkt[13] = 0x00;
-    pkt[12] = 0x08;
-    pkt[13] = 0x00;
-    /* IP header */
-    pkt[14] = 0x45;
-    pkt[15] = 0x00;
-    pkt[16] = (46 >> 8) & 0xff;
-    pkt[17] = 46 & 0xff;
-    /* ID / fragment */
-    pkt[18] = 0x26;
-    pkt[19] = 0x6d;
-    pkt[20] = 0x00;
-    pkt[21] = 0x00;
-    /* TTL/protocol */
-    pkt[22] = 0x64;
-    pkt[23] = 17;
-    /* checksum */
-    pkt[24] = 0x00;
-    pkt[25] = 0x00;
-    /* src: 192.168.100.2 */
-    pkt[26] = 192;
-    pkt[27] = 168;
-    pkt[28] = 100;
-    pkt[29] = 2;
-    /* dst */
-    pkt[30] = 224;
-    pkt[31] = 0;
-    pkt[32] = 0;
-    pkt[33] = 1;
-    /* UDP */
-    pkt[34] = 0xff;
-    pkt[35] = 0xff;
-    pkt[36] = 0xff;
-    pkt[37] = 0xfe;
-    pkt[38] = (46 - 20) >> 8;
-    pkt[39] = (46 - 20) & 0xff;
-    pkt[40] = 0x00;
-    pkt[41] = 0x00;
-    kmemset(pkt + 42, 0, 46 + 14 - 42);
-    /* Compute checksum */
-    u16 *tmp;
-    u32 cs;
-    pkt[24] = 0x0;
-    pkt[25] = 0x0;
-    tmp = (u16 *)pkt;
-    cs = 0;
-    for ( i = 7; i < 17; i++ ) {
-        cs += (u32)tmp[i];
-        cs = (cs & 0xffff) + (cs >> 16);
-    }
-    cs = 0xffff - cs;
-    pkt[24] = cs & 0xff;
-    pkt[25] = cs >> 8;
-
-    txdesc->l2tag = 0;
-    txdesc->txbufsz_offset = (60 << 18) | 14;
-    txdesc->rsv_cmd_dtyp = 0 | (((1) | (1<<1)) << 4);
-
-    mmio_write32(dev->mmio, I40E_QTX_TAIL(0), 1);
-
-    mfence();
-
-    for ( i = 0; i < 10; i++ ) {
-        arch_busy_usleep(1);
-        kprintf("%x %x %x\r\n", txdesc->rsv_cmd_dtyp,
-                mmio_read32(dev->mmio, I40E_QTX_HEAD(0)),
-                mmio_read32(dev->mmio, I40E_QTX_TAIL(0)));
-    }
-#endif
+    kprintf("GLLAN_RCTL_0: %x\r\n", mmio_read32(dev->mmio, I40E_GLLAN_RCTL_0));
+    mmio_write32(dev->mmio, I40E_GLLAN_RCTL_0, 1);
+    arch_busy_usleep(10000);
+    kprintf("GLLAN_RCTL_0: %x\r\n", mmio_read32(dev->mmio, I40E_GLLAN_RCTL_0));
 
     return 0;
 }
@@ -739,7 +691,9 @@ i40e_tx_test3(struct netdev *netdev, u8 *pkt, int len, int blksize,
     u32 tdh;
     u32 next_tail;
 
+
     dev = (struct i40e_device *)netdev->vendor;
+    kprintf("GLLAN_RCTL_0: %x\r\n", mmio_read32(dev->mmio, I40E_GLLAN_RCTL_0));
 
     /* Prepare */
     for ( i = frm; i < to; i++ ) {

@@ -140,9 +140,10 @@ _builtin_show(char *const argv[])
         struct pci *list;
         list = pci_list();
         while ( list ) {
-            kprintf("%.2x.%.2x.%.2x %.4x:%.4x\r\n", list->device->bus,
+            kprintf("%.2x.%.2x.%.2x %.4x:%.4x (Rev. %x)\r\n", list->device->bus,
                     list->device->slot, list->device->func,
-                    list->device->vendor_id, list->device->device_id);
+                    list->device->vendor_id, list->device->device_id,
+                    list->device->revision);
             list = list->next;
         }
     } else if ( 0 == kstrcmp("processors", argv[1]) ) {
