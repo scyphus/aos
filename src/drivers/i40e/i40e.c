@@ -369,6 +369,7 @@ i40e_init_fpm(struct i40e_device *dev)
     for ( i = 0; i < 4; i++ ) {
         dev->txq[i].tail = 0;
         dev->txq[i].head_cache = 0;
+        dev->txq[i].headwb = 0;
         /* up to 64 K minus 8 */
         dev->txq[i].bufsz = (1<<12);
         dev->txq[i].bufmask = (1<<12) - 1;
@@ -436,7 +437,6 @@ i40e_init_fpm(struct i40e_device *dev)
     kprintf("HMC: %llx, Tx: %llx, Rx: %llx\r\n", hmcint, dev->tx_base, dev->rx_base);
 
     struct i40e_lan_txq_ctx *txq_ctx;
-    u32 head;
     for ( i = 0; i < 4; i++ ){
         txq_ctx = (struct i40e_lan_txq_ctx *)(hmcint + txbase * 512 + i * 128);
         txq_ctx->head = 0;
@@ -444,9 +444,9 @@ i40e_init_fpm(struct i40e_device *dev)
         txq_ctx->newctx = 1;
         txq_ctx->base = dev->txq[i].base / 128;
         txq_ctx->thead_wb = 0;
-        txq_ctx->head_wben = 0;
+        txq_ctx->head_wben = 1;
         txq_ctx->qlen = dev->txq[i].bufsz;
-        txq_ctx->head_wbaddr = (u64)&dev->txq[i].headwb;
+        txq_ctx->head_wbaddr = (u64)&(dev->txq[i].headwb);
         txq_ctx->tphrdesc = 1;
         txq_ctx->tphrpacket = 1;
         txq_ctx->tphwdesc = 1;
@@ -648,7 +648,7 @@ i40e_tx_test(struct netdev *netdev, u8 *pkt, int len, int blksize)
         if ( 0xf == (txdesc->rsv_cmd_dtyp & 0xf) )  {
             /* Write back ok */
             txdesc->l2tag = 0;
-            txdesc->txbufsz_offset = (len << 18) | 14;
+            txdesc->txbufsz_offset = (len << 18) | 14/2;
             txdesc->rsv_cmd_dtyp = 0 | (((1) | (1<<1)) << 4);
 
             cnt += 1;
@@ -689,7 +689,6 @@ i40e_tx_test2(struct netdev *netdev, u8 *pkt, int len, int blksize,
         }
     }
 
-    int cnt = 0;
     for ( ;; ) {
 
         for ( i = frm; i < to; i++ ) {
@@ -715,7 +714,7 @@ i40e_tx_test2(struct netdev *netdev, u8 *pkt, int len, int blksize,
                      + ((dev->txq[i].tail + j) & dev->txq[i].bufmask)
                      * sizeof(struct i40e_tx_desc_data));
                 txdesc->l2tag = 0;
-                txdesc->txbufsz_offset = (len << 18) | 14;
+                txdesc->txbufsz_offset = (len << 18) | 14/2;
                 txdesc->rsv_cmd_dtyp = 0 | (((1)/* | (1<<1)*/) << 4);
             }
             dev->txq[i].tail = next_tail;
@@ -751,25 +750,22 @@ i40e_tx_test3(struct netdev *netdev, u8 *pkt, int len, int blksize,
         }
     }
 
-    int cnt = 0;
     for ( ;; ) {
 
         for ( i = frm; i < to; i++ ) {
-            tdh = dev->txq[i].head_cache;
-            next_tail = (dev->txq[i].tail + blksize) & dev->txq[i].bufmask;
-            if ( dev->txq[i].bufsz -
-                 (((dev->txq[i].bufsz - tdh + dev->txq[i].tail) & dev->txq[i].bufmask))
-                 < blksize ) {
-                tdh = mmio_read32(dev->mmio, I40E_QTX_HEAD(i));
-                dev->txq[i].head_cache = tdh;
-                if ( dev->txq[i].bufsz -
-                     (((dev->txq[i].bufsz - tdh + dev->txq[i].tail) & dev->txq[i].bufmask))
-                     < blksize ) {
-                    /* Still full */
-                    kprintf("Full: %x %x\r\n", tdh, dev->txq[i].tail);
-                    continue;
-                }
+
+            tdh = dev->txq[i].headwb;
+
+            u32 avl;
+            avl = (dev->txq[i].bufsz - dev->txq[i].tail + tdh - 1)
+                & dev->txq[i].bufmask;
+
+            if ( avl < blksize ) {
+                //kprintf("Full: %x %x\r\n", tdh, dev->txq[i].tail);
+                continue;
             }
+            next_tail = (dev->txq[i].tail + blksize) & dev->txq[i].bufmask;
+
             /* Not full */
             for ( j = 0; j < blksize; j++ ) {
                 txdesc = (struct i40e_tx_desc_data *)
@@ -777,9 +773,11 @@ i40e_tx_test3(struct netdev *netdev, u8 *pkt, int len, int blksize,
                      + ((dev->txq[i].tail + j) & dev->txq[i].bufmask)
                      * sizeof(struct i40e_tx_desc_data));
                 txdesc->l2tag = 0;
-                txdesc->txbufsz_offset = (len << 18) | 14;
-                txdesc->rsv_cmd_dtyp = 0 | (((1)/* | (1<<1)*/) << 4);
+                txdesc->txbufsz_offset = (len << 18) | 14/2/* | ((20/4)<<7)*/;
+                txdesc->rsv_cmd_dtyp = 0 | (((1) /*| (1<<1)*/ | (1<<2)
+                                             /*| (2<<5)*//*IPv4 w/o cso*/) << 4);
             }
+            txdesc->rsv_cmd_dtyp |= (1<<1)<<4;
             dev->txq[i].tail = next_tail;
             mmio_write32(dev->mmio, I40E_QTX_TAIL(i), dev->txq[i].tail);
 

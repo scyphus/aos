@@ -27,6 +27,8 @@ void ktask_free(struct ktask *);
 /* FIXME: To be moved to somewhere else */
 int kbd_driver_main(int argc, char *argv[]);
 
+void lapic_send_ns_fixed_ipi(u8, u8);
+
 /*
  * Initialize the scheduler
  */
