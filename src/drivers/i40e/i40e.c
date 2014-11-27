@@ -955,10 +955,15 @@ i40e_forwarding_test(struct netdev *netdev1, struct netdev *netdev2)
             }
             dev1->rx_tail = (dev1->rx_tail + 1) & dev1->rx_bufmask;
 
+#if 0
             if ( 0 == (cnt & 0xffffff) ) {
-                kprintf("%.16llx %.16llx\r\n", cnt, mmio_read32(dev1->mmio, 0x00300480));
+                kprintf("%.16llx %.16llx\r\n",
+                        mmio_read32(dev1->mmio, 0x0036e400),
+                        mmio_read32(dev1->mmio, 0x00300480));
+                //kprintf("%.16llx %.16llx\r\n", cnt, mmio_read32(dev1->mmio, 0x00300480));
                 //kprintf("%llx\r\n", mmio_read32(dev1->mmio, 0x00310000));
             }
+#endif
 
         }
     }
