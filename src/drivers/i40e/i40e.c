@@ -406,6 +406,13 @@ i40e_init_fpm(struct i40e_device *dev)
     //mmio_write32(dev->mmio, I40E_GLGEN_RTRIG, 2);
     //arch_busy_usleep(20000);    /* wait 20ms */
 
+#if 0
+    mmio_write32(dev->mmio, I40E_GLSCD_QUANTA, 3);
+    arch_busy_usleep(100000);
+    kprintf("GLSCD_QUANTA: %x\r\n", mmio_read32(dev->mmio, I40E_GLSCD_QUANTA));
+#endif
+
+
     /* Initialize the admin queue */
     dev->atq.len = 128;
     dev->atq.base = kmalloc(sizeof(struct i40e_aq_desc) * dev->atq.len);
@@ -487,8 +494,29 @@ i40e_init_fpm(struct i40e_device *dev)
             mmio_read32(dev->mmio, I40E_PF_ARQT),
             mmio_read32(dev->mmio, I40E_PF_ARQH));
 #endif
+    /* Set MAC config */
+    dev->atq.base[2].flags = 0;
+    dev->atq.base[2].opcode = 0x0603;
+    dev->atq.base[2].len = 0;
+    dev->atq.base[2].ret = 0;
+    dev->atq.base[2].cookieh = 0x9abc;
+    dev->atq.base[2].cookiel = 0xdef0;
+    dev->atq.base[2].param0 = 1518 | (1<<18) | (7<<24);
+    dev->atq.base[2].param1 = 0;
+    dev->atq.base[2].addrh = 0;
+    dev->atq.base[2].addrl = 0;
+    mmio_write32(dev->mmio, I40E_PF_ATQT, 3);
+    while ( !(dev->atq.base[1].flags & 0x1) ) {
+        arch_busy_usleep(10);
+    }
 
-
+#if 0
+    kprintf("VSI: %x %x %x %x\r\n",
+            mmio_read32(dev->mmio, I40E_PF_ATQH),
+            mmio_read32(dev->mmio, I40E_PF_ARQT),
+            mmio_read32(dev->mmio, I40E_PF_ARQT),
+            mmio_read32(dev->mmio, I40E_PF_ARQH));
+#endif
 
     /* Read PFLAN_QALLOC register to find the base queue index and # of queues
        associated with the PF */
@@ -615,7 +643,7 @@ i40e_init_fpm(struct i40e_device *dev)
         txq_ctx->tphrdesc = 1;
         txq_ctx->tphrpacket = 1;
         txq_ctx->tphwdesc = 1;
-        txq_ctx->rdylist = 0x0;
+        txq_ctx->rdylist = 0;
     }
 
     struct i40e_lan_rxq_ctx *rxq_ctx;
@@ -706,7 +734,7 @@ i40e_init_fpm(struct i40e_device *dev)
     //kprintf("GLLAN_RCTL_0: %x\r\n", mmio_read32(dev->mmio, I40E_GLLAN_RCTL_0));
     //mmio_write32(dev->mmio, I40E_GLLAN_RCTL_0, 1);
     //arch_busy_usleep(10000);
-    kprintf("GLLAN_RCTL_0: %x\r\n", mmio_read32(dev->mmio, I40E_GLLAN_RCTL_0));
+    //kprintf("GLLAN_RCTL_0: %x\r\n", mmio_read32(dev->mmio, I40E_GLLAN_RCTL_0));
 
     return 0;
 }
