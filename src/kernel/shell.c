@@ -815,9 +815,9 @@ _routing_main(int argc, char *argv[])
     list = netdev_head;
 
     kprintf("Started routing: %s => %s\r\n", list->next->netdev->name,
-            list->next->next->netdev->name);
+            list->next->netdev->name);
     //ixgbe_forwarding_test(list->next->netdev, list->next->next->netdev);
-    i40e_forwarding_test(list->next->netdev, list->next->next->netdev);
+    i40e_forwarding_test(list->next->netdev, list->next->netdev);
 
     return 0;
 }
