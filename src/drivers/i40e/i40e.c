@@ -512,10 +512,10 @@ i40e_init_fpm(struct i40e_device *dev)
 
 #if 0
     kprintf("VSI: %x %x %x %x\r\n",
-            mmio_read32(dev->mmio, I40E_PF_ATQH),
-            mmio_read32(dev->mmio, I40E_PF_ARQT),
-            mmio_read32(dev->mmio, I40E_PF_ARQT),
-            mmio_read32(dev->mmio, I40E_PF_ARQH));
+            mmio_read32(dev->mmio, 0x0020C800),
+            mmio_read32(dev->mmio, 0x0020C804),
+            mmio_read32(dev->mmio, 0x0020C808),
+            mmio_read32(dev->mmio, 0x0020C80c));
 #endif
 
     /* Read PFLAN_QALLOC register to find the base queue index and # of queues
@@ -561,7 +561,7 @@ i40e_init_fpm(struct i40e_device *dev)
         dev->txq[i].tail = 0;
         dev->txq[i].head_cache = 0;
         dev->txq[i].headwb = 0;
-        /* up to 64 K minus 8 */
+        /* up to 8 K minus 32 */
         dev->txq[i].bufsz = (1<<12);
         dev->txq[i].bufmask = (1<<12) - 1;
         /* ToDo: 16 bytes for alignment */

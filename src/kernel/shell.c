@@ -416,8 +416,8 @@ _builtin_test(char *const argv[])
     pkt[24] = cs & 0xff;
     pkt[25] = cs >> 8;
 
-    ixgbe_tx_test(list->next->netdev, pkt, pktsz + 18 - 4, blk);
-    //i40e_tx_test(list->next->netdev, pkt, pktsz + 18 - 4, blk);
+    //ixgbe_tx_test(list->next->netdev, pkt, pktsz + 18 - 4, blk);
+    i40e_tx_test3(list->netdev, pkt, pktsz + 18 - 4, blk, 0, 1);
     //kprintf("%llx: pkt\r\n", list->netdev);
     //list->netdev->sendpkt(pkt, pktsz + 18 - 4, list->netdev);
 
@@ -1836,6 +1836,7 @@ shell_main(int argc, char *argv[])
 
     /* Start-up script */
     //_exec_cmdbuf("start mgmt 1 e0 192.168.56.11/24 192.168.56.1");
+    //_exec_cmdbuf("test 64 128");
 
     for ( ;; ) {
         c = 0;
