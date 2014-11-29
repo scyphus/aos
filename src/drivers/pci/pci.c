@@ -156,6 +156,7 @@ pci_check_function(u8 bus, u8 slot, u8 func)
     pci_dev->class = (u8)(class >> 8);
     pci_dev->subclass = (u8)(class & 0xff);
     pci_dev->progif = (u8)(prog >> 8);
+    pci_dev->revision = (u8)(prog & 0xff);
     pci->device = pci_dev;
     pci->next = NULL;
 

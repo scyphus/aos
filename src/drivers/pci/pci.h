@@ -21,6 +21,7 @@ struct pci_device {
     u8 class;
     u8 subclass;
     u8 progif;
+    u8 revision;
 };
 struct pci {
     struct pci_device *device;

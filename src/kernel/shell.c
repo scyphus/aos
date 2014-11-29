@@ -163,9 +163,10 @@ _builtin_show(char *const argv[])
         struct pci *list;
         list = pci_list();
         while ( list ) {
-            kprintf("%.2x.%.2x.%.2x %.4x:%.4x\r\n", list->device->bus,
+            kprintf("%.2x.%.2x.%.2x %.4x:%.4x (Rev. %x)\r\n", list->device->bus,
                     list->device->slot, list->device->func,
-                    list->device->vendor_id, list->device->device_id);
+                    list->device->vendor_id, list->device->device_id,
+                    list->device->revision);
             list = list->next;
         }
     } else if ( 0 == kstrcmp("processors", argv[1]) ) {
@@ -299,6 +300,7 @@ int ixgbe_tx_test4(struct netdev *, struct netdev *, struct netdev *,
                    struct netdev *, u8 *, int, int);
 int i40e_tx_test(struct netdev *, u8 *, int, int);
 int i40e_tx_test2(struct netdev *, u8 *, int, int, int, int);
+int i40e_tx_test3(struct netdev *, u8 *, int, int, int, int);
 int
 _builtin_test(char *const argv[])
 {
@@ -439,8 +441,8 @@ _builtin_test(char *const argv[])
     pkt[24] = cs & 0xff;
     pkt[25] = cs >> 8;
 
-    ixgbe_tx_test(list->next->netdev, pkt, pktsz + 18 - 4, blk);
-    //i40e_tx_test(list->next->netdev, pkt, pktsz + 18 - 4, blk);
+    //ixgbe_tx_test(list->next->netdev, pkt, pktsz + 18 - 4, blk);
+    i40e_tx_test3(list->netdev, pkt, pktsz + 18 - 4, blk, 0, 1);
     //kprintf("%llx: pkt\r\n", list->netdev);
     //list->netdev->sendpkt(pkt, pktsz + 18 - 4, list->netdev);
 
@@ -838,9 +840,9 @@ _routing_main(int argc, char *argv[])
     list = netdev_head;
 
     kprintf("Started routing: %s => %s\r\n", list->next->netdev->name,
-            list->next->next->netdev->name);
+            list->next->netdev->name);
     //ixgbe_forwarding_test(list->next->netdev, list->next->next->netdev);
-    i40e_forwarding_test(list->next->netdev, list->next->next->netdev);
+    i40e_forwarding_test(list->next->netdev, list->next->netdev);
 
     return 0;
 }
@@ -1012,7 +1014,7 @@ _tx_main(int argc, char *argv[])
                    list->next->next->next->netdev,
                    pkt, pktsz + 18 - 4, blk);
 #else
-    i40e_tx_test2(list->netdev, pkt, pktsz + 18 - 4, blk, 0, 1);
+    i40e_tx_test3(list->netdev, pkt, pktsz + 18 - 4, blk, 0, 1);
 #endif
     //kprintf("%llx: pkt\r\n", list->netdev);
     //list->netdev->sendpkt(pkt, pktsz + 18 - 4, list->netdev);
@@ -1088,7 +1090,7 @@ _tx2_main(int argc, char *argv[])
     pkt[3] = 0x6a;
     pkt[4] = 0x00;
     pkt[5] = 0xdc;
-#elif 0
+#elif 1
     pkt[0] = 0x00;
     pkt[1] = 0x40;
     pkt[2] = 0x66;
@@ -1186,7 +1188,7 @@ _tx2_main(int argc, char *argv[])
                    list->next->next->next->netdev,
                    pkt, pktsz + 18 - 4, blk);
 #else
-    i40e_tx_test2(list->netdev, pkt, pktsz + 18 - 4, blk, 2, 4);
+    i40e_tx_test3(list->netdev, pkt, pktsz + 18 - 4, blk, 2, 3);
 #endif
     //kprintf("%llx: pkt\r\n", list->netdev);
     //list->netdev->sendpkt(pkt, pktsz + 18 - 4, list->netdev);
@@ -1225,12 +1227,12 @@ _builtin_start(char *const argv[])
         kprintf("Launch mgmt\r\n");
     } else if ( 0 == kstrcmp("tx", argv[1]) ) {
         /* Start Tx */
-        char **argv = kmalloc(sizeof(char *) * 4);
-        argv[0] = "tx";
-        argv[1] = argv[3] ? kstrdup(argv[3]) : NULL;
-        argv[2] = argv[4] ? kstrdup(argv[4]) : NULL;
-        argv[3] = NULL;
-        ret = ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_tx_main, argv);
+        char **nargv = kmalloc(sizeof(char *) * 4);
+        nargv[0] = "tx";
+        nargv[1] = argv[3] ? kstrdup(argv[3]) : NULL;
+        nargv[2] = argv[4] ? kstrdup(argv[4]) : NULL;
+        nargv[3] = NULL;
+        ret = ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_tx_main, nargv);
         if ( ret < 0 ) {
             kprintf("Cannot launch tx\r\n");
             return -1;
@@ -1238,12 +1240,12 @@ _builtin_start(char *const argv[])
         kprintf("Launch tx @ CPU #%d\r\n", id);
     } else if ( 0 == kstrcmp("tx2", argv[1]) ) {
         /* Start Tx */
-        char **argv = kmalloc(sizeof(char *) * 4);
-        argv[0] = "tx";
-        argv[1] = argv[3] ? kstrdup(argv[3]) : NULL;
-        argv[2] = argv[4] ? kstrdup(argv[4]) : NULL;
-        argv[3] = NULL;
-        ret = ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_tx2_main, argv);
+        char **nargv = kmalloc(sizeof(char *) * 4);
+        nargv[0] = "tx";
+        nargv[1] = argv[3] ? kstrdup(argv[3]) : NULL;
+        nargv[2] = argv[4] ? kstrdup(argv[4]) : NULL;
+        nargv[3] = NULL;
+        ret = ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_tx2_main, nargv);
         if ( ret < 0 ) {
             kprintf("Cannot launch tx2\r\n");
             return -1;
@@ -1521,6 +1523,8 @@ shell_main(int argc, char *argv[])
 
     /* Start-up script */
     _exec_cmdbuf("start mgmt 0 e0 192.168.56.11/24 192.168.56.1");
+    //_exec_cmdbuf("start mgmt 1 e0 192.168.56.11/24 192.168.56.1");
+    //_exec_cmdbuf("test 64 128");
 
     for ( ;; ) {
         c = 0;

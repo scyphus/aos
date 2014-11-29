@@ -47,6 +47,36 @@
 #define I40E_PRTPM_SAL(n)       (0x001e4440 + 0x20 * (n)) /* RO */
 #define I40E_PRTPM_SAH(n)       (0x001e44c0 + 0x20 * (n)) /* RO */
 
+#define I40E_GLPCI_CNF2         0x000be494
+#define I40E_GLPCI_LINKCAP      0x000be4ac
+#define I40E_GLSCD_QUANTA       0x000b2080
+
+#define I40E_GLLAN_RCTL_0       0x0012a500
+
+#define I40E_GLPRT_GOTC(n)      (0x00300680 + 0x8 * (n))
+
+#define I40E_PRTGL_SAL          0x001e2120
+#define I40E_PRTGL_SAH          0x001e2140
+
+#define I40E_GLGEN_RTRIG        0x000b8190
+
+
+#define I40E_AQ_LARGE_BUF       512
+/* MAX ==> 4096 */
+
+#define I40E_PF_ATQBAL          0x00080000
+#define I40E_PF_ATQBAH          0x00080100
+#define I40E_PF_ATQLEN          0x00080200      /*enable:1<<31*/
+#define I40E_PF_ATQH            0x00080300
+#define I40E_PF_ATQT            0x00080400
+
+#define I40E_PF_ARQBAL          0x00080080
+#define I40E_PF_ARQBAH          0x00080180
+#define I40E_PF_ARQLEN          0x00080280      /*enable:1<<31*/
+#define I40E_PF_ARQH            0x00080380
+#define I40E_PF_ARQT            0x00080480
+
+
 //PFHMC_SDCMD
 //PFHMC_SDDATALOW
 //PFHMC_SDDATAHIGH
@@ -91,9 +121,38 @@ union i40e_rx_desc {
     struct i40e_rx_desc_wb wb;
 } __attribute__ ((packed));
 
+struct i40e_aq_desc {
+    u16 flags;
+    u16 opcode;
+    u16 len;
+    u16 ret;
+    u32 cookieh;
+    u32 cookiel;
+    u32 param0;
+    u32 param1;
+    u32 addrh;
+    u32 addrl;
+} __attribute__ ((packed));
+
+
 
 struct i40e_device {
     u64 mmio;
+
+    /* Admin queue */
+    struct {
+        struct i40e_aq_desc *base;
+        u32 tail;
+        int len;
+        u8 *bufset;
+    } atq;
+    struct {
+        struct i40e_aq_desc *base;
+        u32 tail;
+        int len;
+        u8 *bufset;
+    } arq;
+
 
     u64 rx_base;
     u32 rx_tail;
@@ -226,6 +285,11 @@ mmio_read32(u64 base, u64 offset)
 {
     return *(volatile u32 *)(base + offset);
 }
+static __inline__ volatile u64
+mmio_read64(u64 base, u64 offset)
+{
+    return *(volatile u64 *)(base + offset);
+}
 
 /*
  * Write data to a PCI register by MMIO
@@ -286,7 +350,6 @@ i40e_init_hw(struct pci_device *pcidev)
 {
     struct i40e_device *dev;
     u32 m32;
-    int i;
 
     dev = kmalloc(sizeof(struct i40e_device));
 
@@ -303,8 +366,7 @@ i40e_init_hw(struct pci_device *pcidev)
         return NULL;
     }
 
-
-#if 1
+#if 0
     kprintf("ROM BAR: %x\r\n",
             pci_read_rom_bar(pcidev->bus, pcidev->slot, pcidev->func));
 #endif
@@ -340,12 +402,129 @@ i40e_init_fpm(struct i40e_device *dev)
     /* Get function number to determine the HMC function index */
     func = dev->pci_device->func;
 
+    /* Global/CORE reset */
+    //mmio_write32(dev->mmio, I40E_GLGEN_RTRIG, 2);
+    //arch_busy_usleep(20000);    /* wait 20ms */
+
+#if 0
+    mmio_write32(dev->mmio, I40E_GLSCD_QUANTA, 3);
+    arch_busy_usleep(100000);
+    kprintf("GLSCD_QUANTA: %x\r\n", mmio_read32(dev->mmio, I40E_GLSCD_QUANTA));
+#endif
+
+
+    /* Initialize the admin queue */
+    dev->atq.len = 128;
+    dev->atq.base = kmalloc(sizeof(struct i40e_aq_desc) * dev->atq.len);
+    dev->atq.bufset = kmalloc(4096 * dev->atq.len);
+    dev->arq.base = kmalloc(sizeof(struct i40e_aq_desc) * dev->arq.len);
+    dev->arq.len = 128;
+    dev->arq.bufset = kmalloc(4096 * dev->atq.len);
+    for ( i = 0; i < dev->arq.len; i++ ) {
+        dev->arq.base[i].flags = (1<<9) | (1<<12);
+        dev->arq.base[i].opcode = 0;
+        dev->arq.base[i].len = 4096;
+        dev->arq.base[i].ret = 0;
+        dev->arq.base[i].cookieh = 0;
+        dev->arq.base[i].cookiel = 0;
+        dev->arq.base[i].param0 = 0;
+        dev->arq.base[i].param1 = 0;
+        dev->arq.base[i].addrh = (u64)(dev->arq.bufset + (i * 4096)) >> 32;
+        dev->arq.base[i].addrl = (u64)(dev->arq.bufset + (i * 4096));
+    }
+
+    mmio_write32(dev->mmio, I40E_PF_ATQH, 0);
+    mmio_write32(dev->mmio, I40E_PF_ATQT, 0);
+    mmio_write32(dev->mmio, I40E_PF_ATQBAL, (u64)dev->atq.base);
+    mmio_write32(dev->mmio, I40E_PF_ATQBAH, (u64)dev->atq.base >> 32);
+    mmio_write32(dev->mmio, I40E_PF_ATQLEN, dev->atq.len | (1<<31));
+
+    mmio_write32(dev->mmio, I40E_PF_ARQH, 0);
+    mmio_write32(dev->mmio, I40E_PF_ARQT, 0);
+    mmio_write32(dev->mmio, I40E_PF_ARQBAL, (u64)dev->arq.base);
+    mmio_write32(dev->mmio, I40E_PF_ARQBAH, (u64)dev->arq.base >> 32);
+    mmio_write32(dev->mmio, I40E_PF_ARQLEN, dev->arq.len | (1<<31));
+
+    /* Issue get ver admin command */
+    dev->atq.base[0].flags = 0;
+    dev->atq.base[0].opcode = 0x0001;
+    dev->atq.base[0].len = 0;
+    dev->atq.base[0].ret = 0;
+    dev->atq.base[0].cookieh = 0x1234;
+    dev->atq.base[0].cookiel = 0xabcd;
+    dev->atq.base[0].param0 = 0;
+    dev->atq.base[0].param1 = 0;
+    dev->atq.base[0].addrh = 0;
+    dev->atq.base[0].addrl = 0x00010001;
+    mmio_write32(dev->mmio, I40E_PF_ATQT, 1);
+    while ( !(dev->atq.base[0].flags & 0x1) ) {
+        arch_busy_usleep(10);
+    }
+#if 0
+    kprintf("ATQH ARQT/ARQH: %x (%x,%x,%x,%x) %x %x\r\n",
+            mmio_read32(dev->mmio, I40E_PF_ATQH),
+            dev->atq.base[0].flags,
+            dev->atq.base[0].param0,
+            dev->atq.base[0].param1,
+            dev->atq.base[0].addrh,
+            mmio_read32(dev->mmio, I40E_PF_ARQT),
+            mmio_read32(dev->mmio, I40E_PF_ARQH));
+#endif
+    dev->atq.base[1].flags = 0;
+    dev->atq.base[1].opcode = 0x0110;
+    dev->atq.base[1].len = 0;
+    dev->atq.base[1].ret = 0;
+    dev->atq.base[1].cookieh = 0x5678;
+    dev->atq.base[1].cookiel = 0xef01;
+    dev->atq.base[1].param0 = 2;
+    dev->atq.base[1].param1 = 0;
+    dev->atq.base[1].addrh = 0;
+    dev->atq.base[1].addrl = 0;
+    mmio_write32(dev->mmio, I40E_PF_ATQT, 2);
+    while ( !(dev->atq.base[1].flags & 0x1) ) {
+        arch_busy_usleep(10);
+    }
+#if 0
+    kprintf("ATQH ARQT/ARQH: %x (%x,%x,%x,%x) %x %x\r\n",
+            mmio_read32(dev->mmio, I40E_PF_ATQH),
+            dev->atq.base[1].flags,
+            dev->atq.base[1].param0,
+            dev->atq.base[1].param1,
+            dev->atq.base[1].ret,
+            mmio_read32(dev->mmio, I40E_PF_ARQT),
+            mmio_read32(dev->mmio, I40E_PF_ARQH));
+#endif
+    /* Set MAC config */
+    dev->atq.base[2].flags = 0;
+    dev->atq.base[2].opcode = 0x0603;
+    dev->atq.base[2].len = 0;
+    dev->atq.base[2].ret = 0;
+    dev->atq.base[2].cookieh = 0x9abc;
+    dev->atq.base[2].cookiel = 0xdef0;
+    dev->atq.base[2].param0 = 1518 | (1<<18) | (7<<24);
+    dev->atq.base[2].param1 = 0;
+    dev->atq.base[2].addrh = 0;
+    dev->atq.base[2].addrl = 0;
+    mmio_write32(dev->mmio, I40E_PF_ATQT, 3);
+    while ( !(dev->atq.base[1].flags & 0x1) ) {
+        arch_busy_usleep(10);
+    }
+
+#if 0
+    kprintf("VSI: %x %x %x %x\r\n",
+            mmio_read32(dev->mmio, 0x0020C800),
+            mmio_read32(dev->mmio, 0x0020C804),
+            mmio_read32(dev->mmio, 0x0020C808),
+            mmio_read32(dev->mmio, 0x0020C80c));
+#endif
+
     /* Read PFLAN_QALLOC register to find the base queue index and # of queues
        associated with the PF */
     qalloc = mmio_read32(dev->mmio, I40E_PFLAN_QALLOC);
 
     kprintf("QALLOC: %x\r\n", qalloc);
 
+#if 0
     kprintf("LANTXOBJSZ: %x\r\n", mmio_read32(dev->mmio, I40E_GLHMC_LANTXOBJSZ));
     kprintf("LANRXOBJSZ: %x\r\n", mmio_read32(dev->mmio, I40E_GLHMC_LANRXOBJSZ));
 
@@ -363,13 +542,26 @@ i40e_init_fpm(struct i40e_device *dev)
             mmio_read32(dev->mmio, I40E_GLHMC_LANRXBASE(1)),
             mmio_read32(dev->mmio, I40E_GLHMC_LANRXCNT(1)));
 
+    kprintf("GLPCI_CNF2: %x\r\n", mmio_read32(dev->mmio, I40E_GLPCI_CNF2));
+    kprintf("GLPCI_LINKCAP: %x\r\n", mmio_read32(dev->mmio, I40E_GLPCI_LINKCAP));
+    kprintf("GLSCD_QUANTA: %x\r\n", mmio_read32(dev->mmio, I40E_GLSCD_QUANTA));
+
+    kprintf("PRTGL_SAL/H: %x %x\r\n", mmio_read32(dev->mmio, I40E_PRTGL_SAL),
+            mmio_read32(dev->mmio, I40E_PRTGL_SAH));
+#endif
+
+    //kprintf("GLLAN_RCTL_0: %x\r\n", mmio_read32(dev->mmio, I40E_GLLAN_RCTL_0));
+    //mmio_write32(dev->mmio, I40E_GLLAN_RCTL_0, 1);
+    //arch_busy_usleep(10000);
+    kprintf("GLLAN_RCTL_0: %x\r\n", mmio_read32(dev->mmio, I40E_GLLAN_RCTL_0));
 
     /* Tx descriptors */
     struct i40e_tx_desc_data *txdesc;
     for ( i = 0; i < 4; i++ ) {
         dev->txq[i].tail = 0;
         dev->txq[i].head_cache = 0;
-        /* up to 64 K minus 8 */
+        dev->txq[i].headwb = 0;
+        /* up to 8 K minus 32 */
         dev->txq[i].bufsz = (1<<12);
         dev->txq[i].bufmask = (1<<12) - 1;
         /* ToDo: 16 bytes for alignment */
@@ -425,18 +617,19 @@ i40e_init_fpm(struct i40e_device *dev)
     hmc = kmalloc(4 * 1024 * 1024);
     kmemset(hmc, 0, 4 * 1024 * 1024);
     hmcint = (u64)hmc;
-    hmcint = (hmcint + 0xfffff) & (~0xfffffULL);
+    hmcint = (hmcint + 0x1fffff) & (~0x1fffffULL);
     hmc = (u8 *)hmcint;
 
     txbase = 0;
     /* roundup512((TXBASE * 512) + (TXCNT * 2^TXOBJSZ)) / 512 */
-    rxbase = (((txbase * 512) + (1 * (1<<txobjsz))) + 511) / 512;
+    //rxbase = (((txbase * 512) + (1 * (1<<txobjsz))) + 511) / 512;
+    rxbase = (((txbase * 512) + (cnt * (1<<txobjsz))) + 511) / 512;
 
-
-    kprintf("HMC: %llx, Tx: %llx, Rx: %llx\r\n", hmcint, dev->tx_base, dev->rx_base);
+#if 0
+    kprintf("HMC: %llx, Rx: %llx\r\n", hmcint, dev->rx_base);
+#endif
 
     struct i40e_lan_txq_ctx *txq_ctx;
-    u32 head;
     for ( i = 0; i < 4; i++ ){
         txq_ctx = (struct i40e_lan_txq_ctx *)(hmcint + txbase * 512 + i * 128);
         txq_ctx->head = 0;
@@ -444,16 +637,17 @@ i40e_init_fpm(struct i40e_device *dev)
         txq_ctx->newctx = 1;
         txq_ctx->base = dev->txq[i].base / 128;
         txq_ctx->thead_wb = 0;
-        txq_ctx->head_wben = 0;
+        txq_ctx->head_wben = 1;
         txq_ctx->qlen = dev->txq[i].bufsz;
-        txq_ctx->head_wbaddr = (u64)&dev->txq[i].headwb;
+        txq_ctx->head_wbaddr = (u64)&(dev->txq[i].headwb);
         txq_ctx->tphrdesc = 1;
         txq_ctx->tphrpacket = 1;
         txq_ctx->tphwdesc = 1;
-        txq_ctx->rdylist = 0x0;
+        txq_ctx->rdylist = 0;
     }
 
-    struct i40e_lan_rxq_ctx *rxq_ctx = (struct i40e_lan_rxq_ctx *)(hmcint + rxbase * 512);
+    struct i40e_lan_rxq_ctx *rxq_ctx;
+    rxq_ctx = (struct i40e_lan_rxq_ctx *)(hmcint + rxbase * 512);
     rxq_ctx->head = 0;
     rxq_ctx->base = dev->rx_base / 128;
     rxq_ctx->qlen = dev->rx_bufsz;
@@ -461,8 +655,12 @@ i40e_init_fpm(struct i40e_device *dev)
     rxq_ctx->hbuff = 128/64;
     rxq_ctx->dtype = 0x0;
     rxq_ctx->dsize = 0x0;
-    rxq_ctx->crcstrip = 0x0;
+    rxq_ctx->crcstrip = 0x1;
     rxq_ctx->rxmax = 4096;
+    rxq_ctx->tphrdesc = 1;
+    rxq_ctx->tphwdesc = 1;
+    rxq_ctx->tphdata = 1;
+    rxq_ctx->tphhead = 1;
 
 #if 0
     kprintf("HMC: %.8llx %.8llx %.8llx %.8llx\r\n",
@@ -471,7 +669,7 @@ i40e_init_fpm(struct i40e_device *dev)
 #endif
 
     mmio_write32(dev->mmio, I40E_PFHMC_SDDATALOW,
-                 (hmcint & 0xfff00000) | 1 | (1<<1) | (512<<2));
+                 (hmcint & 0xffe00000) | 1 | (1<<1) | (512<<2));
     mmio_write32(dev->mmio, I40E_PFHMC_SDDATAHIGH, hmcint >> 32);
     mmio_write32(dev->mmio, I40E_PFHMC_SDCMD, (1<<31) | 0);
 
@@ -509,9 +707,9 @@ i40e_init_fpm(struct i40e_device *dev)
         }
         if ( 5 != (m32 & 5) ) {
             kprintf("Error on enable a TX queue (%d)\r\n", i);
+            return -1;
         }
     }
-
 
     /* Invalidate */
     //mmio_write32(dev->mmio, I40E_PFHMC_PDINV, 0);
@@ -530,93 +728,13 @@ i40e_init_fpm(struct i40e_device *dev)
     }
     if ( 5 != (m32 & 5) ) {
         kprintf("Error on enable a RX queue\r\n");
+        return -1;
     }
 
-#if 0
-    txdesc = (struct i40e_tx_desc_data *)(dev->tx_base);
-    u8 *pkt = (u8 *)txdesc->pkt_addr;
-    pkt[0] = 0xff;
-    pkt[1] = 0xff;
-    pkt[2] = 0xff;
-    pkt[3] = 0xff;
-    pkt[4] = 0xff;
-    pkt[5] = 0xff;
-    pkt[6] = dev->macaddr[0];
-    pkt[7] = dev->macaddr[1];
-    pkt[8] = dev->macaddr[2];
-    pkt[9] = dev->macaddr[3];
-    pkt[10] = dev->macaddr[4];
-    pkt[11] = dev->macaddr[5];
-    pkt[12] = 0x08;
-    pkt[13] = 0x00;
-    pkt[12] = 0x08;
-    pkt[13] = 0x00;
-    /* IP header */
-    pkt[14] = 0x45;
-    pkt[15] = 0x00;
-    pkt[16] = (46 >> 8) & 0xff;
-    pkt[17] = 46 & 0xff;
-    /* ID / fragment */
-    pkt[18] = 0x26;
-    pkt[19] = 0x6d;
-    pkt[20] = 0x00;
-    pkt[21] = 0x00;
-    /* TTL/protocol */
-    pkt[22] = 0x64;
-    pkt[23] = 17;
-    /* checksum */
-    pkt[24] = 0x00;
-    pkt[25] = 0x00;
-    /* src: 192.168.100.2 */
-    pkt[26] = 192;
-    pkt[27] = 168;
-    pkt[28] = 100;
-    pkt[29] = 2;
-    /* dst */
-    pkt[30] = 224;
-    pkt[31] = 0;
-    pkt[32] = 0;
-    pkt[33] = 1;
-    /* UDP */
-    pkt[34] = 0xff;
-    pkt[35] = 0xff;
-    pkt[36] = 0xff;
-    pkt[37] = 0xfe;
-    pkt[38] = (46 - 20) >> 8;
-    pkt[39] = (46 - 20) & 0xff;
-    pkt[40] = 0x00;
-    pkt[41] = 0x00;
-    kmemset(pkt + 42, 0, 46 + 14 - 42);
-    /* Compute checksum */
-    u16 *tmp;
-    u32 cs;
-    pkt[24] = 0x0;
-    pkt[25] = 0x0;
-    tmp = (u16 *)pkt;
-    cs = 0;
-    for ( i = 7; i < 17; i++ ) {
-        cs += (u32)tmp[i];
-        cs = (cs & 0xffff) + (cs >> 16);
-    }
-    cs = 0xffff - cs;
-    pkt[24] = cs & 0xff;
-    pkt[25] = cs >> 8;
-
-    txdesc->l2tag = 0;
-    txdesc->txbufsz_offset = (60 << 18) | 14;
-    txdesc->rsv_cmd_dtyp = 0 | (((1) | (1<<1)) << 4);
-
-    mmio_write32(dev->mmio, I40E_QTX_TAIL(0), 1);
-
-    mfence();
-
-    for ( i = 0; i < 10; i++ ) {
-        arch_busy_usleep(1);
-        kprintf("%x %x %x\r\n", txdesc->rsv_cmd_dtyp,
-                mmio_read32(dev->mmio, I40E_QTX_HEAD(0)),
-                mmio_read32(dev->mmio, I40E_QTX_TAIL(0)));
-    }
-#endif
+    //kprintf("GLLAN_RCTL_0: %x\r\n", mmio_read32(dev->mmio, I40E_GLLAN_RCTL_0));
+    //mmio_write32(dev->mmio, I40E_GLLAN_RCTL_0, 1);
+    //arch_busy_usleep(10000);
+    //kprintf("GLLAN_RCTL_0: %x\r\n", mmio_read32(dev->mmio, I40E_GLLAN_RCTL_0));
 
     return 0;
 }
@@ -648,7 +766,7 @@ i40e_tx_test(struct netdev *netdev, u8 *pkt, int len, int blksize)
         if ( 0xf == (txdesc->rsv_cmd_dtyp & 0xf) )  {
             /* Write back ok */
             txdesc->l2tag = 0;
-            txdesc->txbufsz_offset = (len << 18) | 14;
+            txdesc->txbufsz_offset = (len << 18) | 14/2;
             txdesc->rsv_cmd_dtyp = 0 | (((1) | (1<<1)) << 4);
 
             cnt += 1;
@@ -689,7 +807,6 @@ i40e_tx_test2(struct netdev *netdev, u8 *pkt, int len, int blksize,
         }
     }
 
-    int cnt = 0;
     for ( ;; ) {
 
         for ( i = frm; i < to; i++ ) {
@@ -715,9 +832,72 @@ i40e_tx_test2(struct netdev *netdev, u8 *pkt, int len, int blksize,
                      + ((dev->txq[i].tail + j) & dev->txq[i].bufmask)
                      * sizeof(struct i40e_tx_desc_data));
                 txdesc->l2tag = 0;
-                txdesc->txbufsz_offset = (len << 18) | 14;
+                txdesc->txbufsz_offset = (len << 18) | 14/2;
                 txdesc->rsv_cmd_dtyp = 0 | (((1)/* | (1<<1)*/) << 4);
             }
+            dev->txq[i].tail = next_tail;
+            mmio_write32(dev->mmio, I40E_QTX_TAIL(i), dev->txq[i].tail);
+
+            /* Packets Transmitted [64 Bytes] Count Low GLPRT_PTC64L:
+               0x003006A0 */
+        }
+    }
+
+    return 0;
+}
+
+int
+i40e_tx_test3(struct netdev *netdev, u8 *pkt, int len, int blksize,
+              int frm, int to)
+{
+    struct i40e_device *dev;
+    struct i40e_tx_desc_data *txdesc;
+    int i;
+    int j;
+    u32 tdh;
+    u32 next_tail;
+
+
+    dev = (struct i40e_device *)netdev->vendor;
+    kprintf("GLLAN_RCTL_0: %x\r\n", mmio_read32(dev->mmio, I40E_GLLAN_RCTL_0));
+
+    /* Prepare */
+    for ( i = frm; i < to; i++ ) {
+        for ( j = 0; j < dev->txq[i].bufsz; j++ ) {
+            txdesc = (struct i40e_tx_desc_data *)
+                (dev->txq[i].base + j * sizeof(struct i40e_tx_desc_data));
+            kmemcpy((void *)txdesc->pkt_addr, pkt, len);
+        }
+    }
+
+    for ( ;; ) {
+
+        for ( i = frm; i < to; i++ ) {
+
+            tdh = dev->txq[i].headwb;
+
+            u32 avl;
+            avl = (dev->txq[i].bufsz - dev->txq[i].tail + tdh - 1)
+                & dev->txq[i].bufmask;
+
+            if ( avl < blksize ) {
+                //kprintf("Full: %x %x\r\n", tdh, dev->txq[i].tail);
+                continue;
+            }
+            next_tail = (dev->txq[i].tail + blksize) & dev->txq[i].bufmask;
+
+            /* Not full */
+            for ( j = 0; j < blksize; j++ ) {
+                txdesc = (struct i40e_tx_desc_data *)
+                    (dev->txq[i].base
+                     + ((dev->txq[i].tail + j) & dev->txq[i].bufmask)
+                     * sizeof(struct i40e_tx_desc_data));
+                txdesc->l2tag = 0;
+                txdesc->txbufsz_offset = (len << 18) | 14/2/* | ((20/4)<<7)*/;
+                txdesc->rsv_cmd_dtyp = 0 | (((1) /*| (1<<1)*/ | (1<<2)
+                                             /*| (2<<5)*//*IPv4 w/o cso*/) << 4);
+            }
+            txdesc->rsv_cmd_dtyp |= (1<<1)<<4;
             dev->txq[i].tail = next_tail;
             mmio_write32(dev->mmio, I40E_QTX_TAIL(i), dev->txq[i].tail);
 
@@ -736,18 +916,24 @@ i40e_forwarding_test(struct netdev *netdev1, struct netdev *netdev2)
     struct i40e_device *dev2;
     union i40e_rx_desc * rxdesc;
     struct i40e_tx_desc_data *txdesc;
-    int i;
     u8 *txpkt;
 
     dev1 = (struct i40e_device *)netdev1->vendor;
     dev2 = (struct i40e_device *)netdev2->vendor;
+    static int cnt = 0;
     for ( ;; ) {
 
         rxdesc = (union i40e_rx_desc *)
             (dev1->rx_base + dev1->rx_tail * sizeof(union i40e_rx_desc));
         txdesc = (struct i40e_tx_desc_data *)
-            (dev2->tx_base + dev2->tx_tail * sizeof(struct i40e_tx_desc_data));
+            (dev2->txq[0].base + dev2->txq[0].tail * sizeof(struct i40e_tx_desc_data));
 
+#if 0
+        kprintf("%llx %x %x %x\r\n", *(volatile u64 *)((u64)rxdesc + 8),
+                *(u32 *)0x14e30000,
+                mmio_read32(dev1->mmio, 0x00300480),
+                mmio_read32(dev1->mmio, 0x00300000));
+#endif
         if ( rxdesc->read.hdr_addr & 0x1 ) {
 
             txpkt = (u8 *)dev1->rx_read[dev1->rx_tail].pkt_addr;
@@ -783,20 +969,30 @@ i40e_forwarding_test(struct netdev *netdev1, struct netdev *netdev2)
             txdesc->l2tag = 0;
             txdesc->txbufsz_offset
                 = (((rxdesc->wb.len_ptype_err_status >> 38) & 0x3ffffffULL) << 18)
-                | 14;
+                | 14/2;
             txdesc->rsv_cmd_dtyp = 0 | (((1) | (1<<1)) << 4);
 
             dev1->rx_read[dev1->rx_tail].pkt_addr = (u64)tmp;
             rxdesc->read.pkt_addr = dev1->rx_read[dev1->rx_tail].pkt_addr;
             rxdesc->read.hdr_addr = dev1->rx_read[dev1->rx_tail].hdr_addr;
 
-            //kprintf("%x %x\r\n", dev1->rx_tail, dev2->tx_tail);
-            dev2->tx_tail = (dev2->tx_tail + 1) & dev2->tx_bufmask;
-            if ( (dev2->tx_tail & 0xff) == 0 ) {
-                mmio_write32(dev2->mmio, I40E_QTX_TAIL(0), dev2->tx_tail);
+            dev2->txq[0].tail = (dev2->txq[0].tail + 1) & dev2->txq[0].bufmask;
+            if ( 0 == ((++cnt) & 0xff) ) {
+                mmio_write32(dev2->mmio, I40E_QTX_TAIL(0), dev2->txq[0].tail);
                 mmio_write32(dev1->mmio, I40E_QRX_TAIL(0), dev1->rx_tail);
             }
             dev1->rx_tail = (dev1->rx_tail + 1) & dev1->rx_bufmask;
+
+#if 0
+            if ( 0 == (cnt & 0xffffff) ) {
+                kprintf("%.16llx %.16llx\r\n",
+                        mmio_read32(dev1->mmio, 0x0036e400),
+                        mmio_read32(dev1->mmio, 0x00300480));
+                //kprintf("%.16llx %.16llx\r\n", cnt, mmio_read32(dev1->mmio, 0x00300480));
+                //kprintf("%llx\r\n", mmio_read32(dev1->mmio, 0x00310000));
+            }
+#endif
+
         }
     }
 
