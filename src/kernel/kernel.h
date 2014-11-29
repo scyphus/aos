@@ -725,6 +725,7 @@ typedef __builtin_va_list va_list;
 
 
 /* in kernel.c */
+void kexit(void);
 int kprintf(const char *, ...);
 int kvprintf(const char *, va_list);
 void panic(const char *);

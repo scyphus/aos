@@ -1457,6 +1457,21 @@ net_init(struct net *net)
     return 0;
 }
 
+int
+net_release(struct net *net)
+{
+    int i;
+
+    for ( i = 0; i < TCP_MAX_SESSIONS; i++ ) {
+        if ( TCP_ESTABLISHED == sessions[i].state ) {
+            tcp_send_ack(net, sessions[i].tx, &sessions[i], sessions[i].seq,
+                         0, 1);
+        }
+    }
+
+    return 0;
+}
+
 
 
 

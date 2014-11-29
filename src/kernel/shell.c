@@ -89,6 +89,7 @@ _builtin_panic(char *const argv[])
 int
 _builtin_off(char *const argv[])
 {
+    kexit();
     arch_poweroff();
 
     return 0;
@@ -109,6 +110,8 @@ _builtin_reset(char *const argv[])
             inb(0x60);
         }
     } while ( 0 != (c & 2) );
+
+    kexit();
 
     /* CPU reset */
     outb(0x64, 0xfe);

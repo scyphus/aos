@@ -32,6 +32,7 @@ void kintr_loc_tmr(void);
 
 struct net gnet;
 int net_init(struct net *);
+int net_release(struct net *);
 
 /* arch.c */
 void arch_bsp_init(void);
@@ -109,6 +110,12 @@ apmain(void)
     /* Tickless scheduler */
     sched_tickless_prepare();
     task_restart();
+}
+
+void
+kexit(void)
+{
+    net_release(&gnet);
 }
 
 
