@@ -25,7 +25,6 @@ struct dxr *dxr;
  */
 void kbd_event(void);
 int kbd_read(void);
-void e1000_init(void);
 
 int irq_handler_table_init(void);
 
@@ -90,8 +89,6 @@ kmain(void)
     syscall_init();
 
     net_init(&gnet);
-
-    e1000_init();
 
     ktask_init();
 

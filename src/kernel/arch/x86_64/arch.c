@@ -28,6 +28,7 @@ void search_clock_sources(void);
 void vga_init(void);
 void pci_init(void);
 void netdev_init(void);
+void e1000_init(void);
 void e1000e_init(void);
 void ixgbe_init(void);
 void i40e_init(void);
@@ -192,6 +193,7 @@ arch_bsp_init(void)
     pci_init();
     arch_dbg_printf("Initializing network devices.\r\n");
     netdev_init();
+    e1000_init();
     e1000e_init();
     ixgbe_init();
     i40e_init();

@@ -410,9 +410,6 @@ struct net {
 typedef int (*net_stack_chain_f)(struct net *, u8 *, int, void *);
 
 
-
-
-
 /*
  * Host port IP
  */
