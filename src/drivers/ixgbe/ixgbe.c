@@ -159,7 +159,8 @@ void ixgbe_update_hw(void);
 struct ixgbe_device * ixgbe_init_hw(struct pci_device *);
 int ixgbe_setup_rx_desc(struct ixgbe_device *);
 int ixgbe_setup_tx_desc(struct ixgbe_device *);
-
+int ixgbe_recvpkt(u8 *, u32, struct netdev *);
+int ixgbe_sendpkt(const u8 *, u32, struct netdev *);
 
 int ixgbe_routing_test(struct netdev *);
 
@@ -214,8 +215,8 @@ ixgbe_update_hw(void)
             case IXGBE_X520:
                 dev = ixgbe_init_hw(pci->device);
                 netdev = netdev_add_device(dev->macaddr, dev);
-                netdev->recvpkt = NULL;
-                netdev->sendpkt = NULL;
+                netdev->recvpkt = ixgbe_recvpkt;
+                netdev->sendpkt = ixgbe_sendpkt;
                 idx++;
                 break;
             default:
