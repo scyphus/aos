@@ -305,7 +305,11 @@ ktask_fork_execv(int policy, int (*main)(int, char *[]), char **argv)
     t->main = main;
     t->argv = argv;
     t->id = tid;
-    t->name = NULL;
+    if ( argv && argv[0] ) {
+        t->name = kstrdup(argv[0]);
+    } else {
+        t->name = NULL;
+    }
     t->state = TASK_STATE_READY;
 
     ktasks->tasks[tid].ktask = t;
