@@ -1173,63 +1173,6 @@ int net_sc_rx_ether(struct net *, u8 *, int, void *);
 int net_sc_rx_port_host(struct net *, u8 *, int, void *);
 int net_rib4_add(struct net_rib4 *, const u32, int, u32);
 u32 bswap32(u32);
-int
-_net_test_main(int argc, char *argv[])
-{
-    /* Search network device for management */
-    struct netdev_list *list;
-    struct netdev *dev;
-    u8 pkt[1518];
-    int n;
-    /* Network */
-    struct net_port port;
-    struct net_port_host hport;
-    int i;
-
-    /* FIXME: Choose the first interface for management */
-    list = netdev_head;
-    dev = list->netdev;
-
-    /* Port */
-    kmemcpy(hport.macaddr, dev->macaddr, 6);
-    hport.ip4addr.nr = 1;
-    hport.ip4addr.addrs = kmalloc(sizeof(u32) * 1);
-    if ( NULL == hport.ip4addr.addrs ){
-        return -1;
-    }
-    hport.ip4addr.addrs[0] = bswap32(0xc0a83803UL);
-    hport.arp.sz = 4096;
-    hport.arp.entries = kmalloc(sizeof(struct net_arp_entry) * hport.arp.sz);
-    for ( i = 0; i < hport.arp.sz; i++ ) {
-        hport.arp.entries[i].state = -1;
-    }
-    hport.ip6addr.nr = 0;
-    hport.port = &port;
-    port.netdev = dev;
-    port.next.data = (void *)&hport;
-    port.next.func = net_sc_rx_port_host;
-    hport.tx.func = NULL;
-    hport.tx.data = (void *)&port;
-
-    /* Routing table */
-    hport.rib4.nr = 0;
-    hport.rib4.entries = NULL;
-    net_rib4_add(&hport.rib4, bswap32(0xc0a83800UL), 24, 0);
-    net_rib4_add(&hport.rib4, 0, 0, bswap32(0xc0a83802UL));
-
-    kprintf("Start network on %s\r\n", port.netdev->name);
-    while ( 1 ) {
-        n = port.netdev->recvpkt(pkt, sizeof(pkt), port.netdev);
-        if ( n <= 0 ) {
-            __asm__ __volatile__ ("hlt");
-            continue;
-        }
-        port.next.func(&gnet, pkt, n, port.next.data);
-        //net_rx(&net, &port, pkt, n, -1);
-    }
-
-    return 0;
-}
 
 
 int mgmt_main(int, char *[]);
@@ -1289,14 +1232,6 @@ _builtin_start(char *const argv[])
             return -1;
         }
         kprintf("Launch routing @ CPU #%d\r\n", id);
-    } else if ( 0 == kstrcmp("net", argv[1]) ) {
-        /* Start TCP testing process */
-        ret = ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_net_test_main, NULL);
-        if ( ret < 0 ) {
-            kprintf("Cannot launch TCP\r\n");
-            return -1;
-        }
-        kprintf("Launch TCP @ CPU #%d\r\n", id);
     } else {
         kprintf("start <routing|mgmt> <id>\r\n");
         return -1;
@@ -1560,7 +1495,7 @@ shell_main(int argc, char *argv[])
     }
 
     /* Start-up script */
-    _exec_cmdbuf("start mgmt 1 e0 192.168.56.11/24 192.168.56.1");
+    _exec_cmdbuf("start mgmt 0 e0 192.168.56.11/24 192.168.56.1");
 
     for ( ;; ) {
         c = 0;
