@@ -135,7 +135,6 @@ _builtin_uptime(char *const argv[])
 /*
  * show
  */
-int ixgbe_check_buffer(struct netdev *);
 #define MAX_PROCESSORS  256
 struct p_data {
     u32 flags;          /* bit 0: enabled (working); bit 1 reserved */
