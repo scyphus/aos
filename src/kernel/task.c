@@ -112,7 +112,7 @@ sched(void)
 
     /* Run scheduling from task table */
     for ( i = 0; i < TASK_TABLE_SIZE; i++ ) {
-        if ( NULL == ktasks->tasks[i].ktask
+        if ( NULL != ktasks->tasks[i].ktask
              && ktasks->tasks[i].ktask->scheduled < 0 ) {
             /* Schedule here */
             if ( TASK_STATE_READY == ktasks->tasks[i].ktask->state ) {
