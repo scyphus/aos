@@ -95,6 +95,30 @@ _builtin_off(char *const argv[])
 }
 
 /*
+ * Reset
+ */
+int
+_builtin_reset(char *const argv[])
+{
+    u8 c;
+
+    arch_disable_interrupts();
+    do {
+        c = inb(0x64);
+        if ( 0 != (c & 1) ) {
+            inb(0x60);
+        }
+    } while ( 0 != (c & 2) );
+
+    /* CPU reset */
+    outb(0x64, 0xfe);
+
+    arch_enable_interrupts();
+
+    return 0;
+}
+
+/*
  * uptime
  */
 int
@@ -254,8 +278,10 @@ _builtin_request(char *const argv[])
     if ( 0 == kstrcmp("system", argv[1]) ) {
         if ( 0 == kstrcmp("power-off", argv[2]) ) {
             arch_poweroff();
+        } else if ( 0 == kstrcmp("reset", argv[2]) ) {
+            _builtin_reset(argv);
         } else {
-            kprintf("request system <power-off>\r\n");
+            kprintf("request system <power-off|reset>\r\n");
         }
     } else {
         kprintf("request <system>\r\n");
@@ -1197,7 +1223,7 @@ _builtin_start(char *const argv[])
             kprintf("Cannot launch mgmt\r\n");
             return -1;
         }
-        kprintf("Launch mgmt @ CPU #%d\r\n", id);
+        kprintf("Launch mgmt\r\n");
     } else if ( 0 == kstrcmp("tx", argv[1]) ) {
         /* Start Tx */
         char **argv = kmalloc(sizeof(char *) * 4);
