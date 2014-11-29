@@ -819,19 +819,6 @@ _routing_main(int argc, char *argv[])
 
     return 0;
 }
-static int
-_subrouting_main(int argc, char *argv[])
-{
-    struct netdev_list *list;
-
-    list = netdev_head;
-
-    kprintf("Started routing: %s => %s\r\n", list->next->netdev->name,
-            list->next->next->netdev->name);
-    ixgbe_forwarding_test_sub(list->next->netdev, list->next->next->netdev);
-
-    return 0;
-}
 
 int
 _tx_main(int argc, char *argv[])
@@ -1302,15 +1289,6 @@ _builtin_start(char *const argv[])
             return -1;
         }
         kprintf("Launch routing @ CPU #%d\r\n", id);
-    } else if ( 0 == kstrcmp("subrouting", argv[1]) ) {
-        /* Start routing */
-        ret = ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_subrouting_main,
-                                 NULL);
-        if ( ret < 0 ) {
-            kprintf("Cannot launch subrouting\r\n");
-            return -1;
-        }
-        kprintf("Launch subrouting @ CPU #%d\r\n", id);
     } else if ( 0 == kstrcmp("net", argv[1]) ) {
         /* Start TCP testing process */
         ret = ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_net_test_main, NULL);
