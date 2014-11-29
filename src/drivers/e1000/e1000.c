@@ -133,6 +133,18 @@ void e1000_irq_handler(int, void *);
 int e1000_recvpkt(u8 *, u32, struct netdev *);
 int e1000_sendpkt(const u8 *, u32, struct netdev *);
 
+static __inline__ volatile u32
+mmio_read32(u64 base, u64 offset)
+{
+    return *(volatile u32 *)(base + offset);
+}
+
+static __inline__ void
+mmio_write32(u64 base, u64 offset, volatile u32 value)
+{
+    *(volatile u32 *)(base + offset) = value;
+}
+
 u16
 e1000_eeprom_read_8254x(u64 mmio, u8 addr)
 {
@@ -208,18 +220,6 @@ e1000_update_hw(void)
     }
 }
 
-static __inline__ volatile u32
-mmio_read32(u64 base, u64 offset)
-{
-    return *(volatile u32 *)(base + offset);
-}
-
-static __inline__ void
-mmio_write32(u64 base, u64 offset, volatile u32 value)
-{
-    *(volatile u32 *)(base + offset) = value;
-}
-
 /*
  * IRQ handler
  */
@@ -236,7 +236,6 @@ e1000_irq_handler(int irq, void *user)
     if ( isr & 0x80 ) {
         /* Packet received */
     }
-    //kprintf("XXXX %x\r\n", mmio_read32(dev->mmio, E1000_REG_ICR));
 }
 
 struct e1000_device *
@@ -342,7 +341,6 @@ e1000_init_hw(struct pci_device *pcidev)
     /* Store the parent device information */
     dev->pci_device = pcidev;
 
-#if 1
     /* Enable interrupt (REG_IMS <- 0x1F6DC, then read REG_ICR ) */
     mmio_write32(dev->mmio, E1000_REG_IMS, 0x908e);
     (void)mmio_read32(dev->mmio, E1000_REG_ICR);
@@ -357,17 +355,6 @@ e1000_init_hw(struct pci_device *pcidev)
 #endif
     /* http://msdn.microsoft.com/en-us/library/windows/hardware/ff538017(v=vs.85).aspx */
     //mmio_write32(dev->mmio, E1000_REG_ICS, 0x908e);
-#endif
-
-#if 0
-    for ( i = 0; i < 3000; i++ ) {
-        u32 h = mmio_read32(dev->mmio, E1000_REG_ICR);
-        if ( h ) {
-            kprintf("*** %x\r\n", h);
-        }
-        arch_busy_usleep(1000);
-    }
-#endif
 
     return dev;
 }
@@ -529,70 +516,6 @@ e1000_sendpkt(const u8 *pkt, u32 len, struct netdev *netdev)
 }
 
 
-int
-e1000_tx_enqueue(struct netdev *netdev, u8 *pkt, int len)
-{
-    u32 tdh;
-    struct e1000_device *dev;
-    int tx_avl;
-    struct e1000_tx_desc *txdesc;
-
-    dev = (struct e1000_device *)netdev->vendor;
-    //tdh = mmio_read32(dev->mmio, E1000_REG_TDH);
-    tdh = dev->tx_head_cache;
-
-    tx_avl = dev->tx_bufsz - ((dev->tx_bufsz - tdh + dev->tx_tail)
-                              % dev->tx_bufsz);
-    if ( 0 == tx_avl ) {
-        dev->tx_head_cache = mmio_read32(dev->mmio, E1000_REG_TDH);
-        tdh = dev->tx_head_cache;
-        tx_avl = dev->tx_bufsz - ((dev->tx_bufsz - tdh + dev->tx_tail)
-                                  % dev->tx_bufsz);
-        if ( 0 == tx_avl ) {
-            return -1;
-        }
-    }
-
-
-    /* Check the head of TX ring buffer */
-    txdesc = (struct e1000_tx_desc *)
-        (dev->tx_base + (dev->tx_tail % dev->tx_bufsz)
-         * sizeof(struct e1000_tx_desc));
-    kmemcpy((void *)txdesc->address, pkt, len);
-    txdesc->length = len;
-    txdesc->sta = 0;
-    txdesc->css = 0;
-    txdesc->cso = 0;
-    txdesc->special = 0;
-    txdesc->cmd = (1<<3) | (1<<1) | 1;
-
-    dev->tx_tail = (dev->tx_tail + 1) % dev->tx_bufsz;
-    //mmio_write32(dev->mmio, E1000_REG_TDT, dev->tx_tail);
-
-    return len;
-}
-
-/*
- * Commit Tx queue
- */
-int
-e1000_tx_commit(struct netdev *netdev)
-{
-    struct e1000_device *dev;
-    u32 tdh;
-
-    /* Retrieve data structure of e1000 driver */
-    dev = (struct e1000_device *)netdev->vendor;
-
-    /* Write to PCI */
-    mmio_write32(dev->mmio, E1000_REG_TDT, dev->tx_tail);
-
-    /* Update Tx head cache */
-    tdh = mmio_read32(dev->mmio, E1000_REG_TDH);
-    dev->tx_head_cache = tdh;
-
-    return 0;
-}
 
 /*
  * Local variables:

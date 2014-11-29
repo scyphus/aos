@@ -292,6 +292,7 @@ struct netdev {
 
     void *vendor;
 
+    /* for per packet processing */
     int (*sendpkt)(const u8 *pkt, u32 len, struct netdev *netdev);
     int (*recvpkt)(u8 *pkt, u32 len, struct netdev *netdev);
 
