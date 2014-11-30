@@ -197,6 +197,9 @@ struct tcp_session {
     int (*send)(struct tcp_session *sess, const u8 *pkt, u32 len);
     struct net *net;
     struct net_stack_chain_next *tx;
+    /* PAPP */
+    void * (*palloc)(struct tcp_session *sess, int sz, int *asz);
+    void (*pfree)(struct tcp_session *sess, void *p);
 
     /* For optimization */
     //u8 *ackpkt;
@@ -284,6 +287,48 @@ struct net_nd_table {
 };
 
 
+#define NET_PAPP_ENOERROR       0
+#define NET_PAPP_ENOARPENT      10
+#define NET_PAPP_ENORIBENT      11
+
+
+
+struct net_papp_meta_host_port_ip {
+    struct net_port_host *hport;
+    u32 saddr;
+    u32 daddr;
+    int flags;
+    int proto;
+};
+struct net_papp_meta_ip {
+    u32 saddr;
+    u32 daddr;
+    int flags;
+    int proto;
+};
+
+struct netsc_papp {
+    int len;
+    int wrap;
+    struct {
+        u64 base;
+        int sz;
+    } pkt;
+    struct {
+        u64 base;
+        int sz;
+    } hdr;
+    struct {
+        int *desc;
+        int head;
+        int tail;
+    } ring;
+};
+struct netsc_papp_queue {
+    int cur;
+    int next;
+};
+
 /* DRIVER */
 #define NETDEV_MAX_NAME 32
 struct netdev {
@@ -295,6 +340,9 @@ struct netdev {
     /* for per packet processing */
     int (*sendpkt)(const u8 *pkt, u32 len, struct netdev *netdev);
     int (*recvpkt)(u8 *pkt, u32 len, struct netdev *netdev);
+
+    /* Stack chain */
+    int (*papp)(void);
 
     /* Bidirectional link */
     struct net_port *port;
@@ -403,6 +451,8 @@ struct net {
     /*void *code;*/
     //struct netdev_list *devs;
     //struct net_bridge bridge;
+
+    struct netsc_papp papp;
 };
 
 /*
