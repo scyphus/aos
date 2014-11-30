@@ -379,6 +379,69 @@ tcp_papp(struct net *net, struct tcp_session *sess, int sz, int *asz)
     return p;
 }
 
+/*
+ * PAPP
+ */
+void *
+papp(struct net_papp_ctx *ctx, struct net_papp_status *stat)
+{
+    int idx;
+    u64 pkt;
+    u64 hdr;
+    u8 *p;
+    int ret;
+
+    /* Pop a packet buffer from the pool */
+    idx = palloc(ctx->net);
+    if ( idx < 0 ) {
+        return NULL;
+    }
+    pkt = ctx->net->papp.pkt.base + (idx * ctx->net->papp.pkt.sz);
+    hdr = ctx->net->papp.hdr.base + (idx * ctx->net->papp.hdr.sz);
+    ctx->net->papp.hdr.off[idx] = 0;
+
+    /* Call the papp function of the corresponding context */
+    ret = ctx->papp(ctx, stat, (u8 *)hdr, &p);
+    if ( ret < 0 ) {
+        stat->errno = ret;
+        //stat->param0 = 0;
+        return NULL;
+    }
+
+    /* Set offset */
+    ctx->net->papp.hdr.off[idx] = ret;
+
+    return p;
+}
+
+/*
+ * Transmit the packet
+ */
+int
+papp_xmit(struct net_papp_ctx *ctx, u8 *pkt, int len)
+{
+    int idx;
+    int ret;
+
+    /* Packet address to index */
+    idx = ((u64)pkt - ctx->net->papp.pkt.base) / ctx->net->papp.pkt.sz;
+
+    /* Check the index whether being in the valid range */
+    if ( unlikely(idx < 0 || idx >= ctx->net->papp.len) ) {
+        /* Invalid packet address */
+        return -1;
+    }
+
+    pkt = (u8 *)(ctx->net->papp.pkt.base + (idx * ctx->net->papp.pkt.sz));
+    ctx->xmit(ctx, NULL, pkt, pkt + ctx->net->papp.hdr.off[idx], len);
+
+    ret = -1;
+
+    /* Free */
+    pfree(ctx->net, idx);
+
+    return ret;
+}
 
 
 /*
@@ -865,6 +928,23 @@ _ipv4_icmp_echo_request(struct net *net, struct net_stack_chain_next *tx,
     mdata.daddr = iphdr->ip_src;
     mdata.flags = 0;
     mdata.proto = IP_ICMP;
+
+#if 0
+    struct net_papp_ctx ctx;
+    struct net_papp_status stat;
+    ctx.net = net;
+    ctx.data = &mdata;
+    ctx.papp = net_papp_host_port_ip;
+    ctx.xmit = net_papp_host_port_ip_post;
+    p = papp(&ctx, &stat);
+    if ( NULL == p ) {
+        if ( -NET_PAPP_ENOARPENT == errno ) {
+            /* No ARP entry found, then send an ARP request */
+
+        }
+        return -1;
+    }
+#endif
 
     /* Prepare a packet buffer */
     int idx;
@@ -1708,6 +1788,7 @@ net_init(struct net *net)
     net->papp.pkt.base = (u64)kmalloc(net->papp.pkt.sz * net->papp.len);
     net->papp.hdr.sz = 256;
     net->papp.hdr.base = (u64)kmalloc(net->papp.hdr.sz * net->papp.len);
+    net->papp.hdr.off = kmalloc(sizeof(int) * net->papp.len);
     net->papp.ring.desc = kmalloc(sizeof(int) * net->papp.len);
     net->papp.ring.head = 0;
     net->papp.ring.tail = net->papp.len - 1;

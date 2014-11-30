@@ -301,8 +301,9 @@ struct net_papp_meta_host_port_ip {
     u32 daddr;
     int flags;
     int proto;
-    /* Write-back parameter */
+    /* Write-back parameters */
     u64 param0;
+    u64 param1;
 };
 struct net_papp_meta_ip {
     u32 saddr;
@@ -311,21 +312,46 @@ struct net_papp_meta_ip {
     int proto;
 };
 /* PAPP context */
-struct net_papp_ctx {
-
+struct net_papp_ctx
+{
+    struct net *net;
+    void *data;
+    int (*papp)(struct net_papp_ctx *, void *, u8 *, u8 **);
+    int (*xmit)(struct net_papp_ctx *, void *, u8 *, u8 *, int);
+};
+/* Write-back */
+struct net_papp_status {
+    int errno;
+    u64 param0;
+    u64 param1;
 };
 
+#if 0
+struct net_papp_packet {
+    struct net_papp_ctx *ctx;
+    u8 *pkt;
+    u8 *hdr;
+    int off;
+};
+#endif
 struct netsc_papp {
-    int len;
-    int wrap;
+    /* Queue length */
+    int len; /* in bytes (must be 2^n) */
+    int wrap; /* len - 1 */
+
+    /* Packet buffer */
     struct {
-        u64 base;
+        u64 base; /* Buffer exposed to the user context */
         int sz;
     } pkt;
+    /* Header buffer */
     struct {
-        u64 base;
+        u64 base; /* Buffer not exposed to the user context */
         int sz;
+        /* Offsets */
+        int *off;
     } hdr;
+    /* Ring buffer */
     struct {
         int *desc;
         int head;
@@ -392,65 +418,6 @@ struct net_fdb {
 };
 
 
-
-/*
- * Switch
- */
-struct net_switch {
-    /* Forwarding database */
-    struct net_fdb fdb;
-};
-
-
-
-/*
- * IP interface
- */
-struct net_ip {
-
-};
-
-
-
-/*
- * L2 interface
- */
-struct net_l2if {
-    int type;
-    union {
-        struct net_port *port;
-        struct net_l3if *l3if;
-    } u;
-};
-
-struct net_bridge {
-    /* Lower layer information */
-    int nr;
-    struct net_port **ports; /* FIXME: outgoing VLAN tag/untagged */
-    /* Upper layer information */
-    int nr_ipif;
-    struct net_ipif **ipifs;
-    /* FDB */
-    struct net_fdb fdb;
-};
-struct net_ipif {
-    u64 mac;
-    struct net_bridge *bridge;
-    struct net_ipv4 *ipv4;
-};
-struct net_ipv4 {
-    u32 addr; /* Stored in the network order */
-    struct net_ipif *ipif;
-    struct net_arp_table arp;
-    struct net_router *router;
-};
-struct net_router {
-    int nr;
-    struct net_ipv4 **ipv4s;
-    struct net_rib4 *rib4;
-};
-
-
 /*
  * Global network structure
  */
@@ -458,7 +425,6 @@ struct net {
     int sys_mtu;
     /*void *code;*/
     //struct netdev_list *devs;
-    //struct net_bridge bridge;
 
     struct netsc_papp papp;
 };
