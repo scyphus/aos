@@ -294,12 +294,14 @@ struct net_nd_table {
 
 
 struct net_papp_meta_host_port_ip {
+    /* Main parameter */
     struct net_port_host *hport;
+    /* Additional parameters */
     u32 saddr;
     u32 daddr;
     int flags;
     int proto;
-    /* Return */
+    /* Write-back parameter */
     u64 param0;
 };
 struct net_papp_meta_ip {
@@ -307,6 +309,10 @@ struct net_papp_meta_ip {
     u32 daddr;
     int flags;
     int proto;
+};
+/* PAPP context */
+struct net_papp_ctx {
+
 };
 
 struct netsc_papp {

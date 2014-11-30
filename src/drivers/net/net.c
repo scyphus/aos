@@ -201,7 +201,7 @@ pfree(struct net *net, int idx)
 }
 
 /*
- * PAPP for IP
+ * PAPP for IP (host_port)
  */
 int
 net_papp_host_port_ip(struct net *net, void *data, u8 *hdr, int hdrlen, u8 *pkt,
@@ -904,6 +904,7 @@ _ipv4_icmp_echo_request(struct net *net, struct net_stack_chain_next *tx,
                                                + sizeof(struct ip_arp),
                                                mdata.hport->port->netdev);
         }
+        pfree(net, idx);
         return ret;
     }
 
@@ -916,8 +917,10 @@ _ipv4_icmp_echo_request(struct net *net, struct net_stack_chain_next *tx,
     kmemcpy(p + sizeof(struct icmp_hdr), pkt, len);
     icmp->checksum = _checksum(p, sizeof(struct icmp_hdr) + len);
 
-    return net_papp_host_port_ip_post(net, &mdata, hbuf, ret /*offset*/, pbuf,
-                                      len + sizeof(struct icmp_hdr));
+    ret = net_papp_host_port_ip_post(net, &mdata, hbuf, ret /*offset*/, pbuf,
+                                     len + sizeof(struct icmp_hdr));
+    pfree(net, idx);
+    return ret;
 }
 
 /*
