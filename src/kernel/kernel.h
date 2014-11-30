@@ -299,6 +299,8 @@ struct net_papp_meta_host_port_ip {
     u32 daddr;
     int flags;
     int proto;
+    /* Return */
+    u64 param0;
 };
 struct net_papp_meta_ip {
     u32 saddr;

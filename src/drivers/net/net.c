@@ -236,6 +236,7 @@ net_papp_host_port_ip(struct net *net, void *data, u8 *hdr, int hdrlen, u8 *pkt,
     /* Lookup MAC address table */
     ret = net_arp_resolve(&mdata->hport->arp, nh, &macaddr);
     if ( ret < 0 ) {
+        mdata->param0 = nh;
         return -NET_PAPP_ENOARPENT;
     }
 
@@ -273,6 +274,31 @@ net_papp_host_port_ip(struct net *net, void *data, u8 *hdr, int hdrlen, u8 *pkt,
     /* Return the offset */
     return sizeof(struct ethhdr) + sizeof(struct iphdr);
 }
+int
+net_papp_host_port_ip_post(struct net *net, void *data, u8 *hdr, int off,
+                           u8 *pkt, int iplen)
+{
+    struct iphdr *iphdr;
+    struct net_hps_host_port_ip_data *mdata;
+    u8 *p;
+    int len;
+
+    /* Meta data */
+    mdata = (struct net_hps_host_port_ip_data *)data;
+
+    kmemcpy(pkt, hdr, off);
+    iphdr = (struct iphdr *)(pkt + sizeof(struct ethhdr));
+    iphdr->ip_len = bswap16(iplen + sizeof(struct iphdr));
+    len = iplen + sizeof(struct ethhdr) + sizeof(struct iphdr);
+
+    p = pkt + sizeof(struct ethhdr) + sizeof(struct iphdr);
+    iphdr->ip_sum = 0;
+    iphdr->ip_sum = _ip_checksum((u8 *)iphdr, sizeof(struct iphdr));
+
+    return mdata->hport->port->netdev->sendpkt(pkt, len,
+                                               mdata->hport->port->netdev);
+}
+
 
 /*
  * PAPP for TCP
@@ -283,7 +309,6 @@ net_papp_tcp(struct net *net, struct tcp_session *sess, u8 *hdr, int hdrlen,
 {
     struct net_papp_meta_host_port_ip mdata;
     struct tcp_hdr *tcp;
-    int len;
     int ret;
 
     /* Prepare meta data */
@@ -307,7 +332,7 @@ net_papp_tcp(struct net *net, struct tcp_session *sess, u8 *hdr, int hdrlen,
     tcp->ackno = bswap32(sess->ack);
     tcp->flag_ns = 0;
     tcp->flag_reserved = 0;
-    tcp->offset = 5;
+    tcp->offset = sizeof(struct tcp_hdr) / 4;
     tcp->flag_fin = 0;
     tcp->flag_syn = 0;
     tcp->flag_rst = 0;
@@ -316,7 +341,6 @@ net_papp_tcp(struct net *net, struct tcp_session *sess, u8 *hdr, int hdrlen,
     tcp->flag_urg = 0;
     tcp->flag_ece = 0;
     tcp->flag_cwr = 0;
-    //tcp2->wsize = 0xffff;
     tcp->wsize = bswap16(
         ((sess->twin.sz + sess->twin.pos0 - sess->twin.pos1 - 1)
          % sess->twin.sz) >> sess->wscale);
@@ -842,7 +866,6 @@ _ipv4_icmp_echo_request(struct net *net, struct net_stack_chain_next *tx,
     mdata.flags = 0;
     mdata.proto = IP_ICMP;
 
-#if 0
     /* Prepare a packet buffer */
     int idx;
     idx = palloc(net);
@@ -857,7 +880,6 @@ _ipv4_icmp_echo_request(struct net *net, struct net_stack_chain_next *tx,
     if ( ret < 0 ) {
         if ( -NET_PAPP_ENOARPENT == ret ) {
             /* No ARP entry found, then send an ARP request */
-#if 0
             u8 abuf[1024];
             struct ip_arp *arp;
             struct ethhdr *ehdr;
@@ -876,21 +898,15 @@ _ipv4_icmp_echo_request(struct net *net, struct net_stack_chain_next *tx,
             arp->src_mac = macaddr;
             arp->src_ip = mdata.saddr;
             arp->dst_mac = 0;
-            arp->dst_ip = nh;
-            mdata->hport->port->netdev->sendpkt(abuf,
-                                                sizeof(struct ethhdr)
-                                                + sizeof(struct ip_arp),
-                                                mdata->hport->port->netdev);
-            return ret;
-#endif
+            arp->dst_ip = mdata.param0;
+            mdata.hport->port->netdev->sendpkt(abuf,
+                                               sizeof(struct ethhdr)
+                                               + sizeof(struct ip_arp),
+                                               mdata.hport->port->netdev);
         }
-        return -1;
+        return ret;
     }
-#endif
-    ret = net_hps_host_port_ip_pre(net, &mdata, buf, 4096, &p);
-    if ( ret < len + sizeof(struct icmp_hdr) ) {
-        return -1;
-    }
+
     icmp = (struct icmp_hdr *)p;
     icmp->type = ICMP_ECHO_REPLY;
     icmp->code = 0;
@@ -900,8 +916,8 @@ _ipv4_icmp_echo_request(struct net *net, struct net_stack_chain_next *tx,
     kmemcpy(p + sizeof(struct icmp_hdr), pkt, len);
     icmp->checksum = _checksum(p, sizeof(struct icmp_hdr) + len);
 
-    return net_hps_host_port_ip_post(net, &mdata, buf,
-                                     len + sizeof(struct icmp_hdr));
+    return net_papp_host_port_ip_post(net, &mdata, hbuf, ret /*offset*/, pbuf,
+                                      len + sizeof(struct icmp_hdr));
 }
 
 /*
