@@ -1584,7 +1584,7 @@ net_sc_rx_port_host(struct net *net, u8 *pkt, int len, void *data)
 }
 
 int
-_send(struct tcp_session *sess, const u8 *pkt, u32 plen)
+_tcp_send(struct tcp_session *sess, const u8 *pkt, u32 plen)
 {
     int bufsz;
 
@@ -1698,7 +1698,7 @@ net_init(struct net *net)
     sessions[0].lipaddr = 0;
     sessions[0].lport = bswap16(23);
     sessions[0].recv = shell_tcp_recv;
-    sessions[0].send = _send;
+    sessions[0].send = _tcp_send;
 
     /* Initialize PAPP */
     net->papp.len = 1<<7/*128*/;
@@ -1732,70 +1732,6 @@ net_release(struct net *net)
 
     return 0;
 }
-
-
-
-
-
-
-
-
-
-
-#if 0
-/*
- * Lookup forwarding database
- */
-struct net_fdb_entry *
-net_switch_fdb_lookup(struct net_switch *sw)
-{
-    return NULL;
-}
-
-
-
-/*
- * Register L3 interface
- */
-int
-net_l3if_register(struct net *net)
-{
-    return 0;
-}
-
-/*
- * Unregister L3 interface
- */
-int
-net_l3if_unregister(struct net *net, struct net_l3if *l3if)
-{
-    return 0;
-}
-
-/*
- * Add an IP address to a L3 interface
- */
-int
-net_l3if_ipv4_addr_add(struct net *net)
-{
-    return 0;
-}
-
-/*
- * Delete an IP address from a L3 interface
- */
-int
-net_l3if_ipv4_addr_delete(struct net *net)
-{
-    return 0;
-}
-#endif
-
-
-
-
-
-
 
 /*
  * Local variables:
