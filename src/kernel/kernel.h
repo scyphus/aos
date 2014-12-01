@@ -326,6 +326,10 @@ struct net_papp_ctx
     int (*papp)(struct net_papp_ctx *, u8 *, struct net_papp_status *);
     int (*xmit)(struct net_papp_ctx *, u8 *, int, u8 *, int);
 };
+struct net_papp_ctx_data_tcp {
+    struct tcp_session *sess;
+    struct net_papp_ctx *ulayctx;
+};
 
 #if 0
 struct net_papp_packet {

@@ -99,6 +99,9 @@ static struct tcp_session sessions[TCP_MAX_SESSIONS];
 
 
 
+int net_tcp_trigger(struct net *);
+int net_rib4_lookup(struct net_rib4 *, u32, u32 *);
+int net_arp_resolve(struct net_arp_table *, u32 , u64 *);
 
 
 static int
@@ -279,7 +282,6 @@ net_papp_host_port_ip_xmit(struct net_papp_ctx *ctx, u8 *hdr, int off,
 {
     struct iphdr *iphdr;
     struct net_papp_meta_host_port_ip *mdata;
-    u8 *p;
     int len;
 
     /* Meta data */
@@ -292,7 +294,6 @@ net_papp_host_port_ip_xmit(struct net_papp_ctx *ctx, u8 *hdr, int off,
     len = iplen + sizeof(struct ethhdr) + sizeof(struct iphdr);
 
     /* Checksum */
-    p = pkt + sizeof(struct ethhdr) + sizeof(struct iphdr);
     iphdr->ip_sum = 0;
     iphdr->ip_sum = _ip_checksum((u8 *)iphdr, sizeof(struct iphdr));
 
@@ -306,12 +307,14 @@ net_papp_host_port_ip_xmit(struct net_papp_ctx *ctx, u8 *hdr, int off,
  * PAPP for TCP
  */
 int
-net_papp_tcp(struct net *net, struct tcp_session *sess, u8 *hdr, int hdrlen,
-             u8 *pkt, u8 **pktp)
+net_papp_tcp(struct net_papp_ctx *ctx, u8 *hdr, struct net_papp_status *stat)
 {
     struct net_papp_meta_host_port_ip mdata;
     struct tcp_hdr *tcp;
     int ret;
+    struct tcp_session *sess;
+
+    sess = ((struct net_papp_ctx_data_tcp *)(ctx->data))->sess;
 
     /* Prepare meta data */
     mdata.hport = ((struct net_port *)(sess->tx->data))->next.data;
@@ -320,14 +323,11 @@ net_papp_tcp(struct net *net, struct tcp_session *sess, u8 *hdr, int hdrlen,
     mdata.flags = 0;
     mdata.proto = IP_TCP;
 
+    struct net_papp_ctx *ulayctx
+        = ((struct net_papp_ctx_data_tcp *)(ctx->data))->ulayctx;
+
     /* Prepare a packet buffer for ACK */
-    struct net_papp_ctx ctx;
-    struct net_papp_status stat;
-    ctx.net = net;
-    ctx.data = &mdata;
-    ctx.papp = net_papp_host_port_ip;
-    ctx.xmit = net_papp_host_port_ip_xmit;
-    ret = net_papp_host_port_ip(&ctx, hdr, &stat);
+    ret = ulayctx->papp(ulayctx, hdr, &stat);
     if ( ret < 0 ) {
         /* Error */
         return ret;
@@ -359,33 +359,6 @@ net_papp_tcp(struct net *net, struct tcp_session *sess, u8 *hdr, int hdrlen,
 }
 
 
-
-
-
-
-/*
- * Packet allocation
- */
-void *
-tcp_papp(struct net *net, struct tcp_session *sess, int sz, int *asz)
-{
-    u8 *p;
-    u8 *h;
-    int idx;
-
-    idx = palloc(net);
-    if ( idx < 0 ) {
-        return NULL;
-    }
-
-    p = net->papp.pkt.base + (idx * net->papp.pkt.sz);
-    h = net->papp.hdr.base + (idx * net->papp.hdr.sz);
-
-    //ptr = (u64)p;
-    //idx = (ptr - net->papp.pkt.base) / net->papp.pkt.sz;
-
-    return p;
-}
 
 /*
  * PAPP
@@ -540,12 +513,11 @@ int
 tcp_send_ack(struct net *net, struct net_stack_chain_next *tx,
              struct tcp_session *sess, u32 seq, int syn, int fin)
 {
-    u8 buf[256];
     int len;
     int plen;
     u8 *p;
     struct net_hps_host_port_ip_data mdata;
-    struct tcp_hdr *tcp2;
+    struct tcp_hdr *tcp;
     int ret;
 
     /* Prepare meta data */
@@ -560,35 +532,40 @@ tcp_send_ack(struct net *net, struct net_stack_chain_next *tx,
     }
 
     /* Prepare a packet buffer for ACK */
-    ret = net_hps_host_port_ip_pre(net, &mdata, buf, 256, &p);
-    if ( ret < len ) {
+    struct net_papp_ctx ctx;
+    struct net_papp_status stat;
+    ctx.net = net;
+    ctx.data = &mdata;
+    ctx.papp = net_papp_host_port_ip;
+    ctx.xmit = net_papp_host_port_ip_xmit;
+    p = papp(&ctx, &stat);
+    if ( NULL == p ) {
         return -1;
     }
-    tcp2 = (struct tcp_hdr *)p;
-    tcp2->sport = sess->lport;
-    tcp2->dport = sess->rport;
-    tcp2->seqno = bswap32(seq);
-    tcp2->ackno = bswap32(sess->ack);
-    tcp2->flag_ns = 0;
-    tcp2->flag_reserved = 0;
+    tcp = (struct tcp_hdr *)p;
+    tcp->sport = sess->lport;
+    tcp->dport = sess->rport;
+    tcp->seqno = bswap32(seq);
+    tcp->ackno = bswap32(sess->ack);
+    tcp->flag_ns = 0;
+    tcp->flag_reserved = 0;
     if ( syn ) {
-        tcp2->offset = 5 + 2;
+        tcp->offset = 5 + 2;
     } else {
-        tcp2->offset = 5;
+        tcp->offset = 5;
     }
-    tcp2->flag_fin = fin;
-    tcp2->flag_syn = syn;
-    tcp2->flag_rst = 0;
-    tcp2->flag_psh = 0;
-    tcp2->flag_ack = 1;
-    tcp2->flag_urg = 0;
-    tcp2->flag_ece = 0;
-    tcp2->flag_cwr = 0;
-    //tcp2->wsize = 0xffff;
-    tcp2->wsize = bswap16(1024);
-    tcp2->checksum = 0;
-    tcp2->urgptr = 0;
-
+    tcp->flag_fin = fin;
+    tcp->flag_syn = syn;
+    tcp->flag_rst = 0;
+    tcp->flag_psh = 0;
+    tcp->flag_ack = 1;
+    tcp->flag_urg = 0;
+    tcp->flag_ece = 0;
+    tcp->flag_cwr = 0;
+    //tcp->wsize = 0xffff;
+    tcp->wsize = bswap16(1024);
+    tcp->checksum = 0;
+    tcp->urgptr = 0;
     if ( syn ) {
         u8 *opt;
         opt = p + sizeof(struct tcp_hdr);
@@ -609,26 +586,27 @@ tcp_send_ack(struct net *net, struct net_stack_chain_next *tx,
         plen += 8;
     }
     ptcp = alloca(plen);
-    kmemcpy(&ptcp->sport, tcp2, len);
+    kmemcpy(&ptcp->sport, tcp, len);
     ptcp->saddr = sess->lipaddr;
     ptcp->daddr = sess->ripaddr;
     ptcp->zeros = 0;
     ptcp->proto = IP_TCP;
     ptcp->tcplen = bswap16(len + 0 /*payload*/);
-    tcp2->checksum = _checksum((u8 *)ptcp, plen);
+    tcp->checksum = _checksum((u8 *)ptcp, plen);
 
     if ( syn || fin ) {
         sess->seq++;
     }
 
-    return net_hps_host_port_ip_post(net, &mdata, buf, len);
+    ret = papp_xmit(&ctx, p, len);
+
+    return ret;
 }
 
 int
 tcp_send_data(struct net *net, struct net_stack_chain_next *tx,
               struct tcp_session *sess, u32 seq, const u8 *pkt, u32 plen)
 {
-    u8 buf[4096];
     int len;
     u8 *p;
     struct net_hps_host_port_ip_data mdata;
@@ -644,8 +622,14 @@ tcp_send_data(struct net *net, struct net_stack_chain_next *tx,
     len = sizeof(struct tcp_hdr);
 
     /* Prepare a packet buffer for ACK */
-    ret = net_hps_host_port_ip_pre(net, &mdata, buf, 4096, &p);
-    if ( ret < len ) {
+    struct net_papp_ctx ctx;
+    struct net_papp_status stat;
+    ctx.net = net;
+    ctx.data = &mdata;
+    ctx.papp = net_papp_host_port_ip;
+    ctx.xmit = net_papp_host_port_ip_xmit;
+    p = papp(&ctx, &stat);
+    if ( NULL == p ) {
         return -1;
     }
     tcp2 = (struct tcp_hdr *)p;
@@ -685,7 +669,9 @@ tcp_send_data(struct net *net, struct net_stack_chain_next *tx,
 
     kmemcpy(p + sizeof(struct tcp_hdr), pkt, plen);
 
-    return net_hps_host_port_ip_post(net, &mdata, buf, len + plen);
+    ret = papp_xmit(&ctx, p, len + plen);
+
+    return ret;
 }
 
 
@@ -823,7 +809,6 @@ net_rib4_add(struct net_rib4 *r, u32 pf, int l, u32 nh)
 int
 net_rib4_lookup(struct net_rib4 *r, u32 addr, u32 *nh)
 {
-    u32 pf;
     int l;
     u32 cand;
     int i;
@@ -839,7 +824,6 @@ net_rib4_lookup(struct net_rib4 *r, u32 addr, u32 *nh)
         if ( r->entries[i].prefix == (addr & mask) ) {
             /* Found */
             if ( l < r->entries[i].length ) {
-                pf = r->entries[i].prefix;
                 l = r->entries[i].length;
                 cand = r->entries[i].nexthop;
             }
@@ -936,7 +920,41 @@ _icmpv6_checksum(const u8 *src, const u8 *dst, u32 len, const u8 *data)
 
 
 
+/*
+ * Send ARP request
+ */
+static int
+_send_arp_request(struct net *net, struct net_stack_chain_next *tx,
+                  u32 ipaddr)
+{
+    u8 abuf[1024];
+    struct ip_arp *arp;
+    struct ethhdr *ehdr;
+    u64 macaddr;
+    struct net_port_host *hport;
 
+    hport = ((struct net_port *)(tx->data))->next.data;
+    ehdr = (struct ethhdr *)abuf;
+    ehdr->dst = 0xffffffffffffULL;
+    kmemcpy(&macaddr, hport->macaddr, 6);
+    ehdr->src = macaddr;
+    ehdr->type = bswap16(ETHERTYPE_ARP);
+    arp = (struct ip_arp *)(abuf + sizeof(struct ethhdr));
+    arp->hw_type = bswap16(1);
+    arp->protocol = bswap16(0x0800);
+    arp->hlen = 0x06;
+    arp->plen = 0x04;
+    arp->opcode = bswap16(ARP_REQUEST);
+    arp->src_mac = macaddr;
+    arp->src_ip = hport->ip4addr.addrs[0];
+    arp->dst_mac = 0;
+    arp->dst_ip = ipaddr;
+    hport->port->netdev->sendpkt(abuf,
+                                 sizeof(struct ethhdr) + sizeof(struct ip_arp),
+                                 hport->port->netdev);
+
+    return 0;
+}
 
 /*
  * ICMP echo request handler
@@ -947,7 +965,6 @@ _ipv4_icmp_echo_request(struct net *net, struct net_stack_chain_next *tx,
                         int len)
 {
     int ret;
-    u8 buf[4096];
     u8 *p;
     struct net_papp_meta_host_port_ip mdata;
     struct icmp_hdr *icmp;
@@ -1644,7 +1661,6 @@ net_hps_host_port_ip_post(struct net *net, void *data, u8 *buf, int iplen)
 {
     struct iphdr *iphdr;
     struct net_hps_host_port_ip_data *mdata;
-    u8 *p;
     int len;
 
     /* Meta data */
@@ -1654,7 +1670,6 @@ net_hps_host_port_ip_post(struct net *net, void *data, u8 *buf, int iplen)
     iphdr->ip_len = bswap16(iplen + sizeof(struct iphdr));
     len = iplen + sizeof(struct ethhdr) + sizeof(struct iphdr);
 
-    p = buf + sizeof(struct ethhdr) + sizeof(struct iphdr);
     iphdr->ip_sum = 0;
     iphdr->ip_sum = _ip_checksum((u8 *)iphdr, sizeof(struct iphdr));
 
@@ -1741,9 +1756,11 @@ net_tcp_trigger(struct net *net)
                 } else {
                     pktsz = sz;
                 }
+#if 0
                 if ( sessions[i].twin.pos0  ) {
                     sessions[i].mss;
                 }
+#endif
                 pos = sessions[i].twin.pos0;
                 if ( pos + pktsz > sessions[i].twin.sz ) {
                     kmemcpy(pkt, sessions[i].twin.buf + pos,
