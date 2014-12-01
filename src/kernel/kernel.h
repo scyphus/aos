@@ -331,14 +331,6 @@ struct net_papp_ctx_data_tcp {
     struct net_papp_ctx *ulayctx;
 };
 
-#if 0
-struct net_papp_packet {
-    struct net_papp_ctx *ctx;
-    u8 *pkt;
-    u8 *hdr;
-    int off;
-};
-#endif
 struct netsc_papp {
     /* Queue length */
     int len; /* in bytes (must be 2^n) */
@@ -362,10 +354,6 @@ struct netsc_papp {
         int head;
         int tail;
     } ring;
-};
-struct netsc_papp_queue {
-    int cur;
-    int next;
 };
 
 /* DRIVER */
