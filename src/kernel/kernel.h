@@ -290,6 +290,7 @@ struct net_nd_table {
 #define NET_PAPP_ENOERROR       0
 #define NET_PAPP_ENOARPENT      10
 #define NET_PAPP_ENORIBENT      11
+#define NET_PAPP_ERAND          12
 
 
 
@@ -311,19 +312,19 @@ struct net_papp_meta_ip {
     int flags;
     int proto;
 };
-/* PAPP context */
-struct net_papp_ctx
-{
-    struct net *net;
-    void *data;
-    int (*papp)(struct net_papp_ctx *, void *, u8 *, u8 **);
-    int (*xmit)(struct net_papp_ctx *, void *, u8 *, u8 *, int);
-};
 /* Write-back */
 struct net_papp_status {
     int errno;
     u64 param0;
     u64 param1;
+};
+/* PAPP context */
+struct net_papp_ctx
+{
+    struct net *net;
+    void *data;
+    int (*papp)(struct net_papp_ctx *, u8 *, struct net_papp_status *);
+    int (*xmit)(struct net_papp_ctx *, u8 *, int, u8 *, int);
 };
 
 #if 0

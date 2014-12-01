@@ -204,8 +204,8 @@ pfree(struct net *net, int idx)
  * PAPP for IP (host_port)
  */
 int
-net_papp_host_port_ip(struct net *net, void *data, u8 *hdr, int hdrlen, u8 *pkt,
-                      u8 **pktp)
+net_papp_host_port_ip(struct net_papp_ctx *ctx, u8 *hdr,
+                      struct net_papp_status *stat)
 {
     int ret;
     struct net_papp_meta_host_port_ip *mdata;
@@ -215,10 +215,11 @@ net_papp_host_port_ip(struct net *net, void *data, u8 *hdr, int hdrlen, u8 *pkt,
     struct iphdr *iphdr;
     u64 rnd;
 
-    mdata = (struct net_papp_meta_host_port_ip *)data;
+    mdata = (struct net_papp_meta_host_port_ip *)ctx->data;
 
     /* Check the buffer length first */
-    if ( unlikely(hdrlen < sizeof(struct ethhdr) + sizeof(struct iphdr)) ) {
+    if ( unlikely(ctx->net->papp.hdr.sz
+                  < sizeof(struct ethhdr) + sizeof(struct iphdr)) ) {
         return -1;
     }
 
@@ -236,7 +237,8 @@ net_papp_host_port_ip(struct net *net, void *data, u8 *hdr, int hdrlen, u8 *pkt,
     /* Lookup MAC address table */
     ret = net_arp_resolve(&mdata->hport->arp, nh, &macaddr);
     if ( ret < 0 ) {
-        mdata->param0 = nh;
+        stat->errno = NET_PAPP_ENOARPENT;
+        stat->param0 = nh;
         return -NET_PAPP_ENOARPENT;
     }
 
@@ -250,7 +252,7 @@ net_papp_host_port_ip(struct net *net, void *data, u8 *hdr, int hdrlen, u8 *pkt,
     /* Get a random number */
     ret = rdrand(&rnd);
     if ( ret < 0 ) {
-        return ret;
+        return -NET_PAPP_ERAND;
     }
 
     /* IP */
@@ -268,32 +270,32 @@ net_papp_host_port_ip(struct net *net, void *data, u8 *hdr, int hdrlen, u8 *pkt,
     /* Set destination address */
     iphdr->ip_dst = mdata->daddr;
 
-    /* Payload */
-    *pktp = pkt + sizeof(struct ethhdr) + sizeof(struct iphdr);
-
     /* Return the offset */
     return sizeof(struct ethhdr) + sizeof(struct iphdr);
 }
 int
-net_papp_host_port_ip_post(struct net *net, void *data, u8 *hdr, int off,
+net_papp_host_port_ip_xmit(struct net_papp_ctx *ctx, u8 *hdr, int off,
                            u8 *pkt, int iplen)
 {
     struct iphdr *iphdr;
-    struct net_hps_host_port_ip_data *mdata;
+    struct net_papp_meta_host_port_ip *mdata;
     u8 *p;
     int len;
 
     /* Meta data */
-    mdata = (struct net_hps_host_port_ip_data *)data;
+    mdata = (struct net_papp_meta_host_port_ip *)ctx->data;
 
+    /* IP length */
     kmemcpy(pkt, hdr, off);
     iphdr = (struct iphdr *)(pkt + sizeof(struct ethhdr));
     iphdr->ip_len = bswap16(iplen + sizeof(struct iphdr));
     len = iplen + sizeof(struct ethhdr) + sizeof(struct iphdr);
 
+    /* Checksum */
     p = pkt + sizeof(struct ethhdr) + sizeof(struct iphdr);
     iphdr->ip_sum = 0;
     iphdr->ip_sum = _ip_checksum((u8 *)iphdr, sizeof(struct iphdr));
+
 
     return mdata->hport->port->netdev->sendpkt(pkt, len,
                                                mdata->hport->port->netdev);
@@ -319,7 +321,13 @@ net_papp_tcp(struct net *net, struct tcp_session *sess, u8 *hdr, int hdrlen,
     mdata.proto = IP_TCP;
 
     /* Prepare a packet buffer for ACK */
-    ret = net_papp_host_port_ip(net, &mdata, hdr, hdrlen, pkt, pktp);
+    struct net_papp_ctx ctx;
+    struct net_papp_status stat;
+    ctx.net = net;
+    ctx.data = &mdata;
+    ctx.papp = net_papp_host_port_ip;
+    ctx.xmit = net_papp_host_port_ip_xmit;
+    ret = net_papp_host_port_ip(&ctx, hdr, &stat);
     if ( ret < 0 ) {
         /* Error */
         return ret;
@@ -401,15 +409,15 @@ papp(struct net_papp_ctx *ctx, struct net_papp_status *stat)
     ctx->net->papp.hdr.off[idx] = 0;
 
     /* Call the papp function of the corresponding context */
-    ret = ctx->papp(ctx, stat, (u8 *)hdr, &p);
+    ret = ctx->papp(ctx, (u8 *)hdr, stat);
     if ( ret < 0 ) {
-        stat->errno = ret;
-        //stat->param0 = 0;
         return NULL;
     }
+    stat->errno = 0;
 
     /* Set offset */
     ctx->net->papp.hdr.off[idx] = ret;
+    p = pkt + ret;
 
     return p;
 }
@@ -422,6 +430,7 @@ papp_xmit(struct net_papp_ctx *ctx, u8 *pkt, int len)
 {
     int idx;
     int ret;
+    u8 *hdr;
 
     /* Packet address to index */
     idx = ((u64)pkt - ctx->net->papp.pkt.base) / ctx->net->papp.pkt.sz;
@@ -433,14 +442,35 @@ papp_xmit(struct net_papp_ctx *ctx, u8 *pkt, int len)
     }
 
     pkt = (u8 *)(ctx->net->papp.pkt.base + (idx * ctx->net->papp.pkt.sz));
-    ctx->xmit(ctx, NULL, pkt, pkt + ctx->net->papp.hdr.off[idx], len);
+    hdr = (u8 *)(ctx->net->papp.hdr.base + (idx * ctx->net->papp.hdr.sz));
+    ret = ctx->xmit(ctx, hdr, ctx->net->papp.hdr.off[idx], pkt, len);
 
-    ret = -1;
+    if ( ret < 0 ) {
+        return ret;
+    }
 
     /* Free */
     pfree(ctx->net, idx);
 
     return ret;
+}
+
+void
+papp_free(struct net_papp_ctx *ctx, u8 *pkt)
+{
+    int idx;
+
+    /* Packet address to index */
+    idx = ((u64)pkt - ctx->net->papp.pkt.base) / ctx->net->papp.pkt.sz;
+
+    /* Check the index whether being in the valid range */
+    if ( unlikely(idx < 0 || idx >= ctx->net->papp.len) ) {
+        /* Invalid packet address */
+        return;
+    }
+
+    /* Free */
+    pfree(ctx->net, idx);
 }
 
 
@@ -929,36 +959,15 @@ _ipv4_icmp_echo_request(struct net *net, struct net_stack_chain_next *tx,
     mdata.flags = 0;
     mdata.proto = IP_ICMP;
 
-#if 0
     struct net_papp_ctx ctx;
     struct net_papp_status stat;
     ctx.net = net;
     ctx.data = &mdata;
     ctx.papp = net_papp_host_port_ip;
-    ctx.xmit = net_papp_host_port_ip_post;
+    ctx.xmit = net_papp_host_port_ip_xmit;
     p = papp(&ctx, &stat);
     if ( NULL == p ) {
-        if ( -NET_PAPP_ENOARPENT == errno ) {
-            /* No ARP entry found, then send an ARP request */
-
-        }
-        return -1;
-    }
-#endif
-
-    /* Prepare a packet buffer */
-    int idx;
-    idx = palloc(net);
-    if ( idx < 0 ) {
-        return -1;
-    }
-    u8 *pbuf;
-    u8 *hbuf;
-    pbuf = net->papp.pkt.base + (idx * net->papp.pkt.sz);
-    hbuf = net->papp.hdr.base + (idx * net->papp.hdr.sz);
-    ret = net_papp_host_port_ip(net, &mdata, hbuf, net->papp.hdr.sz, pbuf, &p);
-    if ( ret < 0 ) {
-        if ( -NET_PAPP_ENOARPENT == ret ) {
+        if ( NET_PAPP_ENOARPENT == stat.errno ) {
             /* No ARP entry found, then send an ARP request */
             u8 abuf[1024];
             struct ip_arp *arp;
@@ -984,10 +993,8 @@ _ipv4_icmp_echo_request(struct net *net, struct net_stack_chain_next *tx,
                                                + sizeof(struct ip_arp),
                                                mdata.hport->port->netdev);
         }
-        pfree(net, idx);
-        return ret;
+        return -stat.errno;
     }
-
     icmp = (struct icmp_hdr *)p;
     icmp->type = ICMP_ECHO_REPLY;
     icmp->code = 0;
@@ -997,9 +1004,8 @@ _ipv4_icmp_echo_request(struct net *net, struct net_stack_chain_next *tx,
     kmemcpy(p + sizeof(struct icmp_hdr), pkt, len);
     icmp->checksum = _checksum(p, sizeof(struct icmp_hdr) + len);
 
-    ret = net_papp_host_port_ip_post(net, &mdata, hbuf, ret /*offset*/, pbuf,
-                                     len + sizeof(struct icmp_hdr));
-    pfree(net, idx);
+    ret = papp_xmit(&ctx, p, sizeof(struct icmp_hdr) + len);
+
     return ret;
 }
 
