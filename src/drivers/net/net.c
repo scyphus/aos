@@ -333,6 +333,7 @@ net_papp_tcp(struct net_papp_ctx *ctx, u8 *hdr, struct net_papp_status *stat)
         return ret;
     }
 
+    /* Construct header */
     tcp = (struct tcp_hdr *)(hdr + ret);
     tcp->sport = sess->lport;
     tcp->dport = sess->rport;
@@ -356,6 +357,44 @@ net_papp_tcp(struct net_papp_ctx *ctx, u8 *hdr, struct net_papp_status *stat)
     tcp->urgptr = 0;    /* Check the buffer */
 
     return ret + sizeof(struct tcp_hdr);
+}
+
+int
+net_papp_tcp_xmit(struct net_papp_ctx *ctx, u8 *hdr, int off, u8 *pkt, int len)
+{
+    struct net_papp_meta_host_port_ip *mdata;
+    struct tcp_hdr *tcp;
+    struct tcp_session *sess;
+    u32 cs1;
+    u32 cs2;
+
+    sess = ((struct net_papp_ctx_data_tcp *)(ctx->data))->sess;
+
+    struct net_papp_ctx *ulayctx
+        = ((struct net_papp_ctx_data_tcp *)(ctx->data))->ulayctx;
+
+    /* Meta data */
+    mdata = (struct net_papp_meta_host_port_ip *)ctx->data;
+
+    kmemcpy(pkt, hdr, off);
+    tcp = (struct tcp_hdr *)(pkt + off - sizeof(struct tcp_hdr));
+
+    /* Pseudo checksum */
+    struct tcp_phdr4 *ptcp;
+    ptcp = alloca(sizeof(struct tcp_phdr4));
+    kmemcpy(&ptcp->sport, tcp, len);
+    ptcp->saddr = sess->lipaddr;
+    ptcp->daddr = sess->ripaddr;
+    ptcp->zeros = 0;
+    ptcp->proto = IP_TCP;
+    ptcp->tcplen = bswap16(sizeof(struct tcp_hdr) + len);
+
+    cs1 = _checksum((u8 *)ptcp, sizeof(struct tcp_phdr4));
+    cs2 = _checksum(pkt, len);
+    cs1 = cs1 + cs2;
+    tcp->checksum = (cs1 >> 16) + (cs1 & 0xffff);
+
+    return ulayctx->xmit(ulayctx, hdr, off - sizeof(struct tcp_hdr), pkt, len);
 }
 
 
