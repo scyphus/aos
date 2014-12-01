@@ -327,7 +327,7 @@ net_papp_tcp(struct net_papp_ctx *ctx, u8 *hdr, struct net_papp_status *stat)
         = ((struct net_papp_ctx_data_tcp *)(ctx->data))->ulayctx;
 
     /* Prepare a packet buffer for ACK */
-    ret = ulayctx->papp(ulayctx, hdr, &stat);
+    ret = ulayctx->papp(ulayctx, hdr, stat);
     if ( ret < 0 ) {
         /* Error */
         return ret;
@@ -428,6 +428,9 @@ papp_xmit(struct net_papp_ctx *ctx, u8 *pkt, int len)
     return ret;
 }
 
+/*
+ * Free
+ */
 void
 papp_free(struct net_papp_ctx *ctx, u8 *pkt)
 {
@@ -1406,7 +1409,7 @@ _arp_reply(struct net *net, struct net_stack_chain_next *tx,
 {
     int i;
     int ret;
-    u32 ipaddr;
+    /*u32 ipaddr;*/
 
     /* ARP reply */
     if ( arp->dst_mac != macaddr ) {
@@ -1418,7 +1421,7 @@ _arp_reply(struct net *net, struct net_stack_chain_next *tx,
         if ( arp->dst_ip == ip4->addrs[i] ) {
             /* Found */
             ret = 0;
-            ipaddr = ip4->addrs[i];
+            /*ipaddr = ip4->addrs[i];*/
             /* Register the entry */
             net_arp_register(atbl, arp->src_ip, arp->src_mac, 0);
             break;
@@ -1542,6 +1545,8 @@ net_sc_rx_port_host(struct net *net, u8 *pkt, int len, void *data)
             /* Not supported */
             ret = -1;
             break;
+        default:
+            ret = -1;
         }
         break;
     case ETHERTYPE_IPV4:
