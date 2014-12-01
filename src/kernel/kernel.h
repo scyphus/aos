@@ -429,18 +429,6 @@ typedef int (*net_stack_chain_f)(struct net *, u8 *, int, void *);
 
 
 /*
- * Host port IP
- */
-struct net_hps_host_port_ip_data {
-    struct net_port_host *hport;
-    u32 saddr;
-    u32 daddr;
-    int flags;
-    int proto;
-};
-
-
-/*
  * MAC address
  */
 struct net_macaddr {
