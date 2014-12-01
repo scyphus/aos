@@ -558,7 +558,7 @@ tcp_send_ack(struct net *net, struct net_stack_chain_next *tx,
     int len;
     int plen;
     u8 *p;
-    struct net_hps_host_port_ip_data mdata;
+    struct net_papp_meta_host_port_ip mdata;
     struct tcp_hdr *tcp;
     int ret;
 
@@ -651,7 +651,7 @@ tcp_send_data(struct net *net, struct net_stack_chain_next *tx,
 {
     int len;
     u8 *p;
-    struct net_hps_host_port_ip_data mdata;
+    struct net_papp_meta_host_port_ip mdata;
     struct tcp_hdr *tcp2;
     int ret;
 
@@ -1125,11 +1125,6 @@ _ipv4_tcp(struct net *net, struct net_stack_chain_next *tx,
 
     if ( tcp->flag_syn && !tcp->flag_ack ) {
         /* SYN */
-#if 0
-        kprintf("Received a SYN packet %d => %d\r\n",
-                bswap16(tcp->sport), bswap16(tcp->dport));
-#endif
-
         if ( NULL != sess ) {
             /* Already in use */
             return -1;
@@ -1219,20 +1214,12 @@ _ipv4_tcp(struct net *net, struct net_stack_chain_next *tx,
             sess->wscale = opts.wscale;
         }
 
-#if 0
-        kprintf("MSS: %d, Window scaling opt: %d\r\n", sess->mss, sess->wscale);
-#endif
-
         /* Last ack number */
         sess->ack = sess->rseqno + 1;
         sess->rseqno++;
 
         return tcp_send_ack(net, tx, sess, sess->seq, 1, 0);
     } else if ( tcp->flag_fin ) {
-#if 0
-        kprintf("Received a FIN packet %d => %d\r\n",
-                bswap16(tcp->sport), bswap16(tcp->dport));
-#endif
 
         if ( NULL == sess ) {
             /* Not established */
@@ -1258,11 +1245,6 @@ _ipv4_tcp(struct net *net, struct net_stack_chain_next *tx,
         sess->rcvwin = bswap16(tcp->wsize);
 
         if ( tcp->flag_ack ) {
-#if 0
-            kprintf("Received an ACK packet %d => %d\r\n",
-                    bswap16(tcp->sport), bswap16(tcp->dport));
-#endif
-
             if ( TCP_SYN_RECEIVED == sess->state ) {
                 sess->state = TCP_ESTABLISHED;
             }
@@ -1600,136 +1582,6 @@ net_sc_rx_port_host(struct net *net, u8 *pkt, int len, void *data)
 
     return ret;
 }
-
-
-/*
- * Host L3 port stack chain (header/payload separation)
- */
-int
-net_hps_host_port_ip_pre(struct net *net, void *data, u8 *buf, int len, u8 **p)
-{
-    struct ethhdr *ehdr;
-    struct iphdr *iphdr;
-    struct net_hps_host_port_ip_data *mdata;
-    u32 nh;
-    u64 macaddr;
-    int ret;
-    u64 rnd;
-
-    /* Check the buffer length first */
-    if ( unlikely(len < sizeof(struct ethhdr) + sizeof(struct iphdr)) ) {
-        return -1;
-    }
-
-    /* Meta data */
-    mdata = (struct net_hps_host_port_ip_data *)data;
-
-    /* Lookup next hop */
-    ret = net_rib4_lookup(&mdata->hport->rib4, mdata->daddr, &nh);
-    if ( ret < 0 ) {
-        /* No route to host */
-        return -1;
-    }
-    if ( !nh ) {
-        /* Local scope */
-        nh = mdata->daddr;
-    }
-
-    /* Lookup MAC address table */
-    ret = net_arp_resolve(&mdata->hport->arp, nh, &macaddr);
-    if ( ret < 0 ) {
-        /* No entry found. */
-        u8 abuf[1024];
-        struct ip_arp *arp;
-        ehdr = (struct ethhdr *)abuf;
-        ehdr->dst = 0xffffffffffffULL;
-        kmemcpy(&macaddr, mdata->hport->macaddr, 6);
-        ehdr->src = macaddr;
-        ehdr->type = bswap16(ETHERTYPE_ARP);
-        arp = (struct ip_arp *)(abuf + sizeof(struct ethhdr));
-        arp->hw_type = bswap16(1);
-        arp->protocol = bswap16(0x0800);
-        arp->hlen = 0x06;
-        arp->plen = 0x04;
-        arp->opcode = bswap16(ARP_REQUEST);
-        arp->src_mac = macaddr;
-        arp->src_ip = mdata->saddr;
-        arp->dst_mac = 0;
-        arp->dst_ip = nh;
-        mdata->hport->port->netdev->sendpkt(abuf,
-                                            sizeof(struct ethhdr)
-                                            + sizeof(struct ip_arp),
-                                            mdata->hport->port->netdev);
-        return ret;
-    }
-
-    /* Ethernet */
-    ehdr = (struct ethhdr *)buf;
-    ehdr->dst = macaddr;
-    kmemcpy(&macaddr, mdata->hport->macaddr, 6);
-    ehdr->src = macaddr;
-    ehdr->type = bswap16(ETHERTYPE_IPV4);
-
-    /* Get a random number */
-    ret = rdrand(&rnd);
-    if ( ret < 0 ) {
-        return ret;
-    }
-
-    /* IP */
-    iphdr = (struct iphdr *)(buf + sizeof(struct ethhdr));
-    iphdr->ip_ihl = 5;
-    iphdr->ip_version = 4;
-    iphdr->ip_tos = 0;
-    iphdr->ip_len = 0;
-    iphdr->ip_id = rnd;
-    iphdr->ip_off = 0;
-    iphdr->ip_ttl = 64;
-    iphdr->ip_proto = mdata->proto;
-    /* Set source address */
-    iphdr->ip_src = mdata->saddr;
-    /* Set destination address */
-    iphdr->ip_dst = mdata->daddr;
-
-    /* Payload */
-    *p = buf + sizeof(struct ethhdr) + sizeof(struct iphdr);
-
-    return len - sizeof(struct ethhdr) + sizeof(struct iphdr);
-}
-
-/*
- * Ethernet
- */
-int
-net_hps_host_port_ip_post(struct net *net, void *data, u8 *buf, int iplen)
-{
-    struct iphdr *iphdr;
-    struct net_hps_host_port_ip_data *mdata;
-    int len;
-
-    /* Meta data */
-    mdata = (struct net_hps_host_port_ip_data *)data;
-
-    iphdr = (struct iphdr *)(buf + sizeof(struct ethhdr));
-    iphdr->ip_len = bswap16(iplen + sizeof(struct iphdr));
-    len = iplen + sizeof(struct ethhdr) + sizeof(struct iphdr);
-
-    iphdr->ip_sum = 0;
-    iphdr->ip_sum = _ip_checksum((u8 *)iphdr, sizeof(struct iphdr));
-
-    return mdata->hport->port->netdev->sendpkt(buf, len,
-                                               mdata->hport->port->netdev);
-}
-
-
-
-
-
-
-
-
-
-
 
 int
 _send(struct tcp_session *sess, const u8 *pkt, u32 plen)
