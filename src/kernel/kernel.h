@@ -499,22 +499,6 @@ struct net_port {
 
 
 
-struct peth {
-    char name[NETDEV_MAX_NAME];
-    u8 macaddr[6];
-
-    void *vendor;
-    int (*sendpkt)(u8 *pkt, u32 len, struct peth *peth);
-    int (*recvpkt)(u8 *pkt, u32 len, struct peth *peth);
-};
-
-struct veth {
-    struct peth *parent;
-    u8 macaddr[6];
-    int vlan;
-};
-
-
 void rng_init(void);
 void rng_stir(void);
 u32 rng_random(void);
