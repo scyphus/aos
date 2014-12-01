@@ -11,6 +11,11 @@
 	- entry64.s: Long mode code jumping to cboot in boot.c
 	- boot.c: Entry point to C code
 
+  + kernel
+    - kernel.c: Kernel code
+    - kerne.h: Kernel header
+    - mgmt.c: Management task via network
+    - shell.c: Simple standard shell implementation
 
 
 
