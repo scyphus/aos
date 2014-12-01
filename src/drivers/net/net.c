@@ -276,6 +276,10 @@ net_papp_host_port_ip(struct net_papp_ctx *ctx, u8 *hdr,
     /* Return the offset */
     return sizeof(struct ethhdr) + sizeof(struct iphdr);
 }
+
+/*
+ * Transmit an IP packet
+ */
 int
 net_papp_host_port_ip_xmit(struct net_papp_ctx *ctx, u8 *hdr, int off,
                            u8 *pkt, int iplen)
@@ -327,7 +331,7 @@ net_papp_tcp(struct net_papp_ctx *ctx, u8 *hdr, struct net_papp_status *stat)
         = ((struct net_papp_ctx_data_tcp *)(ctx->data))->ulayctx;
 
     /* Prepare a packet buffer for ACK */
-    ret = ulayctx->papp(ulayctx, hdr, stat);
+    ret = ulayctx->alloc(ulayctx, hdr, stat);
     if ( ret < 0 ) {
         /* Error */
         return ret;
@@ -359,6 +363,9 @@ net_papp_tcp(struct net_papp_ctx *ctx, u8 *hdr, struct net_papp_status *stat)
     return ret + sizeof(struct tcp_hdr);
 }
 
+/*
+ * Transmit a TCP segment
+ */
 int
 net_papp_tcp_xmit(struct net_papp_ctx *ctx, u8 *hdr, int off, u8 *pkt, int len)
 {
@@ -421,7 +428,7 @@ papp(struct net_papp_ctx *ctx, struct net_papp_status *stat)
     ctx->net->papp.hdr.off[idx] = 0;
 
     /* Call the papp function of the corresponding context */
-    ret = ctx->papp(ctx, (u8 *)hdr, stat);
+    ret = ctx->alloc(ctx, (u8 *)hdr, stat);
     if ( ret < 0 ) {
         return NULL;
     }
@@ -429,7 +436,7 @@ papp(struct net_papp_ctx *ctx, struct net_papp_status *stat)
 
     /* Set offset */
     ctx->net->papp.hdr.off[idx] = ret;
-    p = pkt + ret;
+    p = (u8 *)(pkt + ret);
 
     return p;
 }
@@ -455,8 +462,9 @@ papp_xmit(struct net_papp_ctx *ctx, u8 *pkt, int len)
 
     pkt = (u8 *)(ctx->net->papp.pkt.base + (idx * ctx->net->papp.pkt.sz));
     hdr = (u8 *)(ctx->net->papp.hdr.base + (idx * ctx->net->papp.hdr.sz));
-    ret = ctx->xmit(ctx, hdr, ctx->net->papp.hdr.off[idx], pkt, len);
 
+    /* Transmit */
+    ret = ctx->xmit(ctx, hdr, ctx->net->papp.hdr.off[idx], pkt, len);
     if ( ret < 0 ) {
         return ret;
     }
@@ -578,7 +586,7 @@ tcp_send_ack(struct net *net, struct net_stack_chain_next *tx,
     struct net_papp_status stat;
     ctx.net = net;
     ctx.data = &mdata;
-    ctx.papp = net_papp_host_port_ip;
+    ctx.alloc = net_papp_host_port_ip;
     ctx.xmit = net_papp_host_port_ip_xmit;
     p = papp(&ctx, &stat);
     if ( NULL == p ) {
@@ -668,7 +676,7 @@ tcp_send_data(struct net *net, struct net_stack_chain_next *tx,
     struct net_papp_status stat;
     ctx.net = net;
     ctx.data = &mdata;
-    ctx.papp = net_papp_host_port_ip;
+    ctx.alloc = net_papp_host_port_ip;
     ctx.xmit = net_papp_host_port_ip_xmit;
     p = papp(&ctx, &stat);
     if ( NULL == p ) {
@@ -1022,7 +1030,7 @@ _ipv4_icmp_echo_request(struct net *net, struct net_stack_chain_next *tx,
     struct net_papp_status stat;
     ctx.net = net;
     ctx.data = &mdata;
-    ctx.papp = net_papp_host_port_ip;
+    ctx.alloc = net_papp_host_port_ip;
     ctx.xmit = net_papp_host_port_ip_xmit;
     p = papp(&ctx, &stat);
     if ( NULL == p ) {
@@ -1612,6 +1620,9 @@ _tcp_send(struct tcp_session *sess, const u8 *pkt, u32 plen)
     return 0;
 }
 
+/*
+ * FIXME: Implement timer to trigger something
+ */
 int
 net_tcp_trigger(struct net *net)
 {
@@ -1718,6 +1729,9 @@ net_init(struct net *net)
     return 0;
 }
 
+/*
+ * Finalize the network stack
+ */
 int
 net_release(struct net *net)
 {

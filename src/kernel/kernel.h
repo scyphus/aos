@@ -323,7 +323,7 @@ struct net_papp_ctx
 {
     struct net *net;
     void *data;
-    int (*papp)(struct net_papp_ctx *, u8 *, struct net_papp_status *);
+    int (*alloc)(struct net_papp_ctx *, u8 *, struct net_papp_status *);
     int (*xmit)(struct net_papp_ctx *, u8 *, int, u8 *, int);
 };
 struct net_papp_ctx_data_tcp {
