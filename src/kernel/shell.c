@@ -22,6 +22,10 @@ extern struct ktltask_table *ktltasks;
 
 extern struct net gnet;
 
+static struct tcp_session *saved_sess;
+
+void lapic_send_ns_fixed_ipi(u8, u8);
+
 /*
  * Temporary: Keyboard drivers
  */
@@ -67,6 +71,8 @@ e1 {hw 08:00:27:5a:f6:dc; ip 192.168.56.12/24;}  \
 static void
 _init(struct kshell *kshell)
 {
+    saved_sess = NULL;
+
     kshell->pos = 0;
     kshell->cmdbuf[0] = '\0';
     kprintf("> ");
@@ -152,6 +158,10 @@ _builtin_show(char *const argv[])
         struct netdev_list *list;
         list = netdev_head;
         while ( list ) {
+            if ( saved_sess ) {
+                saved_sess->send(saved_sess, list->netdev->name, kstrlen(list->netdev->name));
+                saved_sess->send(saved_sess, "\n", 1);
+            }
             kprintf(" %s\r\n", list->netdev->name);
             kprintf("   hwaddr: %.2x:%.2x:%.2x:%.2x:%.2x:%.2x\r\n",
                     list->netdev->macaddr[0],
@@ -861,6 +871,9 @@ _tx_main(int argc, char *argv[])
     int blk;
     char *s;
 
+    if ( saved_sess ) {
+        saved_sess->send(saved_sess, "TX\n", 3);
+    }
 #if 1
     s = argv[1];
     sz = 0;
@@ -1237,10 +1250,18 @@ _builtin_start(char *const argv[])
         nargv[3] = NULL;
         ret = ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_tx_main, nargv);
         if ( ret < 0 ) {
+            if ( saved_sess ) {
+                char *s = "Cannot launch tx\n";
+                saved_sess->send(saved_sess, s, kstrlen(s));
+            }
             kprintf("Cannot launch tx\r\n");
             return -1;
         }
         kprintf("Launch tx @ CPU #%d\r\n", id);
+        if ( saved_sess ) {
+            char s[] = "Launched tx*\n";
+            saved_sess->send(saved_sess, s, kstrlen(s));
+        }
     } else if ( 0 == kstrcmp("tx2", argv[1]) ) {
         /* Start Tx */
         char **nargv = kmalloc(sizeof(char *) * 4);
@@ -1593,6 +1614,7 @@ shell_tcp_recv(struct tcp_session *sess, const u8 *pkt, u32 len)
     }
     buf[j++] = 0;
 
+    saved_sess = sess;
     _exec_cmdbuf(buf);
     sess->send(sess, "pix> ", 5);
 

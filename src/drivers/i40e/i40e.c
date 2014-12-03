@@ -562,8 +562,8 @@ i40e_init_fpm(struct i40e_device *dev)
         dev->txq[i].head_cache = 0;
         dev->txq[i].headwb = 0;
         /* up to 8 K minus 32 */
-        dev->txq[i].bufsz = (1<<12);
-        dev->txq[i].bufmask = (1<<12) - 1;
+        dev->txq[i].bufsz = (1<<11);
+        dev->txq[i].bufmask = (1<<11) - 1;
         /* ToDo: 16 bytes for alignment */
         dev->txq[i].base = (u64)kmalloc(dev->txq[i].bufsz * sizeof(struct i40e_tx_desc_data));
         for ( j = 0; j < dev->txq[i].bufsz; j++ ) {
@@ -859,7 +859,7 @@ i40e_tx_test3(struct netdev *netdev, u8 *pkt, int len, int blksize,
 
 
     dev = (struct i40e_device *)netdev->vendor;
-    kprintf("GLLAN_RCTL_0: %x\r\n", mmio_read32(dev->mmio, I40E_GLLAN_RCTL_0));
+    //kprintf("GLLAN_RCTL_0: %x\r\n", mmio_read32(dev->mmio, I40E_GLLAN_RCTL_0));
 
     /* Prepare */
     for ( i = frm; i < to; i++ ) {

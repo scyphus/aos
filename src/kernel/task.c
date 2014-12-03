@@ -535,7 +535,7 @@ ktask_kernel_main(int argc, char *argv[])
 #if 0
     /* Notify to all processors except for BSP */
     int i;
-    for ( i = i; i < processors->n; i++ ) {
+    for ( i = 1; i < processors->n; i++ ) {
         //lapic_send_fixed_ipi(IV_IPI);
         lapic_send_ns_fixed_ipi(processors->prs[i].id, IV_IPI);
     }
