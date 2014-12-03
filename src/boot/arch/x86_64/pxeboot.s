@@ -213,8 +213,6 @@ load_mm.done:
 	popl	%ebx
 	ret
 
-
-
 boot16:
 	/* Setup temporary IDT and GDT */
 	lidt	(idtr)
