@@ -123,6 +123,7 @@ apmain(void)
 
     /* Tickless scheduler */
     sched_tickless_prepare();
+    arch_enable_interrupts();
     task_restart();
 }
 
