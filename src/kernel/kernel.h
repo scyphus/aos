@@ -323,7 +323,7 @@ struct net_papp_ctx
 {
     struct net *net;
     void *data;
-    int (*papp)(struct net_papp_ctx *, u8 *, struct net_papp_status *);
+    int (*alloc)(struct net_papp_ctx *, u8 *, struct net_papp_status *);
     int (*xmit)(struct net_papp_ctx *, u8 *, int, u8 *, int);
 };
 struct net_papp_ctx_data_tcp {
@@ -331,14 +331,6 @@ struct net_papp_ctx_data_tcp {
     struct net_papp_ctx *ulayctx;
 };
 
-#if 0
-struct net_papp_packet {
-    struct net_papp_ctx *ctx;
-    u8 *pkt;
-    u8 *hdr;
-    int off;
-};
-#endif
 struct netsc_papp {
     /* Queue length */
     int len; /* in bytes (must be 2^n) */
@@ -362,10 +354,6 @@ struct netsc_papp {
         int head;
         int tail;
     } ring;
-};
-struct netsc_papp_queue {
-    int cur;
-    int next;
 };
 
 /* DRIVER */
@@ -441,18 +429,6 @@ typedef int (*net_stack_chain_f)(struct net *, u8 *, int, void *);
 
 
 /*
- * Host port IP
- */
-struct net_hps_host_port_ip_data {
-    struct net_port_host *hport;
-    u32 saddr;
-    u32 daddr;
-    int flags;
-    int proto;
-};
-
-
-/*
  * MAC address
  */
 struct net_macaddr {
@@ -523,22 +499,6 @@ struct net_port {
 
 
 
-struct peth {
-    char name[NETDEV_MAX_NAME];
-    u8 macaddr[6];
-
-    void *vendor;
-    int (*sendpkt)(u8 *pkt, u32 len, struct peth *peth);
-    int (*recvpkt)(u8 *pkt, u32 len, struct peth *peth);
-};
-
-struct veth {
-    struct peth *parent;
-    u8 macaddr[6];
-    int vlan;
-};
-
-
 void rng_init(void);
 void rng_stir(void);
 u32 rng_random(void);
@@ -548,7 +508,7 @@ u32 rng_random(void);
 #define TASK_POLICY_KERNEL      0
 #define TASK_POLICY_DRIVER      1
 #define TASK_POLICY_USER        3
-#define TASK_TABLE_SIZE         0x10000
+#define TASK_TABLE_SIZE         0x100
 #define TASK_KSTACK_SIZE        4096
 #define TASK_USTACK_SIZE        4096 * 0x10
 #define TASK_STACK_GUARD        16

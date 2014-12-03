@@ -37,6 +37,13 @@ int net_release(struct net *);
 /* arch.c */
 void arch_bsp_init(void);
 
+void e1000_init(void);
+void e1000e_init(void);
+void ixgbe_init(void);
+void i40e_init(void);
+
+int ktask_start(void);
+
 /*
  * Print a panic message and hlt processor
  */
@@ -91,8 +98,15 @@ kmain(void)
 
     net_init(&gnet);
 
+    /* Initialize drivers */
+    e1000_init();
+    e1000e_init();
+    ixgbe_init();
+    i40e_init();
+
     ktask_init();
 
+    //sched();
     sched_switch();
 
     task_restart();
@@ -237,8 +251,8 @@ void
 kintr_loc_tmr(void)
 {
     arch_clock_update();
-    sched();
-    sched_switch();
+    //sched();
+    //sched_switch();
     //mfence();
 }
 

@@ -407,8 +407,6 @@ _intr_null:
 	popq	%rdx
 	iretq
 
-foo:
-	.quad	0x0
 
 /* Interrupt handler for general protection fault */
 _intr_gpf:
@@ -772,7 +770,7 @@ _asm_popcnt:
 	andq	$0x7f,%rax
 	ret
 
-/* void asm_lapic_read(void *addr, u32 val); */
+/* void asm_lapic_write(void *addr, u32 val); */
 _asm_lapic_write:
 	mfence		/* Prevent out-of-order execution */
 	movl	%esi,(%rdi)
