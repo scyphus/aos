@@ -197,6 +197,9 @@ struct tcp_session {
     int (*send)(struct tcp_session *sess, const u8 *pkt, u32 len);
     struct net *net;
     struct net_stack_chain_next *tx;
+    /* PAPP */
+    void * (*palloc)(struct tcp_session *sess, int sz, int *asz);
+    void (*pfree)(struct tcp_session *sess, void *p);
 
     /* For optimization */
     //u8 *ackpkt;
@@ -284,6 +287,75 @@ struct net_nd_table {
 };
 
 
+#define NET_PAPP_ENOERROR       0
+#define NET_PAPP_ENOARPENT      10
+#define NET_PAPP_ENORIBENT      11
+#define NET_PAPP_ERAND          12
+
+
+
+struct net_papp_meta_host_port_ip {
+    /* Main parameter */
+    struct net_port_host *hport;
+    /* Additional parameters */
+    u32 saddr;
+    u32 daddr;
+    int flags;
+    int proto;
+    /* Write-back parameters */
+    u64 param0;
+    u64 param1;
+};
+struct net_papp_meta_ip {
+    u32 saddr;
+    u32 daddr;
+    int flags;
+    int proto;
+};
+/* Write-back */
+struct net_papp_status {
+    int errno;
+    u64 param0;
+    u64 param1;
+};
+/* PAPP context */
+struct net_papp_ctx
+{
+    struct net *net;
+    void *data;
+    int (*alloc)(struct net_papp_ctx *, u8 *, struct net_papp_status *);
+    int (*xmit)(struct net_papp_ctx *, u8 *, int, u8 *, int);
+};
+struct net_papp_ctx_data_tcp {
+    struct tcp_session *sess;
+    struct net_papp_ctx *ulayctx;
+};
+
+struct netsc_papp {
+    /* Queue length */
+    int len; /* in bytes (must be 2^n) */
+    int wrap; /* len - 1 */
+
+    /* Packet buffer */
+    struct {
+        u64 base; /* Buffer exposed to the user context */
+        int sz;
+    } pkt;
+    /* Header buffer */
+    struct {
+        u64 base; /* Buffer not exposed to the user context */
+        int sz;
+        /* Offsets */
+        int *off;
+    } hdr;
+    /* Ring buffer */
+    struct {
+        int *desc;
+        int head;
+        int tail;
+    } ring;
+};
+
 /* DRIVER */
 #define NETDEV_MAX_NAME 32
 struct netdev {
@@ -292,8 +364,12 @@ struct netdev {
 
     void *vendor;
 
+    /* for per packet processing */
     int (*sendpkt)(const u8 *pkt, u32 len, struct netdev *netdev);
     int (*recvpkt)(u8 *pkt, u32 len, struct netdev *netdev);
+
+    /* Stack chain */
+    int (*papp)(void);
 
     /* Bidirectional link */
     struct net_port *port;
@@ -335,65 +411,6 @@ struct net_fdb {
 };
 
 
-
-/*
- * Switch
- */
-struct net_switch {
-    /* Forwarding database */
-    struct net_fdb fdb;
-};
-
-
-
-/*
- * IP interface
- */
-struct net_ip {
-
-};
-
-
-
-/*
- * L2 interface
- */
-struct net_l2if {
-    int type;
-    union {
-        struct net_port *port;
-        struct net_l3if *l3if;
-    } u;
-};
-
-struct net_bridge {
-    /* Lower layer information */
-    int nr;
-    struct net_port **ports; /* FIXME: outgoing VLAN tag/untagged */
-    /* Upper layer information */
-    int nr_ipif;
-    struct net_ipif **ipifs;
-    /* FDB */
-    struct net_fdb fdb;
-};
-struct net_ipif {
-    u64 mac;
-    struct net_bridge *bridge;
-    struct net_ipv4 *ipv4;
-};
-struct net_ipv4 {
-    u32 addr; /* Stored in the network order */
-    struct net_ipif *ipif;
-    struct net_arp_table arp;
-    struct net_router *router;
-};
-struct net_router {
-    int nr;
-    struct net_ipv4 **ipv4s;
-    struct net_rib4 *rib4;
-};
-
-
 /*
  * Global network structure
  */
@@ -401,28 +418,14 @@ struct net {
     int sys_mtu;
     /*void *code;*/
     //struct netdev_list *devs;
-    //struct net_bridge bridge;
+
+    struct netsc_papp papp;
 };
 
 /*
  * Stack
  */
 typedef int (*net_stack_chain_f)(struct net *, u8 *, int, void *);
-
-
-
-
-
-/*
- * Host port IP
- */
-struct net_hps_host_port_ip_data {
-    struct net_port_host *hport;
-    u32 saddr;
-    u32 daddr;
-    int flags;
-    int proto;
-};
 
 
 /*
@@ -496,22 +499,6 @@ struct net_port {
 
 
 
-struct peth {
-    char name[NETDEV_MAX_NAME];
-    u8 macaddr[6];
-
-    void *vendor;
-    int (*sendpkt)(u8 *pkt, u32 len, struct peth *peth);
-    int (*recvpkt)(u8 *pkt, u32 len, struct peth *peth);
-};
-
-struct veth {
-    struct peth *parent;
-    u8 macaddr[6];
-    int vlan;
-};
-
-
 void rng_init(void);
 void rng_stir(void);
 u32 rng_random(void);
@@ -521,7 +508,7 @@ u32 rng_random(void);
 #define TASK_POLICY_KERNEL      0
 #define TASK_POLICY_DRIVER      1
 #define TASK_POLICY_USER        3
-#define TASK_TABLE_SIZE         0x10000
+#define TASK_TABLE_SIZE         0x100
 #define TASK_KSTACK_SIZE        4096
 #define TASK_USTACK_SIZE        4096 * 0x10
 #define TASK_STACK_GUARD        16
@@ -727,6 +714,7 @@ typedef __builtin_va_list va_list;
 
 
 /* in kernel.c */
+void kexit(void);
 int kprintf(const char *, ...);
 int kvprintf(const char *, va_list);
 void panic(const char *);

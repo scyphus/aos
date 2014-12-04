@@ -99,6 +99,9 @@ static struct tcp_session sessions[TCP_MAX_SESSIONS];
 
 
 
+int net_tcp_trigger(struct net *);
+int net_rib4_lookup(struct net_rib4 *, u32, u32 *);
+int net_arp_resolve(struct net_arp_table *, u32 , u64 *);
 
 
 static int
@@ -174,6 +177,327 @@ _ip_checksum(const u8 *data, int len)
 
 
 /*
+ * Allocate a packet
+ */
+int
+palloc(struct net *net)
+{
+    int head;
+    if ( net->papp.ring.head == net->papp.ring.tail ) {
+        /* No buffer available */
+        return -1;
+    }
+    head = net->papp.ring.head;
+    net->papp.ring.head = (net->papp.ring.head + 1) & net->papp.wrap;
+
+    return head;
+}
+
+/*
+ * Free a packet
+ */
+void
+pfree(struct net *net, int idx)
+{
+    net->papp.ring.tail = (net->papp.ring.tail + 1) & net->papp.wrap;
+    net->papp.ring.desc[net->papp.ring.tail] = idx;
+}
+
+/*
+ * PAPP for IP (host_port)
+ */
+int
+net_papp_host_port_ip(struct net_papp_ctx *ctx, u8 *hdr,
+                      struct net_papp_status *stat)
+{
+    int ret;
+    struct net_papp_meta_host_port_ip *mdata;
+    u32 nh;
+    u64 macaddr;
+    struct ethhdr *ehdr;
+    struct iphdr *iphdr;
+    u64 rnd;
+
+    mdata = (struct net_papp_meta_host_port_ip *)ctx->data;
+
+    /* Check the buffer length first */
+    if ( unlikely(ctx->net->papp.hdr.sz
+                  < sizeof(struct ethhdr) + sizeof(struct iphdr)) ) {
+        return -1;
+    }
+
+    /* Lookup next hop */
+    ret = net_rib4_lookup(&mdata->hport->rib4, mdata->daddr, &nh);
+    if ( ret < 0 ) {
+        /* No route to host */
+        return -NET_PAPP_ENORIBENT;
+    }
+    if ( !nh ) {
+        /* Local scope */
+        nh = mdata->daddr;
+    }
+
+    /* Lookup MAC address table */
+    ret = net_arp_resolve(&mdata->hport->arp, nh, &macaddr);
+    if ( ret < 0 ) {
+        stat->errno = NET_PAPP_ENOARPENT;
+        stat->param0 = nh;
+        return -NET_PAPP_ENOARPENT;
+    }
+
+    /* Ethernet */
+    ehdr = (struct ethhdr *)hdr;
+    ehdr->dst = macaddr;
+    kmemcpy(&macaddr, mdata->hport->macaddr, 6);
+    ehdr->src = macaddr;
+    ehdr->type = bswap16(ETHERTYPE_IPV4);
+
+    /* Get a random number */
+    ret = rdrand(&rnd);
+    if ( ret < 0 ) {
+        return -NET_PAPP_ERAND;
+    }
+
+    /* IP */
+    iphdr = (struct iphdr *)(hdr + sizeof(struct ethhdr));
+    iphdr->ip_ihl = 5;
+    iphdr->ip_version = 4;
+    iphdr->ip_tos = 0;
+    iphdr->ip_len = 0;
+    iphdr->ip_id = rnd;
+    iphdr->ip_off = 0;
+    iphdr->ip_ttl = 64;
+    iphdr->ip_proto = mdata->proto;
+    /* Set source address */
+    iphdr->ip_src = mdata->saddr;
+    /* Set destination address */
+    iphdr->ip_dst = mdata->daddr;
+
+    /* Return the offset */
+    return sizeof(struct ethhdr) + sizeof(struct iphdr);
+}
+
+/*
+ * Transmit an IP packet
+ */
+int
+net_papp_host_port_ip_xmit(struct net_papp_ctx *ctx, u8 *hdr, int off,
+                           u8 *pkt, int iplen)
+{
+    struct iphdr *iphdr;
+    struct net_papp_meta_host_port_ip *mdata;
+    int len;
+
+    /* Meta data */
+    mdata = (struct net_papp_meta_host_port_ip *)ctx->data;
+
+    /* IP length */
+    kmemcpy(pkt, hdr, off);
+    iphdr = (struct iphdr *)(pkt + sizeof(struct ethhdr));
+    iphdr->ip_len = bswap16(iplen + sizeof(struct iphdr));
+    len = iplen + sizeof(struct ethhdr) + sizeof(struct iphdr);
+
+    /* Checksum */
+    iphdr->ip_sum = 0;
+    iphdr->ip_sum = _ip_checksum((u8 *)iphdr, sizeof(struct iphdr));
+
+
+    return mdata->hport->port->netdev->sendpkt(pkt, len,
+                                               mdata->hport->port->netdev);
+}
+
+
+/*
+ * PAPP for TCP
+ */
+int
+net_papp_tcp(struct net_papp_ctx *ctx, u8 *hdr, struct net_papp_status *stat)
+{
+    struct net_papp_meta_host_port_ip mdata;
+    struct tcp_hdr *tcp;
+    int ret;
+    struct tcp_session *sess;
+
+    sess = ((struct net_papp_ctx_data_tcp *)(ctx->data))->sess;
+
+    /* Prepare meta data */
+    mdata.hport = ((struct net_port *)(sess->tx->data))->next.data;
+    mdata.saddr = sess->lipaddr;
+    mdata.daddr = sess->ripaddr;
+    mdata.flags = 0;
+    mdata.proto = IP_TCP;
+
+    struct net_papp_ctx *ulayctx
+        = ((struct net_papp_ctx_data_tcp *)(ctx->data))->ulayctx;
+
+    /* Prepare a packet buffer for ACK */
+    ret = ulayctx->alloc(ulayctx, hdr, stat);
+    if ( ret < 0 ) {
+        /* Error */
+        return ret;
+    }
+
+    /* Construct header */
+    tcp = (struct tcp_hdr *)(hdr + ret);
+    tcp->sport = sess->lport;
+    tcp->dport = sess->rport;
+    tcp->seqno = bswap32(sess->seq);
+    tcp->ackno = bswap32(sess->ack);
+    tcp->flag_ns = 0;
+    tcp->flag_reserved = 0;
+    tcp->offset = sizeof(struct tcp_hdr) / 4;
+    tcp->flag_fin = 0;
+    tcp->flag_syn = 0;
+    tcp->flag_rst = 0;
+    tcp->flag_psh = 1;
+    tcp->flag_ack = 1;
+    tcp->flag_urg = 0;
+    tcp->flag_ece = 0;
+    tcp->flag_cwr = 0;
+    tcp->wsize = bswap16(
+        ((sess->twin.sz + sess->twin.pos0 - sess->twin.pos1 - 1)
+         % sess->twin.sz) >> sess->wscale);
+    tcp->checksum = 0;
+    tcp->urgptr = 0;    /* Check the buffer */
+
+    return ret + sizeof(struct tcp_hdr);
+}
+
+/*
+ * Transmit a TCP segment
+ */
+int
+net_papp_tcp_xmit(struct net_papp_ctx *ctx, u8 *hdr, int off, u8 *pkt, int len)
+{
+    struct net_papp_meta_host_port_ip *mdata;
+    struct tcp_hdr *tcp;
+    struct tcp_session *sess;
+    u32 cs1;
+    u32 cs2;
+
+    sess = ((struct net_papp_ctx_data_tcp *)(ctx->data))->sess;
+
+    struct net_papp_ctx *ulayctx
+        = ((struct net_papp_ctx_data_tcp *)(ctx->data))->ulayctx;
+
+    /* Meta data */
+    mdata = (struct net_papp_meta_host_port_ip *)ctx->data;
+
+    kmemcpy(pkt, hdr, off);
+    tcp = (struct tcp_hdr *)(pkt + off - sizeof(struct tcp_hdr));
+
+    /* Pseudo checksum */
+    struct tcp_phdr4 *ptcp;
+    ptcp = alloca(sizeof(struct tcp_phdr4));
+    kmemcpy(&ptcp->sport, tcp, len);
+    ptcp->saddr = sess->lipaddr;
+    ptcp->daddr = sess->ripaddr;
+    ptcp->zeros = 0;
+    ptcp->proto = IP_TCP;
+    ptcp->tcplen = bswap16(sizeof(struct tcp_hdr) + len);
+
+    cs1 = _checksum((u8 *)ptcp, sizeof(struct tcp_phdr4));
+    cs2 = _checksum(pkt, len);
+    cs1 = cs1 + cs2;
+    tcp->checksum = (cs1 >> 16) + (cs1 & 0xffff);
+
+    return ulayctx->xmit(ulayctx, hdr, off - sizeof(struct tcp_hdr), pkt, len);
+}
+
+
+
+/*
+ * PAPP
+ */
+void *
+papp(struct net_papp_ctx *ctx, struct net_papp_status *stat)
+{
+    int idx;
+    u64 pkt;
+    u64 hdr;
+    u8 *p;
+    int ret;
+
+    /* Pop a packet buffer from the pool */
+    idx = palloc(ctx->net);
+    if ( idx < 0 ) {
+        return NULL;
+    }
+    pkt = ctx->net->papp.pkt.base + (idx * ctx->net->papp.pkt.sz);
+    hdr = ctx->net->papp.hdr.base + (idx * ctx->net->papp.hdr.sz);
+    ctx->net->papp.hdr.off[idx] = 0;
+
+    /* Call the papp function of the corresponding context */
+    ret = ctx->alloc(ctx, (u8 *)hdr, stat);
+    if ( ret < 0 ) {
+        return NULL;
+    }
+    stat->errno = 0;
+
+    /* Set offset */
+    ctx->net->papp.hdr.off[idx] = ret;
+    p = (u8 *)(pkt + ret);
+
+    return p;
+}
+
+/*
+ * Transmit the packet
+ */
+int
+papp_xmit(struct net_papp_ctx *ctx, u8 *pkt, int len)
+{
+    int idx;
+    int ret;
+    u8 *hdr;
+
+    /* Packet address to index */
+    idx = ((u64)pkt - ctx->net->papp.pkt.base) / ctx->net->papp.pkt.sz;
+
+    /* Check the index whether being in the valid range */
+    if ( unlikely(idx < 0 || idx >= ctx->net->papp.len) ) {
+        /* Invalid packet address */
+        return -1;
+    }
+
+    pkt = (u8 *)(ctx->net->papp.pkt.base + (idx * ctx->net->papp.pkt.sz));
+    hdr = (u8 *)(ctx->net->papp.hdr.base + (idx * ctx->net->papp.hdr.sz));
+
+    /* Transmit */
+    ret = ctx->xmit(ctx, hdr, ctx->net->papp.hdr.off[idx], pkt, len);
+    if ( ret < 0 ) {
+        return ret;
+    }
+
+    /* Free */
+    pfree(ctx->net, idx);
+
+    return ret;
+}
+
+/*
+ * Free
+ */
+void
+papp_free(struct net_papp_ctx *ctx, u8 *pkt)
+{
+    int idx;
+
+    /* Packet address to index */
+    idx = ((u64)pkt - ctx->net->papp.pkt.base) / ctx->net->papp.pkt.sz;
+
+    /* Check the index whether being in the valid range */
+    if ( unlikely(idx < 0 || idx >= ctx->net->papp.len) ) {
+        /* Invalid packet address */
+        return;
+    }
+
+    /* Free */
+    pfree(ctx->net, idx);
+}
+
+
+/*
  * Parse TCP option
  */
 int
@@ -239,16 +563,15 @@ int
 tcp_send_ack(struct net *net, struct net_stack_chain_next *tx,
              struct tcp_session *sess, u32 seq, int syn, int fin)
 {
-    u8 buf[256];
     int len;
     int plen;
     u8 *p;
-    struct net_hps_host_port_ip_data mdata;
-    struct tcp_hdr *tcp2;
+    struct net_papp_meta_host_port_ip mdata;
+    struct tcp_hdr *tcp;
     int ret;
 
+    /* Prepare meta data */
     mdata.hport = ((struct net_port *)(tx->data))->next.data;
-    /* FIXME: implement the source address selection */
     mdata.saddr = sess->lipaddr;
     mdata.daddr = sess->ripaddr;
     mdata.flags = 0;
@@ -259,35 +582,40 @@ tcp_send_ack(struct net *net, struct net_stack_chain_next *tx,
     }
 
     /* Prepare a packet buffer for ACK */
-    ret = net_hps_host_port_ip_pre(net, &mdata, buf, 256, &p);
-    if ( ret < len ) {
+    struct net_papp_ctx ctx;
+    struct net_papp_status stat;
+    ctx.net = net;
+    ctx.data = &mdata;
+    ctx.alloc = net_papp_host_port_ip;
+    ctx.xmit = net_papp_host_port_ip_xmit;
+    p = papp(&ctx, &stat);
+    if ( NULL == p ) {
         return -1;
     }
-    tcp2 = (struct tcp_hdr *)p;
-    tcp2->sport = sess->lport;
-    tcp2->dport = sess->rport;
-    tcp2->seqno = bswap32(seq);
-    tcp2->ackno = bswap32(sess->ack);
-    tcp2->flag_ns = 0;
-    tcp2->flag_reserved = 0;
+    tcp = (struct tcp_hdr *)p;
+    tcp->sport = sess->lport;
+    tcp->dport = sess->rport;
+    tcp->seqno = bswap32(seq);
+    tcp->ackno = bswap32(sess->ack);
+    tcp->flag_ns = 0;
+    tcp->flag_reserved = 0;
     if ( syn ) {
-        tcp2->offset = 5 + 2;
+        tcp->offset = 5 + 2;
     } else {
-        tcp2->offset = 5;
+        tcp->offset = 5;
     }
-    tcp2->flag_fin = fin;
-    tcp2->flag_syn = syn;
-    tcp2->flag_rst = 0;
-    tcp2->flag_psh = 0;
-    tcp2->flag_ack = 1;
-    tcp2->flag_urg = 0;
-    tcp2->flag_ece = 0;
-    tcp2->flag_cwr = 0;
-    //tcp2->wsize = 0xffff;
-    tcp2->wsize = bswap16(1024);
-    tcp2->checksum = 0;
-    tcp2->urgptr = 0;
-
+    tcp->flag_fin = fin;
+    tcp->flag_syn = syn;
+    tcp->flag_rst = 0;
+    tcp->flag_psh = 0;
+    tcp->flag_ack = 1;
+    tcp->flag_urg = 0;
+    tcp->flag_ece = 0;
+    tcp->flag_cwr = 0;
+    //tcp->wsize = 0xffff;
+    tcp->wsize = bswap16(1024);
+    tcp->checksum = 0;
+    tcp->urgptr = 0;
     if ( syn ) {
         u8 *opt;
         opt = p + sizeof(struct tcp_hdr);
@@ -308,29 +636,30 @@ tcp_send_ack(struct net *net, struct net_stack_chain_next *tx,
         plen += 8;
     }
     ptcp = alloca(plen);
-    kmemcpy(&ptcp->sport, tcp2, len);
+    kmemcpy(&ptcp->sport, tcp, len);
     ptcp->saddr = sess->lipaddr;
     ptcp->daddr = sess->ripaddr;
     ptcp->zeros = 0;
     ptcp->proto = IP_TCP;
     ptcp->tcplen = bswap16(len + 0 /*payload*/);
-    tcp2->checksum = _checksum((u8 *)ptcp, plen);
+    tcp->checksum = _checksum((u8 *)ptcp, plen);
 
     if ( syn || fin ) {
         sess->seq++;
     }
 
-    return net_hps_host_port_ip_post(net, &mdata, buf, len);
+    ret = papp_xmit(&ctx, p, len);
+
+    return ret;
 }
 
 int
 tcp_send_data(struct net *net, struct net_stack_chain_next *tx,
               struct tcp_session *sess, u32 seq, const u8 *pkt, u32 plen)
 {
-    u8 buf[4096];
     int len;
     u8 *p;
-    struct net_hps_host_port_ip_data mdata;
+    struct net_papp_meta_host_port_ip mdata;
     struct tcp_hdr *tcp2;
     int ret;
 
@@ -343,8 +672,14 @@ tcp_send_data(struct net *net, struct net_stack_chain_next *tx,
     len = sizeof(struct tcp_hdr);
 
     /* Prepare a packet buffer for ACK */
-    ret = net_hps_host_port_ip_pre(net, &mdata, buf, 4096, &p);
-    if ( ret < len ) {
+    struct net_papp_ctx ctx;
+    struct net_papp_status stat;
+    ctx.net = net;
+    ctx.data = &mdata;
+    ctx.alloc = net_papp_host_port_ip;
+    ctx.xmit = net_papp_host_port_ip_xmit;
+    p = papp(&ctx, &stat);
+    if ( NULL == p ) {
         return -1;
     }
     tcp2 = (struct tcp_hdr *)p;
@@ -384,7 +719,9 @@ tcp_send_data(struct net *net, struct net_stack_chain_next *tx,
 
     kmemcpy(p + sizeof(struct tcp_hdr), pkt, plen);
 
-    return net_hps_host_port_ip_post(net, &mdata, buf, len + plen);
+    ret = papp_xmit(&ctx, p, len + plen);
+
+    return ret;
 }
 
 
@@ -522,7 +859,6 @@ net_rib4_add(struct net_rib4 *r, u32 pf, int l, u32 nh)
 int
 net_rib4_lookup(struct net_rib4 *r, u32 addr, u32 *nh)
 {
-    u32 pf;
     int l;
     u32 cand;
     int i;
@@ -538,7 +874,6 @@ net_rib4_lookup(struct net_rib4 *r, u32 addr, u32 *nh)
         if ( r->entries[i].prefix == (addr & mask) ) {
             /* Found */
             if ( l < r->entries[i].length ) {
-                pf = r->entries[i].prefix;
                 l = r->entries[i].length;
                 cand = r->entries[i].nexthop;
             }
@@ -635,7 +970,41 @@ _icmpv6_checksum(const u8 *src, const u8 *dst, u32 len, const u8 *data)
 
 
 
+/*
+ * Send ARP request
+ */
+static int
+_send_arp_request(struct net *net, struct net_stack_chain_next *tx,
+                  u32 ipaddr)
+{
+    u8 abuf[1024];
+    struct ip_arp *arp;
+    struct ethhdr *ehdr;
+    u64 macaddr;
+    struct net_port_host *hport;
 
+    hport = ((struct net_port *)(tx->data))->next.data;
+    ehdr = (struct ethhdr *)abuf;
+    ehdr->dst = 0xffffffffffffULL;
+    kmemcpy(&macaddr, hport->macaddr, 6);
+    ehdr->src = macaddr;
+    ehdr->type = bswap16(ETHERTYPE_ARP);
+    arp = (struct ip_arp *)(abuf + sizeof(struct ethhdr));
+    arp->hw_type = bswap16(1);
+    arp->protocol = bswap16(0x0800);
+    arp->hlen = 0x06;
+    arp->plen = 0x04;
+    arp->opcode = bswap16(ARP_REQUEST);
+    arp->src_mac = macaddr;
+    arp->src_ip = hport->ip4addr.addrs[0];
+    arp->dst_mac = 0;
+    arp->dst_ip = ipaddr;
+    hport->port->netdev->sendpkt(abuf,
+                                 sizeof(struct ethhdr) + sizeof(struct ip_arp),
+                                 hport->port->netdev);
+
+    return 0;
+}
 
 /*
  * ICMP echo request handler
@@ -646,9 +1015,8 @@ _ipv4_icmp_echo_request(struct net *net, struct net_stack_chain_next *tx,
                         int len)
 {
     int ret;
-    u8 buf[4096];
     u8 *p;
-    struct net_hps_host_port_ip_data mdata;
+    struct net_papp_meta_host_port_ip mdata;
     struct icmp_hdr *icmp;
 
     mdata.hport = ((struct net_port *)(tx->data))->next.data;
@@ -658,10 +1026,41 @@ _ipv4_icmp_echo_request(struct net *net, struct net_stack_chain_next *tx,
     mdata.flags = 0;
     mdata.proto = IP_ICMP;
 
-    /* Prepare a packet buffer */
-    ret = net_hps_host_port_ip_pre(net, &mdata, buf, 4096, &p);
-    if ( ret < len + sizeof(struct icmp_hdr) ) {
-        return -1;
+    struct net_papp_ctx ctx;
+    struct net_papp_status stat;
+    ctx.net = net;
+    ctx.data = &mdata;
+    ctx.alloc = net_papp_host_port_ip;
+    ctx.xmit = net_papp_host_port_ip_xmit;
+    p = papp(&ctx, &stat);
+    if ( NULL == p ) {
+        if ( NET_PAPP_ENOARPENT == stat.errno ) {
+            /* No ARP entry found, then send an ARP request */
+            u8 abuf[1024];
+            struct ip_arp *arp;
+            struct ethhdr *ehdr;
+            u64 macaddr;
+            ehdr = (struct ethhdr *)abuf;
+            ehdr->dst = 0xffffffffffffULL;
+            kmemcpy(&macaddr, mdata.hport->macaddr, 6);
+            ehdr->src = macaddr;
+            ehdr->type = bswap16(ETHERTYPE_ARP);
+            arp = (struct ip_arp *)(abuf + sizeof(struct ethhdr));
+            arp->hw_type = bswap16(1);
+            arp->protocol = bswap16(0x0800);
+            arp->hlen = 0x06;
+            arp->plen = 0x04;
+            arp->opcode = bswap16(ARP_REQUEST);
+            arp->src_mac = macaddr;
+            arp->src_ip = mdata.saddr;
+            arp->dst_mac = 0;
+            arp->dst_ip = mdata.param0;
+            mdata.hport->port->netdev->sendpkt(abuf,
+                                               sizeof(struct ethhdr)
+                                               + sizeof(struct ip_arp),
+                                               mdata.hport->port->netdev);
+        }
+        return -stat.errno;
     }
     icmp = (struct icmp_hdr *)p;
     icmp->type = ICMP_ECHO_REPLY;
@@ -672,8 +1071,9 @@ _ipv4_icmp_echo_request(struct net *net, struct net_stack_chain_next *tx,
     kmemcpy(p + sizeof(struct icmp_hdr), pkt, len);
     icmp->checksum = _checksum(p, sizeof(struct icmp_hdr) + len);
 
-    return net_hps_host_port_ip_post(net, &mdata, buf,
-                                     len + sizeof(struct icmp_hdr));
+    ret = papp_xmit(&ctx, p, sizeof(struct icmp_hdr) + len);
+
+    return ret;
 }
 
 /*
@@ -733,11 +1133,6 @@ _ipv4_tcp(struct net *net, struct net_stack_chain_next *tx,
 
     if ( tcp->flag_syn && !tcp->flag_ack ) {
         /* SYN */
-#if 0
-        kprintf("Received a SYN packet %d => %d\r\n",
-                bswap16(tcp->sport), bswap16(tcp->dport));
-#endif
-
         if ( NULL != sess ) {
             /* Already in use */
             return -1;
@@ -827,20 +1222,12 @@ _ipv4_tcp(struct net *net, struct net_stack_chain_next *tx,
             sess->wscale = opts.wscale;
         }
 
-#if 0
-        kprintf("MSS: %d, Window scaling opt: %d\r\n", sess->mss, sess->wscale);
-#endif
-
         /* Last ack number */
         sess->ack = sess->rseqno + 1;
         sess->rseqno++;
 
         return tcp_send_ack(net, tx, sess, sess->seq, 1, 0);
     } else if ( tcp->flag_fin ) {
-#if 0
-        kprintf("Received a FIN packet %d => %d\r\n",
-                bswap16(tcp->sport), bswap16(tcp->dport));
-#endif
 
         if ( NULL == sess ) {
             /* Not established */
@@ -866,11 +1253,6 @@ _ipv4_tcp(struct net *net, struct net_stack_chain_next *tx,
         sess->rcvwin = bswap16(tcp->wsize);
 
         if ( tcp->flag_ack ) {
-#if 0
-            kprintf("Received an ACK packet %d => %d\r\n",
-                    bswap16(tcp->sport), bswap16(tcp->dport));
-#endif
-
             if ( TCP_SYN_RECEIVED == sess->state ) {
                 sess->state = TCP_ESTABLISHED;
             }
@@ -1056,7 +1438,7 @@ _arp_reply(struct net *net, struct net_stack_chain_next *tx,
 {
     int i;
     int ret;
-    u32 ipaddr;
+    /*u32 ipaddr;*/
 
     /* ARP reply */
     if ( arp->dst_mac != macaddr ) {
@@ -1068,7 +1450,7 @@ _arp_reply(struct net *net, struct net_stack_chain_next *tx,
         if ( arp->dst_ip == ip4->addrs[i] ) {
             /* Found */
             ret = 0;
-            ipaddr = ip4->addrs[i];
+            /*ipaddr = ip4->addrs[i];*/
             /* Register the entry */
             net_arp_register(atbl, arp->src_ip, arp->src_mac, 0);
             break;
@@ -1192,6 +1574,8 @@ net_sc_rx_port_host(struct net *net, u8 *pkt, int len, void *data)
             /* Not supported */
             ret = -1;
             break;
+        default:
+            ret = -1;
         }
         break;
     case ETHERTYPE_IPV4:
@@ -1207,140 +1591,8 @@ net_sc_rx_port_host(struct net *net, u8 *pkt, int len, void *data)
     return ret;
 }
 
-
-/*
- * Host L3 port stack chain (header/payload separation)
- */
 int
-net_hps_host_port_ip_pre(struct net *net, void *data, u8 *buf, int len, u8 **p)
-{
-    struct ethhdr *ehdr;
-    struct iphdr *iphdr;
-    struct net_hps_host_port_ip_data *mdata;
-    u32 nh;
-    u64 macaddr;
-    int ret;
-    u64 rnd;
-
-    /* Check the buffer length first */
-    if ( unlikely(len < sizeof(struct ethhdr) + sizeof(struct iphdr)) ) {
-        return -1;
-    }
-
-    /* Meta data */
-    mdata = (struct net_hps_host_port_ip_data *)data;
-
-    /* Lookup next hop */
-    ret = net_rib4_lookup(&mdata->hport->rib4, mdata->daddr, &nh);
-    if ( ret < 0 ) {
-        /* No route to host */
-        return -1;
-    }
-    if ( !nh ) {
-        /* Local scope */
-        nh = mdata->daddr;
-    }
-
-    /* Lookup MAC address table */
-    ret = net_arp_resolve(&mdata->hport->arp, nh, &macaddr);
-    if ( ret < 0 ) {
-        /* No entry found. */
-        u8 abuf[1024];
-        struct ip_arp *arp;
-        ehdr = (struct ethhdr *)abuf;
-        ehdr->dst = 0xffffffffffffULL;
-        kmemcpy(&macaddr, mdata->hport->macaddr, 6);
-        ehdr->src = macaddr;
-        ehdr->type = bswap16(ETHERTYPE_ARP);
-        arp = (struct ip_arp *)(abuf + sizeof(struct ethhdr));
-        arp->hw_type = bswap16(1);
-        arp->protocol = bswap16(0x0800);
-        arp->hlen = 0x06;
-        arp->plen = 0x04;
-        arp->opcode = bswap16(ARP_REQUEST);
-        arp->src_mac = macaddr;
-        arp->src_ip = mdata->saddr;
-        arp->dst_mac = 0;
-        arp->dst_ip = nh;
-        mdata->hport->port->netdev->sendpkt(abuf,
-                                            sizeof(struct ethhdr)
-                                            + sizeof(struct ip_arp),
-                                            mdata->hport->port->netdev);
-        return ret;
-    }
-
-    /* Ethernet */
-    ehdr = (struct ethhdr *)buf;
-    ehdr->dst = macaddr;
-    kmemcpy(&macaddr, mdata->hport->macaddr, 6);
-    ehdr->src = macaddr;
-    ehdr->type = bswap16(ETHERTYPE_IPV4);
-
-    /* Get a random number */
-    ret = rdrand(&rnd);
-    if ( ret < 0 ) {
-        return ret;
-    }
-
-    /* IP */
-    iphdr = (struct iphdr *)(buf + sizeof(struct ethhdr));
-    iphdr->ip_ihl = 5;
-    iphdr->ip_version = 4;
-    iphdr->ip_tos = 0;
-    iphdr->ip_len = 0;
-    iphdr->ip_id = rnd;
-    iphdr->ip_off = 0;
-    iphdr->ip_ttl = 64;
-    iphdr->ip_proto = mdata->proto;
-    /* Set source address */
-    iphdr->ip_src = mdata->saddr;
-    /* Set destination address */
-    iphdr->ip_dst = mdata->daddr;
-
-    /* Payload */
-    *p = buf + sizeof(struct ethhdr) + sizeof(struct iphdr);
-
-    return len - sizeof(struct ethhdr) + sizeof(struct iphdr);
-}
-
-/*
- * Ethernet
- */
-int
-net_hps_host_port_ip_post(struct net *net, void *data, u8 *buf, int iplen)
-{
-    struct iphdr *iphdr;
-    struct net_hps_host_port_ip_data *mdata;
-    u8 *p;
-    int len;
-
-    /* Meta data */
-    mdata = (struct net_hps_host_port_ip_data *)data;
-
-    iphdr = (struct iphdr *)(buf + sizeof(struct ethhdr));
-    iphdr->ip_len = bswap16(iplen + sizeof(struct iphdr));
-    len = iplen + sizeof(struct ethhdr) + sizeof(struct iphdr);
-
-    p = buf + sizeof(struct ethhdr) + sizeof(struct iphdr);
-    iphdr->ip_sum = 0;
-    iphdr->ip_sum = _ip_checksum((u8 *)iphdr, sizeof(struct iphdr));
-
-    return mdata->hport->port->netdev->sendpkt(buf, len,
-                                               mdata->hport->port->netdev);
-}
-
-
-
-
-
-
-
-
-
-
-
-int
-_send(struct tcp_session *sess, const u8 *pkt, u32 plen)
+_tcp_send(struct tcp_session *sess, const u8 *pkt, u32 plen)
 {
     int bufsz;
 
@@ -1368,6 +1620,9 @@ _send(struct tcp_session *sess, const u8 *pkt, u32 plen)
     return 0;
 }
 
+/*
+ * FIXME: Implement timer to trigger something
+ */
 int
 net_tcp_trigger(struct net *net)
 {
@@ -1408,9 +1663,11 @@ net_tcp_trigger(struct net *net)
                 } else {
                     pktsz = sz;
                 }
+#if 0
                 if ( sessions[i].twin.pos0  ) {
                     sessions[i].mss;
                 }
+#endif
                 pos = sessions[i].twin.pos0;
                 if ( pos + pktsz > sessions[i].twin.sz ) {
                     kmemcpy(pkt, sessions[i].twin.buf + pos,
@@ -1452,74 +1709,43 @@ net_init(struct net *net)
     sessions[0].lipaddr = 0;
     sessions[0].lport = bswap16(23);
     sessions[0].recv = shell_tcp_recv;
-    sessions[0].send = _send;
+    sessions[0].send = _tcp_send;
+
+    /* Initialize PAPP */
+    net->papp.len = 1<<7/*128*/;
+    net->papp.wrap = (1<<7) - 1;
+    net->papp.pkt.sz = ((net->sys_mtu + 4095) / 4096) * 4096;
+    net->papp.pkt.base = (u64)kmalloc(net->papp.pkt.sz * net->papp.len);
+    net->papp.hdr.sz = 256;
+    net->papp.hdr.base = (u64)kmalloc(net->papp.hdr.sz * net->papp.len);
+    net->papp.hdr.off = kmalloc(sizeof(int) * net->papp.len);
+    net->papp.ring.desc = kmalloc(sizeof(int) * net->papp.len);
+    net->papp.ring.head = 0;
+    net->papp.ring.tail = net->papp.len - 1;
+    for ( i = 0; i < net->papp.len; i++ ) {
+        net->papp.ring.desc[i] = i;
+    }
 
     return 0;
 }
 
-
-
-
-
-
-
-
-
-
-#if 0
 /*
- * Lookup forwarding database
- */
-struct net_fdb_entry *
-net_switch_fdb_lookup(struct net_switch *sw)
-{
-    return NULL;
-}
-
-
-
-/*
- * Register L3 interface
+ * Finalize the network stack
  */
 int
-net_l3if_register(struct net *net)
+net_release(struct net *net)
 {
+    int i;
+
+    for ( i = 0; i < TCP_MAX_SESSIONS; i++ ) {
+        if ( TCP_ESTABLISHED == sessions[i].state ) {
+            tcp_send_ack(net, sessions[i].tx, &sessions[i], sessions[i].seq,
+                         0, 1);
+        }
+    }
+
     return 0;
 }
-
-/*
- * Unregister L3 interface
- */
-int
-net_l3if_unregister(struct net *net, struct net_l3if *l3if)
-{
-    return 0;
-}
-
-/*
- * Add an IP address to a L3 interface
- */
-int
-net_l3if_ipv4_addr_add(struct net *net)
-{
-    return 0;
-}
-
-/*
- * Delete an IP address from a L3 interface
- */
-int
-net_l3if_ipv4_addr_delete(struct net *net)
-{
-    return 0;
-}
-#endif
-
-
-
-
-
-
 
 /*
  * Local variables:

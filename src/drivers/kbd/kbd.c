@@ -65,6 +65,7 @@ kbd_irq_handler(int irq, void *user)
         if ( !(0x80 & scan_code) ) {
             if ( scan_code == 1 ) {
                 /* Escape key */
+                kexit();
                 arch_poweroff();
                 return;
             }

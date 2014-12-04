@@ -22,6 +22,10 @@ extern struct ktltask_table *ktltasks;
 
 extern struct net gnet;
 
+static struct tcp_session *saved_sess;
+
+void lapic_send_ns_fixed_ipi(u8, u8);
+
 /*
  * Temporary: Keyboard drivers
  */
@@ -75,6 +79,8 @@ _builtin_debug(char *const argv[])
 static void
 _init(struct kshell *kshell)
 {
+    saved_sess = NULL;
+
     kshell->pos = 0;
     kshell->cmdbuf[0] = '\0';
     kprintf("> ");
@@ -97,7 +103,34 @@ _builtin_panic(char *const argv[])
 int
 _builtin_off(char *const argv[])
 {
+    kexit();
     arch_poweroff();
+
+    return 0;
+}
+
+/*
+ * Reset
+ */
+int
+_builtin_reset(char *const argv[])
+{
+    u8 c;
+
+    arch_disable_interrupts();
+    do {
+        c = inb(0x64);
+        if ( 0 != (c & 1) ) {
+            inb(0x60);
+        }
+    } while ( 0 != (c & 2) );
+
+    kexit();
+
+    /* CPU reset */
+    outb(0x64, 0xfe);
+
+    arch_enable_interrupts();
 
     return 0;
 }
@@ -119,7 +152,6 @@ _builtin_uptime(char *const argv[])
 /*
  * show
  */
-int ixgbe_check_buffer(struct netdev *);
 #define MAX_PROCESSORS  256
 struct p_data {
     u32 flags;          /* bit 0: enabled (working); bit 1 reserved */
@@ -134,6 +166,10 @@ _builtin_show(char *const argv[])
         struct netdev_list *list;
         list = netdev_head;
         while ( list ) {
+            if ( saved_sess ) {
+                saved_sess->send(saved_sess, list->netdev->name, kstrlen(list->netdev->name));
+                saved_sess->send(saved_sess, "\n", 1);
+            }
             kprintf(" %s\r\n", list->netdev->name);
             kprintf("   hwaddr: %.2x:%.2x:%.2x:%.2x:%.2x:%.2x\r\n",
                     list->netdev->macaddr[0],
@@ -263,8 +299,10 @@ _builtin_request(char *const argv[])
     if ( 0 == kstrcmp("system", argv[1]) ) {
         if ( 0 == kstrcmp("power-off", argv[2]) ) {
             arch_poweroff();
+        } else if ( 0 == kstrcmp("reset", argv[2]) ) {
+            _builtin_reset(argv);
         } else {
-            kprintf("request system <power-off>\r\n");
+            kprintf("request system <power-off|reset>\r\n");
         }
     } else {
         kprintf("request <system>\r\n");
@@ -829,19 +867,6 @@ _routing_main(int argc, char *argv[])
 
     return 0;
 }
-static int
-_subrouting_main(int argc, char *argv[])
-{
-    struct netdev_list *list;
-
-    list = netdev_head;
-
-    kprintf("Started routing: %s => %s\r\n", list->next->netdev->name,
-            list->next->next->netdev->name);
-    ixgbe_forwarding_test_sub(list->next->netdev, list->next->next->netdev);
-
-    return 0;
-}
 
 int
 _tx_main(int argc, char *argv[])
@@ -854,6 +879,9 @@ _tx_main(int argc, char *argv[])
     int blk;
     char *s;
 
+    if ( saved_sess ) {
+        saved_sess->send(saved_sess, "TX\n", 3);
+    }
 #if 1
     s = argv[1];
     sz = 0;
@@ -1196,314 +1224,6 @@ int net_sc_rx_ether(struct net *, u8 *, int, void *);
 int net_sc_rx_port_host(struct net *, u8 *, int, void *);
 int net_rib4_add(struct net_rib4 *, const u32, int, u32);
 u32 bswap32(u32);
-int
-_net_test_main(int argc, char *argv[])
-{
-    /* Search network device for management */
-    struct netdev_list *list;
-    struct netdev *dev;
-    u8 pkt[1518];
-    int n;
-    /* Network */
-    struct net_port port;
-    struct net_port_host hport;
-    int i;
-
-    /* FIXME: Choose the first interface for management */
-    list = netdev_head;
-    dev = list->netdev;
-
-    /* Port */
-    kmemcpy(hport.macaddr, dev->macaddr, 6);
-    hport.ip4addr.nr = 1;
-    hport.ip4addr.addrs = kmalloc(sizeof(u32) * 1);
-    if ( NULL == hport.ip4addr.addrs ){
-        return -1;
-    }
-    hport.ip4addr.addrs[0] = bswap32(0xc0a83803UL);
-    hport.arp.sz = 4096;
-    hport.arp.entries = kmalloc(sizeof(struct net_arp_entry) * hport.arp.sz);
-    for ( i = 0; i < hport.arp.sz; i++ ) {
-        hport.arp.entries[i].state = -1;
-    }
-    hport.ip6addr.nr = 0;
-    hport.port = &port;
-    port.netdev = dev;
-    port.next.data = (void *)&hport;
-    port.next.func = net_sc_rx_port_host;
-    hport.tx.func = NULL;
-    hport.tx.data = (void *)&port;
-
-    /* Routing table */
-    hport.rib4.nr = 0;
-    hport.rib4.entries = NULL;
-    net_rib4_add(&hport.rib4, bswap32(0xc0a83800UL), 24, 0);
-    net_rib4_add(&hport.rib4, 0, 0, bswap32(0xc0a83802UL));
-
-    kprintf("Start network on %s\r\n", port.netdev->name);
-    while ( 1 ) {
-        n = port.netdev->recvpkt(pkt, sizeof(pkt), port.netdev);
-        if ( n <= 0 ) {
-            __asm__ __volatile__ ("hlt");
-            continue;
-        }
-        port.next.func(&gnet, pkt, n, port.next.data);
-        //net_rx(&net, &port, pkt, n, -1);
-    }
-
-    return 0;
-
-
-
-
-
-
-
-    //net_l3if_register(&net);
-
-#if 0
-    u8 pkt2[1518];
-    u8 *ip;
-    u8 *udp;
-    u8 *data;
-    int plen;
-    u64 ret;
-    int i;
-    struct net_bridge bridge;
-    struct net_ipif ipif;
-    struct net_ipv4 ipv4;
-    struct net_router router;
-    struct net_rib4 rib4;
-
-    /* Bridge */
-    bridge.nr = 1;
-    bridge.ports = kmalloc(sizeof(struct net_port *) * bridge.nr);
-    bridge.ports[0] = &port;
-    bridge.nr_ipif = 1;
-    bridge.ipifs = kmalloc(sizeof(struct net_ipif *) * bridge.nr_ipif);
-    bridge.ipifs[0] = &ipif;
-    bridge.fdb.nr = 4096;
-    bridge.fdb.entries = kmalloc(sizeof(struct net_fdb_entry) * bridge.fdb.nr);
-    for ( i = 0; i < bridge.fdb.nr; i++ ) {
-        bridge.fdb.entries[i].type = NET_FDB_INVAL;
-    }
-
-    /* L3 interface */
-    ipif.mac = 0;
-    kmemcpy(&ipif.mac, dev->macaddr, 6);
-    ipif.bridge = &bridge;
-    ipif.ipv4 = &ipv4;
-    ipv4.addr = bswap32(0xc0a83803);
-    ipv4.ipif = &ipif;
-    ipv4.arp.sz = 4096;
-    ipv4.arp.entries = kmalloc(sizeof(struct net_arp_entry) * ipv4.arp.sz);
-    for ( i = 0; i < ipv4.arp.sz; i++ ) {
-        ipv4.arp.entries[i].state = -1;
-    }
-
-    /* Port */
-    port.netdev = dev;
-    port.next = net_sc_rx_ether;
-    kmemset(port.bridges, 0, sizeof(struct net_bridge *) * 4096);
-    port.bridges[0] = &bridge;
-
-    /* Router */
-    router.nr = 1;
-    router.ipv4s = kmalloc(sizeof(struct net_ipv4 *) * router.nr);
-    router.ipv4s[0] = &ipv4;
-    ipv4.router = &router;
-    router.rib4 = &rib4;
-
-    /* RIB */
-    rib4.nr = 1;
-    rib4.entries = kmalloc(sizeof(struct net_rib4_entry) * rib4.nr);
-    rib4.entries[0].prefix = 0;
-    rib4.entries[0].length = 0;
-    rib4.entries[0].nexthop = 0xc0a83801;
-
-
-    kprintf("ARP on %s\r\n", port.netdev->name);
-    while ( 1 ) {
-        n = port.netdev->recvpkt(pkt, sizeof(pkt), port.netdev);
-        if ( n <= 0 ) {
-            continue;
-        }
-        port.next(&gnet, pkt, n, NULL);
-        //net_rx(&net, &port, pkt, n, -1);
-    }
-
-    return 0;
-#endif
-
-#if 0
-    struct tcp_session *sess;
-
-    /* Allocate */
-    sess = kmalloc(sizeof(struct tcp_session));
-    sess->state = TCP_CLOSED;
-    sess->rwin.sz = 1024 * 1024;
-    sess->rwin.buf = kmalloc(sizeof(u8) * sess->rwin.sz);
-    sess->twin.sz = 1024 * 1024;
-    sess->twin.buf = kmalloc(sizeof(u8) * sess->twin.sz);
-    sess->lipaddr = 0;
-    sess->lport = 80;
-    sess->ripaddr = 0;
-    sess->rport = 0;
-    sess->mss = 536;
-    sess->wscale = 1;
-
-    /* FIXME: Choose the first interface for management */
-    list = netdev_head;
-    dev = list->netdev;
-
-    kprintf("TCP on %s\r\n", dev->name);
-    while ( 1 ) {
-        n = dev->recvpkt(pkt, sizeof(pkt), dev);
-        if ( n < 0 ) {
-            continue;
-        }
-
-        struct ether_hdr *ehdr;
-        struct ip_hdr *iphdr;
-        struct tcp_hdr *tcphdr;
-
-        if ( n < sizeof(struct ether_hdr) ) {
-            continue;
-        }
-        ehdr = (struct ether_hdr *)pkt;
-        if ( bswap16(ehdr->type) != 0x0800 ) {
-            continue;
-        }
-        if ( n < sizeof(struct ether_hdr) + sizeof(struct ip_hdr) ) {
-            continue;
-        }
-        iphdr = (struct ip_hdr *)((u8 *)ehdr + sizeof(struct ether_hdr));
-        if ( n < sizeof(struct ether_hdr) + (iphdr->ihl * 4) ) {
-            continue;
-        }
-        if ( iphdr->version != 4 ) {
-            continue;
-        }
-        if ( iphdr->protocol != 6 ) {
-            continue;
-        }
-        if ( n < sizeof(struct ether_hdr) + bswap16(iphdr->length) ) {
-            continue;
-        }
-        if ( n < sizeof(struct ether_hdr) + (iphdr->ihl * 4)
-             + sizeof(struct tcp_hdr) ) {
-            continue;
-        }
-        tcphdr = (struct tcp_hdr *)((u8 *)iphdr + iphdr->ihl * 4);
-        if ( tcphdr->offset < 5 ) {
-            continue;
-        }
-        if ( n < sizeof(struct ether_hdr) + (iphdr->ihl * 4)
-             + tcphdr->offset * 4 ) {
-            continue;
-        }
-        plen = n - (sizeof(struct ether_hdr) + (iphdr->ihl * 4)
-                    + tcphdr->offset * 4);
-
-        /* Check destination port */
-        if ( sess->lport != bswap16(tcphdr->dport) ) {
-            continue;
-        }
-
-        if ( tcphdr->flag_syn ) {
-            /* SYN */
-            if ( TCP_CLOSED == sess->state ) {
-                /* Parse options */
-                u8 *tcpopts = (u8 *)tcphdr + sizeof(struct tcp_hdr);
-                u8 optkind;
-                u8 optlen;
-                int eool = 0;
-                sess->lipaddr = bswap16(iphdr->dstip);
-                sess->ripaddr = bswap16(iphdr->srcip);
-                sess->rport = bswap16(tcphdr->sport);
-                while ( !eool ) {
-                    optkind = *tcpopts;
-
-                    /* Check the header length */
-                    if ( tcpopts - (u8 *)tcphdr >= tcphdr->offset * 4 ) {
-                        eool = 1;
-                        break;
-                    }
-
-                    switch ( optkind ) {
-                    case 0:
-                        /* End of Option List */
-                        tcpopts++;
-                        eool = 1;
-                        break;
-                    case 1:
-                        /* NOP */
-                        tcpopts++;
-                        break;
-                    case 2:
-                        /* MSS */
-                        tcpopts++;
-                        optlen = *tcpopts;
-                        tcpopts++;
-                        if ( 4 == optlen ) {
-                            u16 optval = bswap16(*(u16 *)tcpopts);
-                            kprintf("MSS: %d\r\n", optval);
-                            sess->mss = optval;
-                        } else {
-                            kprintf("Invalid length (MSS)\r\n");
-                        }
-                        tcpopts += optlen - 2;
-                        break;
-                    case 3:
-                        /* Window scale */
-                        tcpopts++;
-                        optlen = *tcpopts;
-                        tcpopts++;
-                        if ( 3 == optlen ) {
-                            u8 optval = *tcpopts;
-                            sess->wscale = optval;
-                            kprintf("Window scale: %d\r\n", optval);
-                        } else {
-                            kprintf("Invalid length (Window scale)\r\n");
-                        }
-                        tcpopts += optlen - 2;
-                        break;
-                    default:
-                        tcpopts++;
-                        optlen = *tcpopts;
-                        tcpopts++;
-                        tcpopts += optlen - 2;
-                    }
-                }
-                sess->state = TCP_SYN_RECEIVED;
-
-#if 0
-                ehdr = (u8 *)pkt2;
-                dev->sendpkt(pkt2, 60, dev);
-#endif
-
-            } else {
-                /* Already in use */
-                kprintf("In use\r\n");
-            }
-        } else {
-            switch ( sess->state ) {
-            case TCP_CLOSED:
-                break;
-            }
-        }
-#if 0
-        kprintf("XXXX %x %x %x %x %x %x\r\n",
-                sizeof(struct ether_hdr) + (iphdr->ihl * 4),
-                tcphdr->offset, tcphdr->dport, tcphdr->offset,
-                tcphdr->flag_syn, plen);
-#endif
-    }
-
-#endif
-
-    return 0;
-}
 
 
 int mgmt_main(int, char *[]);
@@ -1523,12 +1243,12 @@ _builtin_start(char *const argv[])
     /* Start command */
     if ( 0 == kstrcmp("mgmt", argv[1]) ) {
         /* Start management process */
-        ret = ktltask_fork_execv(TASK_POLICY_KERNEL, id, &mgmt_main, &argv[2]);
+        ret = ktask_fork_execv(TASK_POLICY_KERNEL, &mgmt_main, &argv[2]);
         if ( ret < 0 ) {
             kprintf("Cannot launch mgmt\r\n");
             return -1;
         }
-        kprintf("Launch mgmt @ CPU #%d\r\n", id);
+        kprintf("Launch mgmt\r\n");
     } else if ( 0 == kstrcmp("tx", argv[1]) ) {
         /* Start Tx */
         char **nargv = kmalloc(sizeof(char *) * 4);
@@ -1538,10 +1258,18 @@ _builtin_start(char *const argv[])
         nargv[3] = NULL;
         ret = ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_tx_main, nargv);
         if ( ret < 0 ) {
+            if ( saved_sess ) {
+                char *s = "Cannot launch tx\n";
+                saved_sess->send(saved_sess, s, kstrlen(s));
+            }
             kprintf("Cannot launch tx\r\n");
             return -1;
         }
         kprintf("Launch tx @ CPU #%d\r\n", id);
+        if ( saved_sess ) {
+            char s[] = "Launched tx*\n";
+            saved_sess->send(saved_sess, s, kstrlen(s));
+        }
     } else if ( 0 == kstrcmp("tx2", argv[1]) ) {
         /* Start Tx */
         char **nargv = kmalloc(sizeof(char *) * 4);
@@ -1563,23 +1291,6 @@ _builtin_start(char *const argv[])
             return -1;
         }
         kprintf("Launch routing @ CPU #%d\r\n", id);
-    } else if ( 0 == kstrcmp("subrouting", argv[1]) ) {
-        /* Start routing */
-        ret = ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_subrouting_main,
-                                 NULL);
-        if ( ret < 0 ) {
-            kprintf("Cannot launch subrouting\r\n");
-            return -1;
-        }
-        kprintf("Launch subrouting @ CPU #%d\r\n", id);
-    } else if ( 0 == kstrcmp("net", argv[1]) ) {
-        /* Start TCP testing process */
-        ret = ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_net_test_main, NULL);
-        if ( ret < 0 ) {
-            kprintf("Cannot launch TCP\r\n");
-            return -1;
-        }
-        kprintf("Launch TCP @ CPU #%d\r\n", id);
     } else {
         kprintf("start <routing|mgmt> <id>\r\n");
         return -1;
@@ -1845,6 +1556,7 @@ shell_main(int argc, char *argv[])
     }
 
     /* Start-up script */
+    _exec_cmdbuf("start mgmt 0 e0 192.168.56.11/24 192.168.56.1");
     //_exec_cmdbuf("start mgmt 1 e0 192.168.56.11/24 192.168.56.1");
     //_exec_cmdbuf("test 64 128");
 
@@ -1900,6 +1612,7 @@ shell_tcp_recv(struct tcp_session *sess, const u8 *pkt, u32 len)
     u8 *buf = alloca(len + 1);
     int i;
     int j;
+
     for ( i = 0, j = 0; i < len; i++ ) {
         if ( 0xff == pkt[i] ) {
             i += 2;
@@ -1911,6 +1624,7 @@ shell_tcp_recv(struct tcp_session *sess, const u8 *pkt, u32 len)
     }
     buf[j++] = 0;
 
+    saved_sess = sess;
     _exec_cmdbuf(buf);
     sess->send(sess, "pix> ", 5);
 

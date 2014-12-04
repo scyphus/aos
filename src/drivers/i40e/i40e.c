@@ -861,7 +861,7 @@ i40e_tx_test3(struct netdev *netdev, u8 *pkt, int len, int blksize,
 
 
     dev = (struct i40e_device *)netdev->vendor;
-    kprintf("GLLAN_RCTL_0: %x\r\n", mmio_read32(dev->mmio, I40E_GLLAN_RCTL_0));
+    //kprintf("GLLAN_RCTL_0: %x\r\n", mmio_read32(dev->mmio, I40E_GLLAN_RCTL_0));
 
     /* Prepare */
     for ( i = frm; i < to; i++ ) {

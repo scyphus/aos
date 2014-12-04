@@ -13,7 +13,6 @@
 extern struct netdev_list *netdev_head;
 extern struct net gnet;
 
-int net_init(struct net *);
 int net_rx(struct net *, struct net_port *, u8 *, int, int);
 int net_sc_rx_ether(struct net *, u8 *, int, void *);
 int net_sc_rx_port_host(struct net *, u8 *, int, void *);
@@ -95,45 +94,11 @@ str2v4addr(const char *s, u32 *addr, int *mask)
 }
 
 
-int
-mgmt_tcp_server(void)
-{
-    struct tcp_session *sess;
-
-    /* Allocate */
-    sess = kmalloc(sizeof(struct tcp_session));
-    sess->state = TCP_CLOSED;
-    sess->rwin.sz = 1024 * 1024;
-    sess->rwin.buf = kmalloc(sizeof(u8) * sess->rwin.sz);
-    sess->twin.sz = 1024 * 1024;
-    sess->twin.buf = kmalloc(sizeof(u8) * sess->twin.sz);
-    sess->lipaddr = 0;
-    sess->lport = 80;
-    sess->ripaddr = 0;
-    sess->rport = 0;
-    sess->mss = 536;
-    sess->wscale = 1;
-
-    return 0;
-}
-
-
-/*
- * SYN
- */
-int
-mgmt_tcp_syn_recv(void)
-{
-    /* Send SYN+ACK */
-
-    return 0;
-}
-
 
 
 
 int net_tcp_trigger(struct net *);
-
+u64 rdtsc();
 /*
  * Management process
  * start mgmt <cpuid> <nic> <ip address/mask> <default-gw>

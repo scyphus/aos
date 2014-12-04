@@ -28,9 +28,6 @@ void search_clock_sources(void);
 void vga_init(void);
 void pci_init(void);
 void netdev_init(void);
-void e1000e_init(void);
-void ixgbe_init(void);
-void i40e_init(void);
 void ahci_init(void);
 
 extern void trampoline(void);
@@ -192,9 +189,6 @@ arch_bsp_init(void)
     pci_init();
     arch_dbg_printf("Initializing network devices.\r\n");
     netdev_init();
-    e1000e_init();
-    ixgbe_init();
-    i40e_init();
 
     arch_dbg_printf("Initializing AHCI.\r\n");
     ahci_init();
@@ -209,6 +203,7 @@ arch_bsp_init(void)
         *(volatile u8 *)((u64)TRAMPOLINE_ADDR + i)
             = *(volatile u8 *)((u64)trampoline + i);
     }
+
 
     /* Send INIT IPI */
     arch_dbg_printf("Starting all available application processors.\r\n");

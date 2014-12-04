@@ -25,7 +25,6 @@ struct dxr *dxr;
  */
 void kbd_event(void);
 int kbd_read(void);
-void e1000_init(void);
 
 int irq_handler_table_init(void);
 
@@ -33,9 +32,17 @@ void kintr_loc_tmr(void);
 
 struct net gnet;
 int net_init(struct net *);
+int net_release(struct net *);
 
 /* arch.c */
 void arch_bsp_init(void);
+
+void e1000_init(void);
+void e1000e_init(void);
+void ixgbe_init(void);
+void i40e_init(void);
+
+int ktask_start(void);
 
 /*
  * Print a panic message and hlt processor
@@ -91,10 +98,15 @@ kmain(void)
 
     net_init(&gnet);
 
+    /* Initialize drivers */
     e1000_init();
+    e1000e_init();
+    ixgbe_init();
+    i40e_init();
 
     ktask_init();
 
+    //sched();
     sched_switch();
 
     task_restart();
@@ -112,7 +124,14 @@ apmain(void)
     /* Tickless scheduler */
     arch_enable_interrupts();
     sched_tickless_prepare();
+    arch_enable_interrupts();
     task_restart();
+}
+
+void
+kexit(void)
+{
+    net_release(&gnet);
 }
 
 
@@ -234,8 +253,8 @@ void
 kintr_loc_tmr(void)
 {
     arch_clock_update();
-    sched();
-    sched_switch();
+    //sched();
+    //sched_switch();
     //mfence();
 }
 

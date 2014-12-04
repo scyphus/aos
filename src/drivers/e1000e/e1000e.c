@@ -1,11 +1,10 @@
 /*_
- * Copyright 2009 xisa group. All rights reserved.
+ * Copyright (c) 2013 Scyphus Solutions Co. Ltd.
+ * Copyright (c) 2014 Hirochika Asai
  *
  * Authors:
- *      Hirochika Asai  <asai@xisa.org>
+ *      Hirochika Asai  <asai@jar.jp>
  */
-
-/* $Id$ */
 
 #include <aos/const.h>
 #include "../pci/pci.h"
@@ -339,15 +338,8 @@ e1000e_setup_rx_desc(struct e1000e_device *dev)
     mmio_write32(dev->mmio, E1000E_REG_RCTL1, E1000E_RCTL_BSIZE_2048);
 #endif
 
-
-#if 0
-    mmio_write32(dev->mmio, E1000E_REG_RDH(0), 0);
-    mmio_write32(dev->mmio, E1000E_REG_RDT(0), 0x100);
-#endif
-
     mmio_write32(dev->mmio, 0x18,
                  mmio_read32(dev->mmio, E1000E_REG_RFCTL) | (1<<15));
-
 #if 0
     mmio_write32(dev->mmio, E1000E_REG_RFCTL,
                  mmio_read32(dev->mmio, E1000E_REG_RFCTL) | (1<<15));
@@ -370,18 +362,6 @@ e1000e_setup_rx_desc(struct e1000e_device *dev)
 #if 0
     mmio_write32(dev->mmio, E1000E_REG_RCTL,
                  mmio_read32(dev->mmio, E1000E_REG_RCTL) | E1000E_RCTL_EN);
-#endif
-
-#if 0
-    int addr;
-    for ( addr = 0x4080; addr <= 0x40c0; addr += 4 ) {
-        kprintf("  %.8x : %.8x\r\n", addr, mmio_read32(dev->mmio, addr));
-    }
-#endif
-#if 0
-    kprintf("  %.8x : %.8x\r\n", 0x4074, mmio_read32(dev->mmio, 0x4074));
-    kprintf("  %.8x : %.8x\r\n", 0x4088, mmio_read32(dev->mmio, 0x4088));
-    kprintf("  %.8x : %.8x\r\n", 0x408c, mmio_read32(dev->mmio, 0x408c));
 #endif
 
 
@@ -442,55 +422,7 @@ e1000e_recvpkt(u8 *pkt, u32 len, struct netdev *netdev)
 
     dev = (struct e1000e_device *)netdev->vendor;
 
-#if 0
-    u32 tdh;
-    u8 txpkt[1024];
-    txpkt[0] = 0xff;
-    txpkt[1] = 0xff;
-    txpkt[2] = 0xff;
-    txpkt[3] = 0xff;
-    txpkt[4] = 0xff;
-    txpkt[5] = 0xff;
-    txpkt[6] = dev->macaddr[0];
-    txpkt[7] = dev->macaddr[1];
-    txpkt[8] = dev->macaddr[2];
-    txpkt[9] = dev->macaddr[3];
-    txpkt[10] = dev->macaddr[4];
-    txpkt[11] = dev->macaddr[5];
-    tdh = mmio_read32(dev->mmio, E1000E_REG_TDH(0));
-    dev->tx_desc[dev->tx_tail].address = txpkt;
-    dev->tx_desc[dev->tx_tail].length = 100;
-    dev->tx_desc[dev->tx_tail].sta = 0;
-    dev->tx_desc[dev->tx_tail].css = 0;
-    dev->tx_desc[dev->tx_tail].cso = 0;
-    dev->tx_desc[dev->tx_tail].special = 0;
-    dev->tx_desc[dev->tx_tail].cmd = (1<<3) | (1<<1) | 1;
-    mmio_write32(dev->mmio, E1000E_REG_TDT(0), dev->tx_tail);
-    dev->tx_tail = (dev->tx_tail + 1) % dev->tx_bufsz;
-#endif
-
     rdh = mmio_read32(dev->mmio, E1000E_REG_RDH(0));
-#if 0
-    kprintf("XXXX %x %x %x / %x %x %x %x %x %x %x %x\r\n",
-            mmio_read32(dev->mmio, E1000E_REG_RCTL),
-            mmio_read32(dev->mmio, E1000E_REG_RDH(0)),
-            mmio_read32(dev->mmio, E1000E_REG_RDT(0)),
-            mmio_read32(dev->mmio, E1000E_REG_RDH(1)),
-            mmio_read32(dev->mmio, E1000E_REG_RDT(1)),
-            mmio_read32(dev->mmio, 0x0400c),
-            mmio_read32(dev->mmio, 0x04010),
-            mmio_read32(dev->mmio, 0x04048),
-            mmio_read32(dev->mmio, 0x0404c),
-            mmio_read32(dev->mmio, 0x04050),
-            mmio_read32(dev->mmio, 0x0404c));
-#endif
-#if 0
-    int addr;
-    for ( addr = 0x4080; addr <= 0x40c0; addr += 4 ) {
-        kprintf("  %.8x : %.8x\r\n", addr, mmio_read32(dev->mmio, addr));
-    }
-#endif
-
     rx_que = (dev->rx_bufsz - dev->rx_tail + rdh) % dev->rx_bufsz;
     if ( rx_que > 0 ) {
         /* Check the head of RX ring buffer */

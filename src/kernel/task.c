@@ -114,7 +114,7 @@ sched(void)
 
     /* Run scheduling from task table */
     for ( i = 0; i < TASK_TABLE_SIZE; i++ ) {
-        if ( NULL == ktasks->tasks[i].ktask
+        if ( NULL != ktasks->tasks[i].ktask
              && ktasks->tasks[i].ktask->scheduled < 0 ) {
             /* Schedule here */
             if ( TASK_STATE_READY == ktasks->tasks[i].ktask->state ) {
@@ -209,10 +209,10 @@ ktask_queue_entry_new(struct ktask *t)
 int
 ktask_init(void)
 {
-    char **argv;
-    int ret;
     int i;
     struct ktask *t;
+    char **argv;
+    int ret;
 
     /* Assign an idle task to each processor */
     for ( i = 0; i < processors->n; i++ ) {
@@ -240,7 +240,7 @@ ktask_init(void)
         return -1;
     }
     (void)kmemset(ktasks->tasks, 0,
-                  sizeof(struct ktask_queue_entry *) * TASK_TABLE_SIZE);
+                  sizeof(struct ktask_queue_entry) * TASK_TABLE_SIZE);
 
     /* Initialize the kernel main task */
     argv = kmalloc(sizeof(char *) * 2);
@@ -307,7 +307,11 @@ ktask_fork_execv(int policy, int (*main)(int, char *[]), char **argv)
     t->main = main;
     t->argv = argv;
     t->id = tid;
-    t->name = NULL;
+    if ( argv && argv[0] ) {
+        t->name = kstrdup(argv[0]);
+    } else {
+        t->name = NULL;
+    }
     t->state = TASK_STATE_READY;
 
     ktasks->tasks[tid].ktask = t;
@@ -531,7 +535,7 @@ ktask_kernel_main(int argc, char *argv[])
 #if 0
     /* Notify to all processors except for BSP */
     int i;
-    for ( i = i; i < processors->n; i++ ) {
+    for ( i = 1; i < processors->n; i++ ) {
         //lapic_send_fixed_ipi(IV_IPI);
         lapic_send_ns_fixed_ipi(processors->prs[i].id, IV_IPI);
     }
@@ -541,7 +545,7 @@ ktask_kernel_main(int argc, char *argv[])
 #if 0
         /* Run scheduling from task table */
         for ( i = 0; i < TASK_TABLE_SIZE; i++ ) {
-            if ( NULL == ktasks->tasks[i].ktask
+            if ( NULL != ktasks->tasks[i].ktask
                  && ktasks->tasks[i].ktask->scheduled < 0 ) {
                 /* Schedule here */
                 if ( TASK_STATE_READY == ktasks->tasks[i].ktask->state ) {

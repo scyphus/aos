@@ -1,11 +1,10 @@
 /*_
- * Copyright 2014 Scyphus Solutions Co. Ltd.  All rights reserved.
+ * Copyright (c) 2014 Hirochika Asai
+ * All rights reserved.
  *
  * Authors:
- *      Hirochika Asai  <asai@scyphus.co.jp>
+ *      Hirochika Asai  <asai@jar.jp>
  */
-
-/* $Id$ */
 
 #include <aos/const.h>
 #include "../pci/pci.h"
@@ -160,30 +159,11 @@ void ixgbe_update_hw(void);
 struct ixgbe_device * ixgbe_init_hw(struct pci_device *);
 int ixgbe_setup_rx_desc(struct ixgbe_device *);
 int ixgbe_setup_tx_desc(struct ixgbe_device *);
-
+int ixgbe_recvpkt(u8 *, u32, struct netdev *);
+int ixgbe_sendpkt(const u8 *, u32, struct netdev *);
 
 int ixgbe_routing_test(struct netdev *);
 
-
-
-static u16
-_ip_checksum(const u8 *data, int len)
-{
-    /* Compute checksum */
-    u16 *tmp;
-    u32 cs;
-    int i;
-
-    tmp = (u16 *)data;
-    cs = 0;
-    for ( i = 0; i < len / 2; i++ ) {
-        cs += (u32)tmp[i];
-        cs = (cs & 0xffff) + (cs >> 16);
-    }
-    cs = 0xffff - cs;
-
-    return cs;
-}
 
 /*
  * Read data from a PCI register by MMIO
@@ -220,7 +200,8 @@ void
 ixgbe_update_hw(void)
 {
     struct pci *pci;
-    struct ixgbe_device *ixgbedev;
+    struct ixgbe_device *dev;
+    struct netdev *netdev;
     int idx;
 
     /* Get the list of PCI devices */
@@ -232,8 +213,10 @@ ixgbe_update_hw(void)
         if ( PCI_VENDOR_INTEL == pci->device->vendor_id ) {
             switch ( pci->device->device_id ) {
             case IXGBE_X520:
-                ixgbedev = ixgbe_init_hw(pci->device);
-                netdev_add_device(ixgbedev->macaddr, ixgbedev);
+                dev = ixgbe_init_hw(pci->device);
+                netdev = netdev_add_device(dev->macaddr, dev);
+                netdev->recvpkt = ixgbe_recvpkt;
+                netdev->sendpkt = ixgbe_sendpkt;
                 idx++;
                 break;
             default:
@@ -484,6 +467,85 @@ ixgbe_setup_tx_desc(struct ixgbe_device *dev)
     return 0;
 }
 
+int
+ixgbe_recvpkt(u8 *pkt, u32 len, struct netdev *netdev)
+{
+    u32 rdh;
+    struct ixgbe_device *dev;
+    int rx_que;
+    struct ixgbe_rx_desc *rxdesc;
+    int ret;
+
+    dev = (struct ixgbe_device *)netdev->vendor;
+
+    rdh = mmio_read32(dev->mmio, IXGBE_REG_RDH(0));
+    rx_que = (dev->rx_bufsz - dev->rx_tail + rdh) % dev->rx_bufsz;
+    if ( rx_que > 0 ) {
+        /* Check the head of RX ring buffer */
+        rxdesc = (struct ixgbe_rx_desc *)
+            (((u64)dev->rx_base) + (dev->rx_tail % dev->rx_bufsz)
+             * sizeof(struct ixgbe_rx_desc));
+        ret = len < rxdesc->length ? len : rxdesc->length;
+        kmemcpy(pkt, (void *)rxdesc->address, ret);
+
+        rxdesc->checksum = 0;
+        rxdesc->status = 0;
+        rxdesc->errors = 0;
+        rxdesc->special = 0;
+
+        mmio_write32(dev->mmio, IXGBE_REG_RDT(0), dev->rx_tail);
+        dev->rx_tail = (dev->rx_tail + 1) % dev->rx_bufsz;
+
+        return ret;
+    }
+
+    return -1;
+}
+
+int
+ixgbe_sendpkt(const u8 *pkt, u32 len, struct netdev *netdev)
+{
+    u32 tdh;
+    struct ixgbe_device *dev;
+    int tx_avl;
+    struct ixgbe_tx_desc *txdesc;
+
+    dev = (struct ixgbe_device *)netdev->vendor;
+    tdh = mmio_read32(dev->mmio, IXGBE_REG_TDH(0));
+
+    tx_avl = dev->tx_bufsz[0] - ((dev->tx_bufsz[0] - tdh + dev->tx_tail[0])
+                                 % dev->tx_bufsz[0]);
+
+    if ( tx_avl > 0 ) {
+        /* Check the head of TX ring buffer */
+        txdesc = (struct ixgbe_tx_desc *)
+            (((u64)dev->tx_base[0]) + (dev->tx_tail[0] % dev->tx_bufsz[0])
+             * sizeof(struct ixgbe_tx_desc));
+        kmemcpy((void *)txdesc->address, pkt, len);
+
+        txdesc->length = len;
+        txdesc->sta = 0;
+        txdesc->css = 0;
+        txdesc->cso = 0;
+        txdesc->special = 0;
+        txdesc->cmd = (1<<3) | (1<<1) | 1;
+
+        dev->tx_tail[0] = (dev->tx_tail[0] + 1) % dev->tx_bufsz[0];
+        mmio_write32(dev->mmio, IXGBE_REG_TDT(0), dev->tx_tail[0]);
+
+        return len;
+    }
+
+    return -1;
+}
+
+
+
+
+
+
+
+
 
 
 
@@ -516,7 +578,6 @@ ixgbe_routing_test(struct netdev *netdev)
     int tx_avl;
     int nrp;
     int i;
-    int j;
     u8 *rxpkt;
     u8 *txpkt;
 
@@ -611,111 +672,6 @@ typedef int (*router_rx_cb_t)(const u8 *, u32, int);
 int arch_dbg_printf(const char *fmt, ...);
 
 
-/*
- * Get a valid TX buffer
- */
-int
-ixgbe_tx_buf(struct netdev *netdev, u8 **txpkt, u16 **txlen, u16 vlan)
-{
-    struct ixgbe_device *ixgbedev;
-    struct ixgbe_tx_desc *txdesc;
-    int tx_avl;
-
-    /* Retrieve data structure of ixgbe driver */
-    ixgbedev = (struct ixgbe_device *)netdev->vendor;
-
-    /* Get available TX buffer length */
-    tx_avl = ixgbedev->tx_bufsz[0]
-        - ((ixgbedev->tx_bufsz[0] - ixgbedev->tx_head_cache[0] + ixgbedev->tx_tail[0])
-           % ixgbedev->tx_bufsz[0]);
-    if ( tx_avl <= 0 ) {
-        return -1;
-    }
-
-    /* Check the head of TX ring buffer */
-    txdesc = (struct ixgbe_tx_desc *)
-        (ixgbedev->tx_base[0]
-         + (ixgbedev->tx_tail[0] % ixgbedev->tx_bufsz[0])
-         * sizeof(struct ixgbe_tx_desc));
-
-    *txpkt = (u8 *)txdesc->address;
-    *txlen = &(txdesc->length);
-
-    txdesc->sta = 0;
-    txdesc->css = 0;
-    txdesc->cso = 0;
-    txdesc->special = vlan;
-    if ( vlan == 0 ) {
-        txdesc->cmd = (1<<3) | (1<<1) | 1;
-    } else {
-        txdesc->cmd = (1<<3) | (1<<1) | 1 | (1<<6);
-    }
-
-    /* Update the tail pointer of the TX buffer */
-    ixgbedev->tx_tail[0] = (ixgbedev->tx_tail[0] + 1) % ixgbedev->tx_bufsz[0];
-
-    return 0;
-}
-int
-ixgbe_tx_set(struct netdev *netdev, u64 txpkt, u16 txlen, u16 vlan)
-{
-    struct ixgbe_device *ixgbedev;
-    struct ixgbe_tx_desc *txdesc;
-    int tx_avl;
-    int ret;
-
-    /* Retrieve data structure of ixgbe driver */
-    ixgbedev = (struct ixgbe_device *)netdev->vendor;
-
-    /* Get available TX buffer length */
-    tx_avl = ixgbedev->tx_bufsz[0]
-        - ((ixgbedev->tx_bufsz[0] - ixgbedev->tx_head_cache[0] + ixgbedev->tx_tail[0])
-           % ixgbedev->tx_bufsz[0]);
-    if ( tx_avl <= 0 ) {
-        return -1;
-    }
-
-    /* Check the head of TX ring buffer */
-    ret = ixgbedev->tx_tail[0];
-    txdesc = (struct ixgbe_tx_desc *)
-        (ixgbedev->tx_base[0]
-         + (ixgbedev->tx_tail[0] % ixgbedev->tx_bufsz[0])
-         * sizeof(struct ixgbe_tx_desc));
-
-    kmemcpy((u8 *)txdesc->address, (u8 *)txpkt, txlen);
-    txdesc->length = txlen;
-    txdesc->sta = 0;
-    txdesc->css = 0;
-    txdesc->cso = 0;
-    txdesc->special = vlan;
-    if ( vlan == 0 ) {
-        txdesc->cmd = (1<<3) | (1<<1) | 1;
-    } else {
-        txdesc->cmd = (1<<3) | (1<<1) | 1 | (1<<6);
-    }
-
-    /* Update the tail pointer of the TX buffer */
-    ixgbedev->tx_tail[0] = (ixgbedev->tx_tail[0] + 1) % ixgbedev->tx_bufsz[0];
-
-    return ret;
-}
-int
-ixgbe_tx_commit(struct netdev *netdev)
-{
-    struct ixgbe_device *ixgbedev;
-
-    /* Retrieve data structure of ixgbe driver */
-    ixgbedev = (struct ixgbe_device *)netdev->vendor;
-
-    /* Write to PCI */
-    mmio_write32(ixgbedev->mmio, IXGBE_REG_TDT(0), ixgbedev->tx_tail[0]);
-
-    u32 tdh;
-    tdh = mmio_read32(ixgbedev->mmio, IXGBE_REG_TDH(0));
-    ixgbedev->tx_head_cache[0] = tdh;
-
-    return 0;
-}
 
 static u32 Ax;
 static u32 Ay;

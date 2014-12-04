@@ -49,16 +49,6 @@ netsc_init(void)
 
 
 /*
- * Allocate a packet
- */
-void *
-palloc(int sock, int sz)
-{
-
-    return NULL;
-}
-
-/*
  * Local variables:
  * tab-width: 4
  * c-basic-offset: 4
