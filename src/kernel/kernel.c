@@ -130,6 +130,7 @@ apmain(void)
 void
 kexit(void)
 {
+    /* Inducing TCP FIN packets */
     net_release(&gnet);
 }
 

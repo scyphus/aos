@@ -122,7 +122,7 @@ union i40e_rx_desc {
 } __attribute__ ((packed));
 
 struct i40e_aq_desc {
-    u16 flags;
+    volatile u16 flags;
     u16 opcode;
     u16 len;
     u16 ret;
@@ -416,8 +416,10 @@ i40e_init_fpm(struct i40e_device *dev)
     /* Initialize the admin queue */
     dev->atq.len = 128;
     dev->atq.base = kmalloc(sizeof(struct i40e_aq_desc) * dev->atq.len);
+    dev->atq.tail = 0;
     dev->atq.bufset = kmalloc(4096 * dev->atq.len);
     dev->arq.base = kmalloc(sizeof(struct i40e_aq_desc) * dev->arq.len);
+    dev->arq.tail = 0;
     dev->arq.len = 128;
     dev->arq.bufset = kmalloc(4096 * dev->atq.len);
     for ( i = 0; i < dev->arq.len; i++ ) {
@@ -446,18 +448,20 @@ i40e_init_fpm(struct i40e_device *dev)
     mmio_write32(dev->mmio, I40E_PF_ARQLEN, dev->arq.len | (1<<31));
 
     /* Issue get ver admin command */
-    dev->atq.base[0].flags = 0;
-    dev->atq.base[0].opcode = 0x0001;
-    dev->atq.base[0].len = 0;
-    dev->atq.base[0].ret = 0;
-    dev->atq.base[0].cookieh = 0x1234;
-    dev->atq.base[0].cookiel = 0xabcd;
-    dev->atq.base[0].param0 = 0;
-    dev->atq.base[0].param1 = 0;
-    dev->atq.base[0].addrh = 0;
-    dev->atq.base[0].addrl = 0x00010001;
-    mmio_write32(dev->mmio, I40E_PF_ATQT, 1);
-    while ( !(dev->atq.base[0].flags & 0x1) ) {
+    int idx = dev->atq.tail;
+    dev->atq.base[idx].flags = 0;
+    dev->atq.base[idx].opcode = 0x0001;
+    dev->atq.base[idx].len = 0;
+    dev->atq.base[idx].ret = 0;
+    dev->atq.base[idx].cookieh = 0x1234;
+    dev->atq.base[idx].cookiel = 0xabcd;
+    dev->atq.base[idx].param0 = 0;
+    dev->atq.base[idx].param1 = 0;
+    dev->atq.base[idx].addrh = 0;
+    dev->atq.base[idx].addrl = 0x00010001;
+    dev->atq.tail++;
+    mmio_write32(dev->mmio, I40E_PF_ATQT, dev->atq.tail);
+    while ( !(dev->atq.base[idx].flags & 0x1) ) {
         arch_busy_usleep(10);
     }
 #if 0
@@ -470,18 +474,20 @@ i40e_init_fpm(struct i40e_device *dev)
             mmio_read32(dev->mmio, I40E_PF_ARQT),
             mmio_read32(dev->mmio, I40E_PF_ARQH));
 #endif
-    dev->atq.base[1].flags = 0;
-    dev->atq.base[1].opcode = 0x0110;
-    dev->atq.base[1].len = 0;
-    dev->atq.base[1].ret = 0;
-    dev->atq.base[1].cookieh = 0x5678;
-    dev->atq.base[1].cookiel = 0xef01;
-    dev->atq.base[1].param0 = 2;
-    dev->atq.base[1].param1 = 0;
-    dev->atq.base[1].addrh = 0;
-    dev->atq.base[1].addrl = 0;
-    mmio_write32(dev->mmio, I40E_PF_ATQT, 2);
-    while ( !(dev->atq.base[1].flags & 0x1) ) {
+    idx = dev->atq.tail;
+    dev->atq.base[idx].flags = 0;
+    dev->atq.base[idx].opcode = 0x0110;
+    dev->atq.base[idx].len = 0;
+    dev->atq.base[idx].ret = 0;
+    dev->atq.base[idx].cookieh = 0x5678;
+    dev->atq.base[idx].cookiel = 0xef01;
+    dev->atq.base[idx].param0 = 2;
+    dev->atq.base[idx].param1 = 0;
+    dev->atq.base[idx].addrh = 0;
+    dev->atq.base[idx].addrl = 0;
+    dev->atq.tail++;
+    mmio_write32(dev->mmio, I40E_PF_ATQT, dev->atq.tail);
+    while ( !(dev->atq.base[idx].flags & 0x1) ) {
         arch_busy_usleep(10);
     }
 #if 0
@@ -496,18 +502,20 @@ i40e_init_fpm(struct i40e_device *dev)
 #endif
 #if 1
     /* Set MAC config */
-    dev->atq.base[2].flags = 0;
-    dev->atq.base[2].opcode = 0x0603;
-    dev->atq.base[2].len = 0;
-    dev->atq.base[2].ret = 0;
-    dev->atq.base[2].cookieh = 0x9abc;
-    dev->atq.base[2].cookiel = 0xdef0;
-    dev->atq.base[2].param0 = 1518 | (1<<18) | (0<<24);
-    dev->atq.base[2].param1 = 0;
-    dev->atq.base[2].addrh = 0;
-    dev->atq.base[2].addrl = 0;
-    mmio_write32(dev->mmio, I40E_PF_ATQT, 3);
-    while ( !(dev->atq.base[2].flags & 0x1) ) {
+    idx = dev->atq.tail;
+    dev->atq.base[idx].flags = 0;
+    dev->atq.base[idx].opcode = 0x0603;
+    dev->atq.base[idx].len = 0;
+    dev->atq.base[idx].ret = 0;
+    dev->atq.base[idx].cookieh = 0x9abc;
+    dev->atq.base[idx].cookiel = 0xdef0;
+    dev->atq.base[idx].param0 = 1518 | (1<<18) | (0<<24);
+    dev->atq.base[idx].param1 = 0;
+    dev->atq.base[idx].addrh = 0;
+    dev->atq.base[idx].addrl = 0;
+    dev->atq.tail++;
+    mmio_write32(dev->mmio, I40E_PF_ATQT, dev->atq.tail);
+    while ( !(dev->atq.base[idx].flags & 0x1) ) {
         arch_busy_usleep(10);
     }
 #endif
