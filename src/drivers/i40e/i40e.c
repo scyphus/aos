@@ -1033,53 +1033,55 @@ void
 i40e_test(struct netdev *netdev, struct tcp_session *sess)
 {
     struct i40e_device *dev;
+    int idx;
 
     dev = (struct i40e_device *)netdev->vendor;
 
-
-    kmemset(dev->atq.bufset + (3 * 4096), 0, 4096);
-    kmemset(dev->atq.bufset + (3 * 4096), 1, 1);
+    kmemset(dev->atq.bufset + (idx * 4096), 0, 4096);
 
 #if 0
     /* Get switch config */
-    dev->atq.base[3].flags = (1<<9) | (1<<12);
-    dev->atq.base[3].opcode = 0x0200;
-    dev->atq.base[3].len = 4096;
-    dev->atq.base[3].ret = 0;
-    dev->atq.base[3].cookieh = 0xabcd;
-    dev->atq.base[3].cookiel = 0xefab;
-    dev->atq.base[3].param0 = 0;
-    dev->atq.base[3].param1 = 0;
+    idx = dev->atq.tail;
+    dev->atq.base[idx].flags = (1<<9) | (1<<12);
+    dev->atq.base[idx].opcode = 0x0200;
+    dev->atq.base[idx].len = 4096;
+    dev->atq.base[idx].ret = 0;
+    dev->atq.base[idx].cookieh = 0xabcd;
+    dev->atq.base[idx].cookiel = 0xefab;
+    dev->atq.base[idx].param0 = 0;
+    dev->atq.base[idx].param1 = 0;
 #else
     /* Get VSI parameters */
-    dev->atq.base[3].flags = /*(1<<9) |*/ (1<<12);
-    dev->atq.base[3].opcode = 0x0212;
-    dev->atq.base[3].len = 0x80;
-    dev->atq.base[3].ret = 0;
-    dev->atq.base[3].cookieh = 0xabcd;
-    dev->atq.base[3].cookiel = 0xefab;
-    dev->atq.base[3].param0 = 0x0206;
-    dev->atq.base[3].param1 = 0;
+    idx = dev->atq.tail;
+    dev->atq.base[idx].flags = /*(1<<9) |*/ (1<<12);
+    dev->atq.base[idx].opcode = 0x0212;
+    dev->atq.base[idx].len = 0x80;
+    dev->atq.base[idx].ret = 0;
+    dev->atq.base[idx].cookieh = 0xabcd;
+    dev->atq.base[idx].cookiel = 0xefab;
+    dev->atq.base[idx].param0 = 0x0206;
+    dev->atq.base[idx].param1 = 0;
 #endif
-    dev->atq.base[3].addrh = (u64)(dev->atq.bufset + (3 * 4096)) >> 32;
-    dev->atq.base[3].addrl = (u64)(dev->atq.bufset + (3 * 4096));
-    mmio_write32(dev->mmio, I40E_PF_ATQT, 4);
-    while ( !(dev->atq.base[3].flags & 0x1) ) {
+    dev->atq.base[idx].addrh = (u64)(dev->atq.bufset + (idx * 4096)) >> 32;
+    dev->atq.base[idx].addrl = (u64)(dev->atq.bufset + (idx * 4096));
+    dev->atq.tail++;
+    mmio_write32(dev->mmio, I40E_PF_ATQT, dev->atq.tail);
+    while ( !(dev->atq.base[idx].flags & 0x1) ) {
         arch_busy_usleep(10);
     }
 
     if ( sess ) {
         sess->send(sess, "***\n", 4);
         u8 tmp[16];
-        _tohex(dev->atq.base[3].ret, tmp);
+        _tohex(dev->atq.base[idx].ret, tmp);
         tmp[8] = '\n';
         sess->send(sess, tmp, 9);
         sess->send(sess, "***\n", 4);
-        _tohex(dev->atq.base[3].param0, tmp);
+        _tohex(dev->atq.base[idx].param0, tmp);
         tmp[8] = '\n';
         sess->send(sess, tmp, 9);
         sess->send(sess, "***\n", 4);
-        _tohex(dev->atq.base[3].param1, tmp);
+        _tohex(dev->atq.base[idx].param1, tmp);
         tmp[8] = '\n';
         sess->send(sess, tmp, 9);
         sess->send(sess, "***\n", 4);
@@ -1088,7 +1090,7 @@ i40e_test(struct netdev *netdev, struct tcp_session *sess)
         sess->send(sess, tmp, 9);
         sess->send(sess, "***\n", 4);
 
-        u32 *x = (u32 *)(dev->atq.bufset + (3 * 4096));
+        u32 *x = (u32 *)(dev->atq.bufset + (idx * 4096));
         u32 y;
         u8 buf[4096];
         int i;
