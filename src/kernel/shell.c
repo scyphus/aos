@@ -60,6 +60,14 @@ e1 {hw 08:00:27:5a:f6:dc; ip 192.168.56.12/24;}  \
 ";
 
 
+void i40e_test(struct netdev *, struct tcp_session *);
+int
+_builtin_debug(char *const argv[])
+{
+    i40e_test(netdev_head->next->netdev, saved_sess);
+    return 0;
+}
+
 
 
 
@@ -962,7 +970,7 @@ _tx_main(int argc, char *argv[])
 #else
     pkt[30] = 192;
     pkt[31] = 168;
-    pkt[32] = 200;
+    pkt[32] = 100;
     pkt[33] = 1;
 #endif
 
@@ -1756,6 +1764,8 @@ _exec_cmdbuf(char *cmd)
         ret =_builtin_start(argv);
     } else if ( 0 == kstrcmp("stop", argv[0]) ) {
         ret = _builtin_stop(argv);
+    } else if ( 0 == kstrcmp("debug", argv[0]) ) {
+        ret = _builtin_debug(argv);
     } else if ( 0 == kstrcmp("test", argv[0]) ) {
         ret = _builtin_test(argv);
     } else if ( 0 == kstrcmp("test2", argv[0]) ) {

@@ -110,6 +110,7 @@ apmain(void)
     arch_ap_init();
 
     /* Tickless scheduler */
+    arch_enable_interrupts();
     sched_tickless_prepare();
     task_restart();
 }

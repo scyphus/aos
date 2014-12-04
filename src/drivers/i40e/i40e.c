@@ -494,6 +494,7 @@ i40e_init_fpm(struct i40e_device *dev)
             mmio_read32(dev->mmio, I40E_PF_ARQT),
             mmio_read32(dev->mmio, I40E_PF_ARQH));
 #endif
+#if 1
     /* Set MAC config */
     dev->atq.base[2].flags = 0;
     dev->atq.base[2].opcode = 0x0603;
@@ -501,14 +502,15 @@ i40e_init_fpm(struct i40e_device *dev)
     dev->atq.base[2].ret = 0;
     dev->atq.base[2].cookieh = 0x9abc;
     dev->atq.base[2].cookiel = 0xdef0;
-    dev->atq.base[2].param0 = 1518 | (1<<18) | (7<<24);
+    dev->atq.base[2].param0 = 1518 | (1<<18) | (0<<24);
     dev->atq.base[2].param1 = 0;
     dev->atq.base[2].addrh = 0;
     dev->atq.base[2].addrl = 0;
     mmio_write32(dev->mmio, I40E_PF_ATQT, 3);
-    while ( !(dev->atq.base[1].flags & 0x1) ) {
+    while ( !(dev->atq.base[2].flags & 0x1) ) {
         arch_busy_usleep(10);
     }
+#endif
 
 #if 0
     kprintf("VSI: %x %x %x %x\r\n",
@@ -562,8 +564,8 @@ i40e_init_fpm(struct i40e_device *dev)
         dev->txq[i].head_cache = 0;
         dev->txq[i].headwb = 0;
         /* up to 8 K minus 32 */
-        dev->txq[i].bufsz = (1<<12);
-        dev->txq[i].bufmask = (1<<12) - 1;
+        dev->txq[i].bufsz = (1<<10);
+        dev->txq[i].bufmask = (1<<10) - 1;
         /* ToDo: 16 bytes for alignment */
         dev->txq[i].base = (u64)kmalloc(dev->txq[i].bufsz * sizeof(struct i40e_tx_desc_data));
         for ( j = 0; j < dev->txq[i].bufsz; j++ ) {
@@ -894,8 +896,9 @@ i40e_tx_test3(struct netdev *netdev, u8 *pkt, int len, int blksize,
                      * sizeof(struct i40e_tx_desc_data));
                 txdesc->l2tag = 0;
                 txdesc->txbufsz_offset = (len << 18) | 14/2/* | ((20/4)<<7)*/;
-                txdesc->rsv_cmd_dtyp = 0 | (((1) /*| (1<<1)*/ | (1<<2)
+                txdesc->rsv_cmd_dtyp = 0 | (((1) /*| (1<<1)*/ /*| (1<<2)*/
                                              /*| (2<<5)*//*IPv4 w/o cso*/) << 4);
+                //txdesc->rsv_cmd_dtyp |= (1<<1)<<4;
             }
             txdesc->rsv_cmd_dtyp |= (1<<1)<<4;
             dev->txq[i].tail = next_tail;
@@ -997,6 +1000,102 @@ i40e_forwarding_test(struct netdev *netdev1, struct netdev *netdev2)
     }
 
     return 0;
+}
+
+
+void
+_tohex(u32 x, u8 *buf)
+{
+    int c;
+    int i;
+
+    for ( i = 0; i < 8; i++ ) {
+        c = (x>>(28 - 4 * i)) & 0xf;
+        if ( c < 10 ) {
+            c += '0';
+        } else {
+            c += 'a' - 10;
+        }
+        buf[i] = c;
+    }
+    buf[i] = 0;
+}
+
+void
+i40e_test(struct netdev *netdev, struct tcp_session *sess)
+{
+    struct i40e_device *dev;
+
+    dev = (struct i40e_device *)netdev->vendor;
+
+
+    kmemset(dev->atq.bufset + (3 * 4096), 0, 4096);
+    kmemset(dev->atq.bufset + (3 * 4096), 1, 1);
+
+#if 0
+    /* Get switch config */
+    dev->atq.base[3].flags = (1<<9) | (1<<12);
+    dev->atq.base[3].opcode = 0x0200;
+    dev->atq.base[3].len = 4096;
+    dev->atq.base[3].ret = 0;
+    dev->atq.base[3].cookieh = 0xabcd;
+    dev->atq.base[3].cookiel = 0xefab;
+    dev->atq.base[3].param0 = 0;
+    dev->atq.base[3].param1 = 0;
+#else
+    /* Get VSI parameters */
+    dev->atq.base[3].flags = /*(1<<9) |*/ (1<<12);
+    dev->atq.base[3].opcode = 0x0212;
+    dev->atq.base[3].len = 0x80;
+    dev->atq.base[3].ret = 0;
+    dev->atq.base[3].cookieh = 0xabcd;
+    dev->atq.base[3].cookiel = 0xefab;
+    dev->atq.base[3].param0 = 0x0206;
+    dev->atq.base[3].param1 = 0;
+#endif
+    dev->atq.base[3].addrh = (u64)(dev->atq.bufset + (3 * 4096)) >> 32;
+    dev->atq.base[3].addrl = (u64)(dev->atq.bufset + (3 * 4096));
+    mmio_write32(dev->mmio, I40E_PF_ATQT, 4);
+    while ( !(dev->atq.base[3].flags & 0x1) ) {
+        arch_busy_usleep(10);
+    }
+
+    if ( sess ) {
+        sess->send(sess, "***\n", 4);
+        u8 tmp[16];
+        _tohex(dev->atq.base[3].ret, tmp);
+        tmp[8] = '\n';
+        sess->send(sess, tmp, 9);
+        sess->send(sess, "***\n", 4);
+        _tohex(dev->atq.base[3].param0, tmp);
+        tmp[8] = '\n';
+        sess->send(sess, tmp, 9);
+        sess->send(sess, "***\n", 4);
+        _tohex(dev->atq.base[3].param1, tmp);
+        tmp[8] = '\n';
+        sess->send(sess, tmp, 9);
+        sess->send(sess, "***\n", 4);
+        _tohex(mmio_read32(dev->mmio, I40E_PF_ARQH), tmp);
+        tmp[8] = '\n';
+        sess->send(sess, tmp, 9);
+        sess->send(sess, "***\n", 4);
+
+        u32 *x = (u32 *)(dev->atq.bufset + (3 * 4096));
+        u32 y;
+        u8 buf[4096];
+        int i;
+        for ( i = 0; i < 32; i++ ) {
+            y = *(u32 *)(x + i);
+            _tohex(y, buf + (i * 9));
+            if ( 3 == (i % 4) ) {
+                buf[(i + 1) * 9 - 1] = '\n';
+            } else {
+                buf[(i + 1) * 9 - 1] = ' ';
+            }
+        }
+        sess->send(sess, buf, 32 * 9);
+    }
+
 }
 
 /*
