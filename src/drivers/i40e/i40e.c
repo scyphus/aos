@@ -76,6 +76,7 @@
 #define I40E_PF_ARQH            0x00080380
 #define I40E_PF_ARQT            0x00080480
 
+#define I40E_TXQ_NUM            16
 
 //PFHMC_SDCMD
 //PFHMC_SDDATALOW
@@ -169,7 +170,7 @@ struct i40e_device {
         u32 headwb;
 
         u64 cnt;
-    } txq[4];
+    } txq[I40E_TXQ_NUM];
 
     u64 tx_base;
     u32 tx_tail;
@@ -395,14 +396,14 @@ i40e_init_hw(struct pci_device *pcidev)
 int
 i40e_init_fpm(struct i40e_device *dev)
 {
-    u16 func;
+    //u16 func;
     u32 qalloc;
     int i;
     int j;
     u32 m32;
 
     /* Get function number to determine the HMC function index */
-    func = dev->pci_device->func;
+    //func = dev->pci_device->func;
 
     /* Global/CORE reset */
     //mmio_write32(dev->mmio, I40E_GLGEN_RTRIG, 2);
@@ -622,7 +623,7 @@ i40e_init_fpm(struct i40e_device *dev)
 
     /* Tx descriptors */
     struct i40e_tx_desc_data *txdesc;
-    for ( i = 0; i < 16; i++ ) {
+    for ( i = 0; i < I40E_TXQ_NUM; i++ ) {
         dev->txq[i].tail = 0;
         dev->txq[i].head_cache = 0;
         dev->txq[i].headwb = 0;
@@ -678,7 +679,7 @@ i40e_init_fpm(struct i40e_device *dev)
     u64 rxbase;
     u32 cnt = 1536;
     u32 txobjsz = mmio_read32(dev->mmio, I40E_GLHMC_LANTXOBJSZ);
-    u32 rxobjsz = mmio_read32(dev->mmio, I40E_GLHMC_LANRXOBJSZ);
+    //u32 rxobjsz = mmio_read32(dev->mmio, I40E_GLHMC_LANRXOBJSZ);
 
     hmc = kmalloc(4 * 1024 * 1024);
     kmemset(hmc, 0, 4 * 1024 * 1024);
@@ -696,7 +697,7 @@ i40e_init_fpm(struct i40e_device *dev)
 #endif
 
     struct i40e_lan_txq_ctx *txq_ctx;
-    for ( i = 0; i < 16; i++ ){
+    for ( i = 0; i < I40E_TXQ_NUM; i++ ){
         txq_ctx = (struct i40e_lan_txq_ctx *)(hmcint + txbase * 512 + i * 128);
         txq_ctx->head = 0;
         txq_ctx->rsv1 = 0;
@@ -752,7 +753,7 @@ i40e_init_fpm(struct i40e_device *dev)
             *(u32 *)(hmc + 8), *(u32 *)(hmc + 12));
 #endif
 
-    for ( i = 0; i < 16; i++ ) {
+    for ( i = 0; i < I40E_TXQ_NUM; i++ ) {
         /* Clear QDIS flag */
         mmio_write32(dev->mmio, I40E_GLLAN_TXPRE_QDIS(0), (1<<31) | i);
 
@@ -936,6 +937,10 @@ i40e_tx_test3(struct netdev *netdev, u8 *pkt, int len, int blksize,
         }
     }
 
+    if ( blksize <= 0 ) {
+        return -1;
+    }
+
     for ( ;; ) {
 
         for ( i = frm; i < to; i++ ) {
@@ -1019,7 +1024,8 @@ i40e_forwarding_test(struct netdev *netdev1, struct netdev *netdev2)
             *(u32 *)(txpkt + 0) =  0x67664000LLU;
             *(u16 *)(txpkt + 4) =  0x2472LLU;
             /* src */
-            *(u16 *)(txpkt + 6) =  *((u16 *)netdev2->macaddr);
+            *(u8 *)(txpkt + 6) =  *((u8 *)netdev2->macaddr);
+            *(u8 *)(txpkt + 7) =  *((u8 *)netdev2->macaddr + 1);
             *(u32 *)(txpkt + 8) =  *((u32 *)(netdev2->macaddr + 2));
 
 #if 0
@@ -1109,29 +1115,30 @@ i40e_test(struct netdev *netdev, struct tcp_session *sess)
     /* 0x00340000 GLSW_UPTCL */
 
     if ( sess ) {
-        sess->send(sess, "***\n", 4);
+        sess->send(sess, (u8 *)"***\n", 4);
         u8 tmp[16];
         _tohex(cnt >> 32, tmp);
         tmp[8] = ' ';
         sess->send(sess, tmp, 9);
-        sess->send(sess, " ", 4);
+        sess->send(sess, (u8 *)" ", 4);
         _tohex(cnt, tmp);
         tmp[8] = '\n';
         sess->send(sess, tmp, 9);
-        sess->send(sess, "***\n", 4);
+        sess->send(sess, (u8 *)"***\n", 4);
 
         _tohex(dev->txq[0].cnt >> 32, tmp);
         tmp[8] = ' ';
         sess->send(sess, tmp, 9);
-        sess->send(sess, " ", 4);
+        sess->send(sess, (u8 *)" ", 4);
         _tohex(dev->txq[0].cnt, tmp);
         tmp[8] = '\n';
         sess->send(sess, tmp, 9);
-        sess->send(sess, "***\n", 4);
+        sess->send(sess, (u8 *)"***\n", 4);
     }
 
 
 #if 1
+    idx = dev->atq.tail;
     kmemset(dev->atq.bufset + (idx * 4096), 0, 4096);
 
 #if 1
@@ -1166,24 +1173,24 @@ i40e_test(struct netdev *netdev, struct tcp_session *sess)
     }
 
     if ( sess ) {
-        sess->send(sess, "***\n", 4);
+        sess->send(sess, (u8 *)"***\n", 4);
         u8 tmp[16];
         _tohex(dev->atq.base[idx].ret, tmp);
         tmp[8] = '\n';
         sess->send(sess, tmp, 9);
-        sess->send(sess, "***\n", 4);
+        sess->send(sess, (u8 *)"***\n", 4);
         _tohex(dev->atq.base[idx].param0, tmp);
         tmp[8] = '\n';
         sess->send(sess, tmp, 9);
-        sess->send(sess, "***\n", 4);
+        sess->send(sess, (u8 *)"***\n", 4);
         _tohex(dev->atq.base[idx].param1, tmp);
         tmp[8] = '\n';
         sess->send(sess, tmp, 9);
-        sess->send(sess, "***\n", 4);
+        sess->send(sess, (u8 *)"***\n", 4);
         _tohex(mmio_read32(dev->mmio, I40E_PF_ARQH), tmp);
         tmp[8] = '\n';
         sess->send(sess, tmp, 9);
-        sess->send(sess, "***\n", 4);
+        sess->send(sess, (u8 *)"***\n", 4);
 
         u32 *x = (u32 *)(dev->atq.bufset + (idx * 4096));
         u32 y;
