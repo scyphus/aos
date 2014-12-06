@@ -52,7 +52,7 @@ lapic_send_init_ipi(void)
     icrh = asm_lapic_read(APIC_BASE + APIC_ICR_HIGH);
 
     icrl = (icrl & ~0x000cdfff) | ICR_INIT | ICR_DEST_ALL_EX_SELF;
-    icrh = (icrh & 0x000fffff) | (0xff<<24);
+    icrh = (icrh & 0x000fffff) /*| (0xff<<24)*/;
 
     asm_lapic_write(APIC_BASE + APIC_ICR_HIGH, icrh);
     asm_lapic_write(APIC_BASE + APIC_ICR_LOW, icrl);
@@ -67,13 +67,13 @@ lapic_send_startup_ipi(u8 vector)
     u32 icrl;
     u32 icrh;
 
-    do {
-        icrl = asm_lapic_read(APIC_BASE + APIC_ICR_LOW);
-        icrh = asm_lapic_read(APIC_BASE + APIC_ICR_HIGH);
-    } while ( icrl & (1<<12) );
+    //do {
+    icrl = asm_lapic_read(APIC_BASE + APIC_ICR_LOW);
+    icrh = asm_lapic_read(APIC_BASE + APIC_ICR_HIGH);
+    //} while ( icrl & (1<<12) );
 
     icrl = (icrl & ~0x000cdfff) | ICR_STARTUP | ICR_DEST_ALL_EX_SELF | vector;
-    icrh = (icrh & 0x000fffff) | (0xff<<24);
+    icrh = (icrh & 0x000fffff) /*| (0xff<<24)*/;
 
     asm_lapic_write(APIC_BASE + APIC_ICR_HIGH, icrh);
     asm_lapic_write(APIC_BASE + APIC_ICR_LOW, icrl);
@@ -92,7 +92,7 @@ lapic_send_fixed_ipi(u8 vector)
     icrh = asm_lapic_read(APIC_BASE + APIC_ICR_HIGH);
 
     icrl = (icrl & ~0x000cdfff) | ICR_FIXED | ICR_DEST_ALL_EX_SELF | vector;
-    icrh = (icrh & 0x000fffff) | (0xff<<24);
+    icrh = (icrh & 0x000fffff) /*| (0xff<<24)*/;
 
     asm_lapic_write(APIC_BASE + APIC_ICR_HIGH, icrh);
     asm_lapic_write(APIC_BASE + APIC_ICR_LOW, icrl);
