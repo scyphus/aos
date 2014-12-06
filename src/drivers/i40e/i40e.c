@@ -167,6 +167,8 @@ struct i40e_device {
         u32 head_cache;
 
         u32 headwb;
+
+        u64 cnt;
     } txq[4];
 
     u64 tx_base;
@@ -521,6 +523,59 @@ i40e_init_fpm(struct i40e_device *dev)
 #endif
 
 #if 0
+    /* Add VSI */
+    idx = dev->atq.tail;
+    kmemset(dev->atq.bufset + (idx * 4096), 0, 4096);
+    dev->atq.bufset[(idx * 4096) + 0] = (1<<1) | (1<<2) | (1<<3) | (1<<6) | (1<<7);
+    dev->atq.bufset[(idx * 4096) + 1] = 0;
+    dev->atq.bufset[(idx * 4096) + 6] = 1;
+    dev->atq.bufset[(idx * 4096) + 12] = 3;
+    dev->atq.bufset[(idx * 4096) + 62] = 0;
+    dev->atq.bufset[(idx * 4096) + 63] = (1<<1);
+    dev->atq.bufset[(idx * 4096) + 64] = 2;
+    dev->atq.bufset[(idx * 4096) + 65] = (1<<1);
+    dev->atq.bufset[(idx * 4096) + 66] = 4;
+    dev->atq.bufset[(idx * 4096) + 67] = (1<<1);
+    dev->atq.bufset[(idx * 4096) + 68] = 6;
+    dev->atq.bufset[(idx * 4096) + 69] = (1<<1);
+    dev->atq.bufset[(idx * 4096) + 70] = 8;
+    dev->atq.bufset[(idx * 4096) + 71] = (1<<1);
+    dev->atq.bufset[(idx * 4096) + 72] = 10;
+    dev->atq.bufset[(idx * 4096) + 73] = (1<<1);
+    dev->atq.bufset[(idx * 4096) + 74] = 12;
+    dev->atq.bufset[(idx * 4096) + 75] = (1<<1);
+    dev->atq.bufset[(idx * 4096) + 76] = 14;
+    dev->atq.bufset[(idx * 4096) + 77] = (1<<1);
+    dev->atq.bufset[(idx * 4096) + 82] = 3;
+    int k;
+    dev->atq.bufset[(idx * 4096) + 96] = 0;
+    dev->atq.bufset[(idx * 4096) + 98] = 2;
+    for ( k = 4; k < 16; k++ ) {
+        dev->atq.bufset[(idx * 4096) + 96 + k] = 0xff;
+    }
+    dev->atq.base[idx].flags = (1<<12);
+    dev->atq.base[idx].opcode = 0x0210;
+    dev->atq.base[idx].len = 0x80;
+    dev->atq.base[idx].ret = 0;
+    dev->atq.base[idx].cookieh = 0x1234;
+    dev->atq.base[idx].cookiel = 0x4321;
+    dev->atq.base[idx].param0 = 0x00010002;
+    dev->atq.base[idx].param1 = 0x00020000;
+    //dev->atq.base[idx].param0 = 0x0206;
+    //dev->atq.base[idx].param1 = 0;
+    dev->atq.base[idx].addrh = (u64)(dev->atq.bufset + (idx * 4096)) >> 32;
+    dev->atq.base[idx].addrl = (u64)(dev->atq.bufset + (idx * 4096));
+    dev->atq.tail++;
+    mmio_write32(dev->mmio, I40E_PF_ATQT, dev->atq.tail);
+    while ( !(dev->atq.base[idx].flags & 0x1) ) {
+        arch_busy_usleep(10);
+    }
+    kprintf("RET=%d\r\n", dev->atq.base[idx].ret);
+#endif
+
+
+
+#if 0
     kprintf("VSI: %x %x %x %x\r\n",
             mmio_read32(dev->mmio, 0x0020C800),
             mmio_read32(dev->mmio, 0x0020C804),
@@ -567,10 +622,11 @@ i40e_init_fpm(struct i40e_device *dev)
 
     /* Tx descriptors */
     struct i40e_tx_desc_data *txdesc;
-    for ( i = 0; i < 4; i++ ) {
+    for ( i = 0; i < 16; i++ ) {
         dev->txq[i].tail = 0;
         dev->txq[i].head_cache = 0;
         dev->txq[i].headwb = 0;
+        dev->txq[i].cnt = 0;
         /* up to 8 K minus 32 */
         dev->txq[i].bufsz = (1<<10);
         dev->txq[i].bufmask = (1<<10) - 1;
@@ -640,7 +696,7 @@ i40e_init_fpm(struct i40e_device *dev)
 #endif
 
     struct i40e_lan_txq_ctx *txq_ctx;
-    for ( i = 0; i < 4; i++ ){
+    for ( i = 0; i < 16; i++ ){
         txq_ctx = (struct i40e_lan_txq_ctx *)(hmcint + txbase * 512 + i * 128);
         txq_ctx->head = 0;
         txq_ctx->rsv1 = 0;
@@ -653,7 +709,7 @@ i40e_init_fpm(struct i40e_device *dev)
         txq_ctx->tphrdesc = 1;
         txq_ctx->tphrpacket = 1;
         txq_ctx->tphwdesc = 1;
-        txq_ctx->rdylist = 0;
+        txq_ctx->rdylist = 0x0;
     }
 
     struct i40e_lan_rxq_ctx *rxq_ctx;
@@ -696,7 +752,7 @@ i40e_init_fpm(struct i40e_device *dev)
             *(u32 *)(hmc + 8), *(u32 *)(hmc + 12));
 #endif
 
-    for ( i = 0; i < 4; i++ ) {
+    for ( i = 0; i < 16; i++ ) {
         /* Clear QDIS flag */
         mmio_write32(dev->mmio, I40E_GLLAN_TXPRE_QDIS(0), (1<<31) | i);
 
@@ -902,11 +958,23 @@ i40e_tx_test3(struct netdev *netdev, u8 *pkt, int len, int blksize,
                     (dev->txq[i].base
                      + ((dev->txq[i].tail + j) & dev->txq[i].bufmask)
                      * sizeof(struct i40e_tx_desc_data));
+#if 0
+                if ( 0 == (j % 2) ) {
+                    txdesc->pkt_addr = 0;
+                    txdesc->l2tag = 0;
+                    txdesc->txbufsz_offset = 0;
+                    txdesc->rsv_cmd_dtyp = 0x01;
+                } else {
+#endif
                 txdesc->l2tag = 0;
                 txdesc->txbufsz_offset = (len << 18) | 14/2/* | ((20/4)<<7)*/;
                 txdesc->rsv_cmd_dtyp = 0 | (((1) /*| (1<<1)*/ /*| (1<<2)*/
                                              /*| (2<<5)*//*IPv4 w/o cso*/) << 4);
                 //txdesc->rsv_cmd_dtyp |= (1<<1)<<4;
+                dev->txq[i].cnt++;
+#if 0
+                }
+#endif
             }
             txdesc->rsv_cmd_dtyp |= (1<<1)<<4;
             dev->txq[i].tail = next_tail;
@@ -1037,9 +1105,36 @@ i40e_test(struct netdev *netdev, struct tcp_session *sess)
 
     dev = (struct i40e_device *)netdev->vendor;
 
+    u64 cnt = mmio_read64(dev->mmio, 0x0033C000 + 8 * 6); /*GLV_UPTCL*/
+    /* 0x00340000 GLSW_UPTCL */
+
+    if ( sess ) {
+        sess->send(sess, "***\n", 4);
+        u8 tmp[16];
+        _tohex(cnt >> 32, tmp);
+        tmp[8] = ' ';
+        sess->send(sess, tmp, 9);
+        sess->send(sess, " ", 4);
+        _tohex(cnt, tmp);
+        tmp[8] = '\n';
+        sess->send(sess, tmp, 9);
+        sess->send(sess, "***\n", 4);
+
+        _tohex(dev->txq[0].cnt >> 32, tmp);
+        tmp[8] = ' ';
+        sess->send(sess, tmp, 9);
+        sess->send(sess, " ", 4);
+        _tohex(dev->txq[0].cnt, tmp);
+        tmp[8] = '\n';
+        sess->send(sess, tmp, 9);
+        sess->send(sess, "***\n", 4);
+    }
+
+
+#if 1
     kmemset(dev->atq.bufset + (idx * 4096), 0, 4096);
 
-#if 0
+#if 1
     /* Get switch config */
     idx = dev->atq.tail;
     dev->atq.base[idx].flags = (1<<9) | (1<<12);
@@ -1105,7 +1200,7 @@ i40e_test(struct netdev *netdev, struct tcp_session *sess)
         }
         sess->send(sess, buf, 32 * 9);
     }
-
+#endif
 }
 
 /*
