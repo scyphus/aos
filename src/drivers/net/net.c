@@ -410,7 +410,7 @@ net_papp_tcp_xmit(struct net_papp_ctx *ctx, u8 *hdr, int off, u8 *pkt, int len)
  * PAPP
  */
 void *
-papp(struct net_papp_ctx *ctx, struct net_papp_status *stat)
+papp_alloc(struct net_papp_ctx *ctx, struct net_papp_status *stat)
 {
     int idx;
     u64 pkt;
@@ -588,7 +588,7 @@ tcp_send_ack(struct net *net, struct net_stack_chain_next *tx,
     ctx.data = &mdata;
     ctx.alloc = net_papp_host_port_ip;
     ctx.xmit = net_papp_host_port_ip_xmit;
-    p = papp(&ctx, &stat);
+    p = papp_alloc(&ctx, &stat);
     if ( NULL == p ) {
         return -1;
     }
@@ -678,7 +678,7 @@ tcp_send_data(struct net *net, struct net_stack_chain_next *tx,
     ctx.data = &mdata;
     ctx.alloc = net_papp_host_port_ip;
     ctx.xmit = net_papp_host_port_ip_xmit;
-    p = papp(&ctx, &stat);
+    p = papp_alloc(&ctx, &stat);
     if ( NULL == p ) {
         return -1;
     }
@@ -1032,7 +1032,7 @@ _ipv4_icmp_echo_request(struct net *net, struct net_stack_chain_next *tx,
     ctx.data = &mdata;
     ctx.alloc = net_papp_host_port_ip;
     ctx.xmit = net_papp_host_port_ip_xmit;
-    p = papp(&ctx, &stat);
+    p = papp_alloc(&ctx, &stat);
     if ( NULL == p ) {
         if ( NET_PAPP_ENOARPENT == stat.errno ) {
             /* No ARP entry found, then send an ARP request */
