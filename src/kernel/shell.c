@@ -23,6 +23,7 @@ extern struct ktltask_table *ktltasks;
 extern struct net gnet;
 
 static struct tcp_session *saved_sess;
+static int last_status;
 
 void lapic_send_ns_fixed_ipi(u8, u8);
 
@@ -167,8 +168,9 @@ _builtin_show(char *const argv[])
         list = netdev_head;
         while ( list ) {
             if ( saved_sess ) {
-                saved_sess->send(saved_sess, list->netdev->name, kstrlen(list->netdev->name));
-                saved_sess->send(saved_sess, "\n", 1);
+                saved_sess->send(saved_sess, (u8 *)list->netdev->name,
+                                 kstrlen(list->netdev->name));
+                saved_sess->send(saved_sess, (u8 *)"\n", 1);
             }
             kprintf(" %s\r\n", list->netdev->name);
             kprintf("   hwaddr: %.2x:%.2x:%.2x:%.2x:%.2x:%.2x\r\n",
@@ -1069,7 +1071,8 @@ _builtin_start(char *const argv[])
     /* Start command */
     if ( 0 == kstrcmp("mgmt", argv[1]) ) {
         /* Start management process */
-        ret = ktask_fork_execv(TASK_POLICY_KERNEL, &mgmt_main, &argv[2]);
+        ret = ktask_fork_execv(TASK_POLICY_KERNEL, &mgmt_main,
+                               (char **)&argv[2]);
         if ( ret < 0 ) {
             kprintf("Cannot launch mgmt\r\n");
             return -1;
@@ -1086,7 +1089,7 @@ _builtin_start(char *const argv[])
         if ( ret < 0 ) {
             if ( saved_sess ) {
                 char *s = "Cannot launch tx\n";
-                saved_sess->send(saved_sess, s, kstrlen(s));
+                saved_sess->send(saved_sess, (u8 *)s, kstrlen(s));
             }
             kprintf("Cannot launch tx\r\n");
             return -1;
@@ -1094,7 +1097,7 @@ _builtin_start(char *const argv[])
         kprintf("Launch tx @ CPU #%d\r\n", id);
         if ( saved_sess ) {
             char s[] = "Launched tx*\n";
-            saved_sess->send(saved_sess, s, kstrlen(s));
+            saved_sess->send(saved_sess, (u8 *)s, kstrlen(s));
         }
     } else if ( 0 == kstrcmp("routing", argv[1]) ) {
         /* Start routing */
@@ -1296,7 +1299,9 @@ _exec_cmdbuf(char *cmd)
         ret = _builtin_test2(argv);
     } else {
         kprintf("%s: Command not found.\r\n", argv[0]);
+        ret = -1;
     }
+    last_status = ret;
 
     /* Free */
     tmp = argv;
@@ -1375,7 +1380,7 @@ shell_main(int argc, char *argv[])
 
     for ( ;; ) {
         c = 0;
-        ret = read(fd, &c, 1);
+        ret = read(fd, (void *)&c, 1);
         if ( ret > 0 ) {
             if ( c == 0x08 ) {
                 /* Backspace */
@@ -1422,7 +1427,7 @@ shell_main(int argc, char *argv[])
 int
 shell_tcp_recv(struct tcp_session *sess, const u8 *pkt, u32 len)
 {
-    u8 *buf = alloca(len + 1);
+    char *buf = alloca(len + 1);
     int i;
     int j;
 
@@ -1439,7 +1444,7 @@ shell_tcp_recv(struct tcp_session *sess, const u8 *pkt, u32 len)
 
     saved_sess = sess;
     _exec_cmdbuf(buf);
-    sess->send(sess, "pix> ", 5);
+    sess->send(sess, (u8 *)"pix> ", 5);
 
     return 0;
 }
