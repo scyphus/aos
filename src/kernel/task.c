@@ -681,7 +681,7 @@ ktask_kernel_main(int argc, char *argv[])
         kprintf("Cannot fork-exec a shell.\r\n");
     }
 
-    kfork();
+    //kfork();
 
 #if 0
     /* Notify to all processors except for BSP */
