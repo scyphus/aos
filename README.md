@@ -67,6 +67,14 @@ Hirochika Asai
     ----------------------------------------------------------
     02000000 --------  free
 
+
+### Page table
+    Start    End       Description
+    ----------------------------------------------------------
+    00000000 3fffffff  Kernel
+    40000000 --------  User land
+
+
 ### Boot information structure
     /* The size of boot information must be aligned on 4 byte boundaries */
     /* 0x0000--0x000f */
@@ -166,7 +174,7 @@ Hirochika Asai
 - PCI database: http://www.pcidatabase.com
 
 ## Supported devices
-### Ethernet
+### Ethernet cards
     8086:100e Intel Pro 1000/MT
     8086:100f Intel 82545EM
     8086:107c Intel 82541PI
@@ -176,6 +184,8 @@ Hirochika Asai
     8086:1502 Intel 82579LM
     8086:1559 Intel I218-V
     8086:10fb Intel X520
+    8086:1583 Intel XL710-QDA2
+    8086:1584 Intel XL710-QDA1
 
 ### AHCI
     8086:2829 Intel 82801HBM
