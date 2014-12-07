@@ -23,6 +23,7 @@ extern struct ktltask_table *ktltasks;
 extern struct net gnet;
 
 static struct tcp_session *saved_sess;
+static int last_status;
 
 void lapic_send_ns_fixed_ipi(u8, u8);
 
@@ -63,6 +64,14 @@ e0 {hw 08:00:27:7a:98:ea; ip 192.168.56.11/24;}  \
 e1 {hw 08:00:27:5a:f6:dc; ip 192.168.56.12/24;}  \
 ";
 
+
+void i40e_test(struct netdev *, struct tcp_session *);
+int
+_builtin_debug(char *const argv[])
+{
+    i40e_test(netdev_head->next->netdev, saved_sess);
+    return 0;
+}
 
 
 
@@ -159,8 +168,9 @@ _builtin_show(char *const argv[])
         list = netdev_head;
         while ( list ) {
             if ( saved_sess ) {
-                saved_sess->send(saved_sess, list->netdev->name, kstrlen(list->netdev->name));
-                saved_sess->send(saved_sess, "\n", 1);
+                saved_sess->send(saved_sess, (u8 *)list->netdev->name,
+                                 kstrlen(list->netdev->name));
+                saved_sess->send(saved_sess, (u8 *)"\n", 1);
             }
             kprintf(" %s\r\n", list->netdev->name);
             kprintf("   hwaddr: %.2x:%.2x:%.2x:%.2x:%.2x:%.2x\r\n",
@@ -990,7 +1000,7 @@ _tx_main(int argc, char *argv[])
 #else
     pkt[30] = 192;
     pkt[31] = 168;
-    pkt[32] = 200;
+    pkt[32] = 100;
     pkt[33] = 1;
 #endif
 
@@ -1037,180 +1047,6 @@ _tx_main(int argc, char *argv[])
 
     return 0;
 }
-int
-_tx2_main(int argc, char *argv[])
-{
-    struct netdev_list *list;
-    u8 *pkt;
-    //int pktsz = 64 - 18;
-    int i;
-    int sz;
-    int blk;
-    char *s;
-
-#if 1
-    s = argv[1];
-    sz = 0;
-    while ( *s ) {
-        sz *= 10;
-        sz += *s - '0';
-        s++;
-    }
-    s = argv[2];
-    blk = 0;
-    while ( *s ) {
-        blk *= 10;
-        blk += *s - '0';
-        s++;
-    }
-#else
-    sz = 64;
-    blk = 64;
-#endif
-    kprintf("Testing: %d/%d\r\n", sz, blk);
-
-    int pktsz = sz - 18;
-
-    pkt = kmalloc(9200);
-
-    list = netdev_head->next;
-    /* dst (multicast) */
-#if 0
-    pkt[0] = 0x01;
-    pkt[1] = 0x00;
-    pkt[2] = 0x5e;
-    pkt[3] = 0x00;
-    pkt[4] = 0x00;
-    pkt[5] = 0x01;
-#else
-#if 0
-    pkt[0] = 0x90;
-    pkt[1] = 0xe2;
-    pkt[2] = 0xba;
-    pkt[3] = 0x6a;
-    pkt[4] = 0x0c;
-    pkt[5] = 0x40;
-    //90:e2:ba:6a:0c:40
-    //90:e2:ba:6a:0c:41
-#elif 0
-    pkt[0] = 0x90;
-    pkt[1] = 0xe2;
-    pkt[2] = 0xba;
-    pkt[3] = 0x68;
-    pkt[4] = 0xb4;
-    pkt[5] = 0xb4;
-#elif 0
-    pkt[0] = 0x90;
-    pkt[1] = 0xe2;
-    pkt[2] = 0xba;
-    pkt[3] = 0x6a;
-    pkt[4] = 0x00;
-    pkt[5] = 0xdc;
-#elif 1
-    pkt[0] = 0x00;
-    pkt[1] = 0x40;
-    pkt[2] = 0x66;
-    pkt[3] = 0x67;
-    pkt[4] = 0x72;
-    pkt[5] = 0x24;
-#else
-    pkt[0] = 0x68;
-    pkt[1] = 0x05;
-    pkt[2] = 0xca;
-    pkt[3] = 0x2d;
-    pkt[4] = 0x46;
-    pkt[5] = 0xe8;
-#endif
-#endif
-
-    /* src */
-    pkt[6] = list->netdev->macaddr[0];
-    pkt[7] = list->netdev->macaddr[1];
-    pkt[8] = list->netdev->macaddr[2];
-    pkt[9] = list->netdev->macaddr[3];
-    pkt[10] = list->netdev->macaddr[4];
-    pkt[11] = list->netdev->macaddr[5];
-
-    /* type = IP (0800) */
-    pkt[12] = 0x08;
-    pkt[13] = 0x00;
-    /* IP header */
-    pkt[14] = 0x45;
-    pkt[15] = 0x00;
-    pkt[16] = (pktsz >> 8) & 0xff;
-    pkt[17] = pktsz & 0xff;
-    /* ID / fragment */
-    pkt[18] = 0x26;
-    pkt[19] = 0x6d;
-    pkt[20] = 0x00;
-    pkt[21] = 0x00;
-    /* TTL/protocol */
-    pkt[22] = 0x64;
-    pkt[23] = 17;
-    /* checksum */
-    pkt[24] = 0x00;
-    pkt[25] = 0x00;
-    /* src: 192.168.100.2 */
-    pkt[26] = 192;
-    pkt[27] = 168;
-    pkt[28] = 100;
-    pkt[29] = 2;
-    /* dst */
-#if 0
-    pkt[30] = 224;
-    pkt[31] = 0;
-    pkt[32] = 0;
-    pkt[33] = 1;
-#else
-    pkt[30] = 10;
-    pkt[31] = 0;
-    pkt[32] = 0;
-    pkt[33] = 100;
-#endif
-
-    /* UDP */
-    pkt[34] = 0xff;
-    pkt[35] = 0xff;
-    pkt[36] = 0xff;
-    pkt[37] = 0xfe;
-    pkt[38] = (pktsz - 20) >> 8;
-    pkt[39] = (pktsz - 20) & 0xff;
-    pkt[40] = 0x00;
-    pkt[41] = 0x00;
-    kmemset(pkt + 42, 0, pktsz + 14 - 42);
-    //for ( i = 42; i < pktsz + 14; i++ ) {
-    //    pkt[i] = 0;
-    //}
-
-    /* Compute checksum */
-    u16 *tmp;
-    u32 cs;
-    pkt[24] = 0x0;
-    pkt[25] = 0x0;
-    tmp = (u16 *)pkt;
-    cs = 0;
-    for ( i = 7; i < 17; i++ ) {
-        cs += (u32)tmp[i];
-        cs = (cs & 0xffff) + (cs >> 16);
-    }
-    cs = 0xffff - cs;
-    pkt[24] = cs & 0xff;
-    pkt[25] = cs >> 8;
-
-    //ixgbe_tx_test(list->netdev, pkt, pktsz + 18 - 4, blk);
-    //ixgbe_tx_test2(list->netdev, pkt, pktsz + 18 - 4, blk);
-#if 0
-    ixgbe_tx_test4(list->netdev, list->next->netdev, list->next->next->netdev,
-                   list->next->next->next->netdev,
-                   pkt, pktsz + 18 - 4, blk);
-#else
-    i40e_tx_test3(list->netdev, pkt, pktsz + 18 - 4, blk, 2, 3);
-#endif
-    //kprintf("%llx: pkt\r\n", list->netdev);
-    //list->netdev->sendpkt(pkt, pktsz + 18 - 4, list->netdev);
-
-    return 0;
-}
 int net_rx(struct net *, struct net_port *, u8 *, int, int);
 int net_sc_rx_ether(struct net *, u8 *, int, void *);
 int net_sc_rx_port_host(struct net *, u8 *, int, void *);
@@ -1235,7 +1071,8 @@ _builtin_start(char *const argv[])
     /* Start command */
     if ( 0 == kstrcmp("mgmt", argv[1]) ) {
         /* Start management process */
-        ret = ktask_fork_execv(TASK_POLICY_KERNEL, &mgmt_main, &argv[2]);
+        ret = ktask_fork_execv(TASK_POLICY_KERNEL, &mgmt_main,
+                               (char **)&argv[2]);
         if ( ret < 0 ) {
             kprintf("Cannot launch mgmt\r\n");
             return -1;
@@ -1252,7 +1089,7 @@ _builtin_start(char *const argv[])
         if ( ret < 0 ) {
             if ( saved_sess ) {
                 char *s = "Cannot launch tx\n";
-                saved_sess->send(saved_sess, s, kstrlen(s));
+                saved_sess->send(saved_sess, (u8 *)s, kstrlen(s));
             }
             kprintf("Cannot launch tx\r\n");
             return -1;
@@ -1260,21 +1097,8 @@ _builtin_start(char *const argv[])
         kprintf("Launch tx @ CPU #%d\r\n", id);
         if ( saved_sess ) {
             char s[] = "Launched tx*\n";
-            saved_sess->send(saved_sess, s, kstrlen(s));
+            saved_sess->send(saved_sess, (u8 *)s, kstrlen(s));
         }
-    } else if ( 0 == kstrcmp("tx2", argv[1]) ) {
-        /* Start Tx */
-        char **nargv = kmalloc(sizeof(char *) * 4);
-        nargv[0] = "tx";
-        nargv[1] = argv[3] ? kstrdup(argv[3]) : NULL;
-        nargv[2] = argv[4] ? kstrdup(argv[4]) : NULL;
-        nargv[3] = NULL;
-        ret = ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_tx2_main, nargv);
-        if ( ret < 0 ) {
-            kprintf("Cannot launch tx2\r\n");
-            return -1;
-        }
-        kprintf("Launch tx2 @ CPU #%d\r\n", id);
     } else if ( 0 == kstrcmp("routing", argv[1]) ) {
         /* Start routing */
         ret = ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_routing_main, NULL);
@@ -1467,13 +1291,17 @@ _exec_cmdbuf(char *cmd)
         ret =_builtin_start(argv);
     } else if ( 0 == kstrcmp("stop", argv[0]) ) {
         ret = _builtin_stop(argv);
+    } else if ( 0 == kstrcmp("debug", argv[0]) ) {
+        ret = _builtin_debug(argv);
     } else if ( 0 == kstrcmp("test", argv[0]) ) {
         ret = _builtin_test(argv);
     } else if ( 0 == kstrcmp("test2", argv[0]) ) {
         ret = _builtin_test2(argv);
     } else {
         kprintf("%s: Command not found.\r\n", argv[0]);
+        ret = -1;
     }
+    last_status = ret;
 
     /* Free */
     tmp = argv;
@@ -1552,7 +1380,7 @@ shell_main(int argc, char *argv[])
 
     for ( ;; ) {
         c = 0;
-        ret = read(fd, &c, 1);
+        ret = read(fd, (void *)&c, 1);
         if ( ret > 0 ) {
             if ( c == 0x08 ) {
                 /* Backspace */
@@ -1599,7 +1427,7 @@ shell_main(int argc, char *argv[])
 int
 shell_tcp_recv(struct tcp_session *sess, const u8 *pkt, u32 len)
 {
-    u8 *buf = alloca(len + 1);
+    char *buf = alloca(len + 1);
     int i;
     int j;
 
@@ -1616,7 +1444,7 @@ shell_tcp_recv(struct tcp_session *sess, const u8 *pkt, u32 len)
 
     saved_sess = sess;
     _exec_cmdbuf(buf);
-    sess->send(sess, "pix> ", 5);
+    sess->send(sess, (u8 *)"pix> ", 5);
 
     return 0;
 }

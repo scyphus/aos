@@ -639,7 +639,7 @@ kstrncmp(const char *a, const char *b, int n)
 /*
  * Count the length of string
  */
-int
+size_t
 kstrlen(const char *s)
 {
     int len;
@@ -694,7 +694,7 @@ kmemcmp(const u8 *a, const u8 *b, int n)
  * Copy string to string
  */
 void *
-kmemcpy(void *a, const void *b, u64 sz)
+kmemcpy(void *a, const void *b, size_t sz)
 {
     return arch_memcpy(a, b, sz);
 }
@@ -703,17 +703,16 @@ kmemcpy(void *a, const void *b, u64 sz)
  * Fill a byte string with a byte value
  */
 void *
-kmemset(void *b, int c, u64 len)
+kmemset(void *b, int c, size_t len)
 {
-    int i;
+    ssize_t i;
 
-    for ( i = 0; i < len; i++ ) {
+    for ( i = 0; i < (ssize_t)len; i++ ) {
         *((u8 *)b + i) = c;
     }
 
     return b;
 }
-
 
 
 

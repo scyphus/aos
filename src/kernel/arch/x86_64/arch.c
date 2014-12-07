@@ -108,6 +108,14 @@ arch_bsp_init(void)
                 sizeof(struct p_data));
     }
 
+#if 0
+    /* Check CPUID */
+    u32 x;
+    u32 y;
+    asm volatile ("movl $1,%%eax;cpuid" : "=c"(x), "=d"(y));
+    kprintf("ECX=%x, EDX=%x\r\n", x, y);
+#endif
+
     arch_dbg_printf("Initializing GDT and IDT.\r\n");
 
     /* Initialize global descriptor table */
@@ -638,6 +646,72 @@ arch_free_task(void *t)
     kfree(at->kstack);
     kfree(at->ustack);
 }
+
+#if 0
+void *
+arch_fork(struct ktask *kt, struct proc *proc)
+{
+    struct arch_task *t;
+    int cs;
+    int ss;
+    int flags;
+
+    /* CPL <= IOPL */
+    switch ( proc->ctx.policy ) {
+    case TASK_POLICY_KERNEL:
+        /* Ring 0 for kernel privilege */
+        cs = GDT_RING0_CODE_SEL;
+        ss = GDT_RING0_DATA_SEL;
+        flags = 0x0200;
+        break;
+    case TASK_POLICY_DRIVER:
+        cs = GDT_RING1_CODE_SEL + 1;
+        ss = GDT_RING1_DATA_SEL + 1;
+        flags = 0x1200;
+        break;
+    default:
+        cs = GDT_RING3_CODE_SEL + 3;
+        ss = GDT_RING3_DATA_SEL + 3;
+        flags = 0x3200;
+    }
+
+    t = kmalloc(sizeof(struct arch_task));
+    if ( NULL == t ) {
+        return NULL;
+    }
+    t->kstack = kmalloc(TASK_KSTACK_SIZE);
+    if ( NULL == t->kstack ) {
+        kfree(t);
+        return NULL;
+    }
+    kmemcpy(t->kstack, ((struct arch_task *)(proc->task->arch))->kstack,
+            TASK_KSTACK_SIZE);
+    t->ustack = kmalloc(TASK_USTACK_SIZE);
+    if ( NULL == t->ustack ) {
+        kfree(t->kstack);
+        kfree(t);
+        return NULL;
+    }
+    kmemcpy(t->ustack, ((struct arch_task *)(proc->task->arch))->ustack,
+            TASK_USTACK_SIZE);
+    t->sp0 = (u64)t->kstack + TASK_KSTACK_SIZE - TASK_STACK_GUARD;
+
+    t->rp = (struct stackframe64 *)(t->sp0 - sizeof(struct stackframe64));
+    /* First argument */
+    t->rp->di = (u64)kt;
+    /* Other registers */
+    t->rp->gs = 0;
+    t->rp->fs = 0;
+    t->rp->ip = (u64)entry;
+    t->rp->cs = cs;
+    t->rp->flags = flags;  /* IOPL */
+    t->rp->sp = (u64)t->ustack + TASK_USTACK_SIZE - TASK_STACK_GUARD;
+    t->rp->ss = ss;
+    t->ktask = kt;
+
+    return t;
+}
+#endif
 
 /*
  * Is active processor

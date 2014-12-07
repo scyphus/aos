@@ -104,6 +104,7 @@ kmain(void)
     ixgbe_init();
     i40e_init();
 
+    /* Initialize kernel task */
     ktask_init();
 
     //sched();
@@ -122,14 +123,15 @@ apmain(void)
     arch_ap_init();
 
     /* Tickless scheduler */
-    sched_tickless_prepare();
     arch_enable_interrupts();
+    sched_tickless_prepare();
     task_restart();
 }
 
 void
 kexit(void)
 {
+    /* Inducing TCP FIN packets */
     net_release(&gnet);
 }
 
@@ -167,6 +169,12 @@ syscall_write(void)
     kprintf("XXXX\r\n");
 }
 
+void
+syscall_fork(void)
+{
+    kprintf("Fork\r\n");
+}
+
 
 /*
  * Initialize syscall table
@@ -184,6 +192,7 @@ syscall_init(void)
     syscall_table[1].func = &syscall_hlt;
     syscall_table[2].func = &syscall_read;
     syscall_table[3].func = &syscall_write;
+    syscall_table[4].func = &syscall_fork;
 
     /* Setup */
     syscall_setup();

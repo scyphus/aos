@@ -76,6 +76,7 @@
 #define I40E_PF_ARQH            0x00080380
 #define I40E_PF_ARQT            0x00080480
 
+#define I40E_TXQ_NUM            16
 
 //PFHMC_SDCMD
 //PFHMC_SDDATALOW
@@ -122,7 +123,7 @@ union i40e_rx_desc {
 } __attribute__ ((packed));
 
 struct i40e_aq_desc {
-    u16 flags;
+    volatile u16 flags;
     u16 opcode;
     u16 len;
     u16 ret;
@@ -167,7 +168,9 @@ struct i40e_device {
         u32 head_cache;
 
         u32 headwb;
-    } txq[4];
+
+        u64 cnt;
+    } txq[I40E_TXQ_NUM];
 
     u64 tx_base;
     u32 tx_tail;
@@ -393,14 +396,14 @@ i40e_init_hw(struct pci_device *pcidev)
 int
 i40e_init_fpm(struct i40e_device *dev)
 {
-    u16 func;
+    //u16 func;
     u32 qalloc;
     int i;
     int j;
     u32 m32;
 
     /* Get function number to determine the HMC function index */
-    func = dev->pci_device->func;
+    //func = dev->pci_device->func;
 
     /* Global/CORE reset */
     //mmio_write32(dev->mmio, I40E_GLGEN_RTRIG, 2);
@@ -416,8 +419,10 @@ i40e_init_fpm(struct i40e_device *dev)
     /* Initialize the admin queue */
     dev->atq.len = 128;
     dev->atq.base = kmalloc(sizeof(struct i40e_aq_desc) * dev->atq.len);
+    dev->atq.tail = 0;
     dev->atq.bufset = kmalloc(4096 * dev->atq.len);
     dev->arq.base = kmalloc(sizeof(struct i40e_aq_desc) * dev->arq.len);
+    dev->arq.tail = 0;
     dev->arq.len = 128;
     dev->arq.bufset = kmalloc(4096 * dev->atq.len);
     for ( i = 0; i < dev->arq.len; i++ ) {
@@ -446,18 +451,20 @@ i40e_init_fpm(struct i40e_device *dev)
     mmio_write32(dev->mmio, I40E_PF_ARQLEN, dev->arq.len | (1<<31));
 
     /* Issue get ver admin command */
-    dev->atq.base[0].flags = 0;
-    dev->atq.base[0].opcode = 0x0001;
-    dev->atq.base[0].len = 0;
-    dev->atq.base[0].ret = 0;
-    dev->atq.base[0].cookieh = 0x1234;
-    dev->atq.base[0].cookiel = 0xabcd;
-    dev->atq.base[0].param0 = 0;
-    dev->atq.base[0].param1 = 0;
-    dev->atq.base[0].addrh = 0;
-    dev->atq.base[0].addrl = 0x00010001;
-    mmio_write32(dev->mmio, I40E_PF_ATQT, 1);
-    while ( !(dev->atq.base[0].flags & 0x1) ) {
+    int idx = dev->atq.tail;
+    dev->atq.base[idx].flags = 0;
+    dev->atq.base[idx].opcode = 0x0001;
+    dev->atq.base[idx].len = 0;
+    dev->atq.base[idx].ret = 0;
+    dev->atq.base[idx].cookieh = 0x1234;
+    dev->atq.base[idx].cookiel = 0xabcd;
+    dev->atq.base[idx].param0 = 0;
+    dev->atq.base[idx].param1 = 0;
+    dev->atq.base[idx].addrh = 0;
+    dev->atq.base[idx].addrl = 0x00010001;
+    dev->atq.tail++;
+    mmio_write32(dev->mmio, I40E_PF_ATQT, dev->atq.tail);
+    while ( !(dev->atq.base[idx].flags & 0x1) ) {
         arch_busy_usleep(10);
     }
 #if 0
@@ -470,18 +477,20 @@ i40e_init_fpm(struct i40e_device *dev)
             mmio_read32(dev->mmio, I40E_PF_ARQT),
             mmio_read32(dev->mmio, I40E_PF_ARQH));
 #endif
-    dev->atq.base[1].flags = 0;
-    dev->atq.base[1].opcode = 0x0110;
-    dev->atq.base[1].len = 0;
-    dev->atq.base[1].ret = 0;
-    dev->atq.base[1].cookieh = 0x5678;
-    dev->atq.base[1].cookiel = 0xef01;
-    dev->atq.base[1].param0 = 2;
-    dev->atq.base[1].param1 = 0;
-    dev->atq.base[1].addrh = 0;
-    dev->atq.base[1].addrl = 0;
-    mmio_write32(dev->mmio, I40E_PF_ATQT, 2);
-    while ( !(dev->atq.base[1].flags & 0x1) ) {
+    idx = dev->atq.tail;
+    dev->atq.base[idx].flags = 0;
+    dev->atq.base[idx].opcode = 0x0110;
+    dev->atq.base[idx].len = 0;
+    dev->atq.base[idx].ret = 0;
+    dev->atq.base[idx].cookieh = 0x5678;
+    dev->atq.base[idx].cookiel = 0xef01;
+    dev->atq.base[idx].param0 = 2;
+    dev->atq.base[idx].param1 = 0;
+    dev->atq.base[idx].addrh = 0;
+    dev->atq.base[idx].addrl = 0;
+    dev->atq.tail++;
+    mmio_write32(dev->mmio, I40E_PF_ATQT, dev->atq.tail);
+    while ( !(dev->atq.base[idx].flags & 0x1) ) {
         arch_busy_usleep(10);
     }
 #if 0
@@ -494,21 +503,78 @@ i40e_init_fpm(struct i40e_device *dev)
             mmio_read32(dev->mmio, I40E_PF_ARQT),
             mmio_read32(dev->mmio, I40E_PF_ARQH));
 #endif
+#if 1
     /* Set MAC config */
-    dev->atq.base[2].flags = 0;
-    dev->atq.base[2].opcode = 0x0603;
-    dev->atq.base[2].len = 0;
-    dev->atq.base[2].ret = 0;
-    dev->atq.base[2].cookieh = 0x9abc;
-    dev->atq.base[2].cookiel = 0xdef0;
-    dev->atq.base[2].param0 = 1518 | (1<<18) | (7<<24);
-    dev->atq.base[2].param1 = 0;
-    dev->atq.base[2].addrh = 0;
-    dev->atq.base[2].addrl = 0;
-    mmio_write32(dev->mmio, I40E_PF_ATQT, 3);
-    while ( !(dev->atq.base[1].flags & 0x1) ) {
+    idx = dev->atq.tail;
+    dev->atq.base[idx].flags = 0;
+    dev->atq.base[idx].opcode = 0x0603;
+    dev->atq.base[idx].len = 0;
+    dev->atq.base[idx].ret = 0;
+    dev->atq.base[idx].cookieh = 0x9abc;
+    dev->atq.base[idx].cookiel = 0xdef0;
+    dev->atq.base[idx].param0 = 1518 | (1<<18) | (0<<24);
+    dev->atq.base[idx].param1 = 0;
+    dev->atq.base[idx].addrh = 0;
+    dev->atq.base[idx].addrl = 0;
+    dev->atq.tail++;
+    mmio_write32(dev->mmio, I40E_PF_ATQT, dev->atq.tail);
+    while ( !(dev->atq.base[idx].flags & 0x1) ) {
         arch_busy_usleep(10);
     }
+#endif
+
+#if 0
+    /* Add VSI */
+    idx = dev->atq.tail;
+    kmemset(dev->atq.bufset + (idx * 4096), 0, 4096);
+    dev->atq.bufset[(idx * 4096) + 0] = (1<<1) | (1<<2) | (1<<3) | (1<<6) | (1<<7);
+    dev->atq.bufset[(idx * 4096) + 1] = 0;
+    dev->atq.bufset[(idx * 4096) + 6] = 1;
+    dev->atq.bufset[(idx * 4096) + 12] = 3;
+    dev->atq.bufset[(idx * 4096) + 62] = 0;
+    dev->atq.bufset[(idx * 4096) + 63] = (1<<1);
+    dev->atq.bufset[(idx * 4096) + 64] = 2;
+    dev->atq.bufset[(idx * 4096) + 65] = (1<<1);
+    dev->atq.bufset[(idx * 4096) + 66] = 4;
+    dev->atq.bufset[(idx * 4096) + 67] = (1<<1);
+    dev->atq.bufset[(idx * 4096) + 68] = 6;
+    dev->atq.bufset[(idx * 4096) + 69] = (1<<1);
+    dev->atq.bufset[(idx * 4096) + 70] = 8;
+    dev->atq.bufset[(idx * 4096) + 71] = (1<<1);
+    dev->atq.bufset[(idx * 4096) + 72] = 10;
+    dev->atq.bufset[(idx * 4096) + 73] = (1<<1);
+    dev->atq.bufset[(idx * 4096) + 74] = 12;
+    dev->atq.bufset[(idx * 4096) + 75] = (1<<1);
+    dev->atq.bufset[(idx * 4096) + 76] = 14;
+    dev->atq.bufset[(idx * 4096) + 77] = (1<<1);
+    dev->atq.bufset[(idx * 4096) + 82] = 3;
+    int k;
+    dev->atq.bufset[(idx * 4096) + 96] = 0;
+    dev->atq.bufset[(idx * 4096) + 98] = 2;
+    for ( k = 4; k < 16; k++ ) {
+        dev->atq.bufset[(idx * 4096) + 96 + k] = 0xff;
+    }
+    dev->atq.base[idx].flags = (1<<12);
+    dev->atq.base[idx].opcode = 0x0210;
+    dev->atq.base[idx].len = 0x80;
+    dev->atq.base[idx].ret = 0;
+    dev->atq.base[idx].cookieh = 0x1234;
+    dev->atq.base[idx].cookiel = 0x4321;
+    dev->atq.base[idx].param0 = 0x00010002;
+    dev->atq.base[idx].param1 = 0x00020000;
+    //dev->atq.base[idx].param0 = 0x0206;
+    //dev->atq.base[idx].param1 = 0;
+    dev->atq.base[idx].addrh = (u64)(dev->atq.bufset + (idx * 4096)) >> 32;
+    dev->atq.base[idx].addrl = (u64)(dev->atq.bufset + (idx * 4096));
+    dev->atq.tail++;
+    mmio_write32(dev->mmio, I40E_PF_ATQT, dev->atq.tail);
+    while ( !(dev->atq.base[idx].flags & 0x1) ) {
+        arch_busy_usleep(10);
+    }
+    kprintf("RET=%d\r\n", dev->atq.base[idx].ret);
+#endif
+
+
 
 #if 0
     kprintf("VSI: %x %x %x %x\r\n",
@@ -557,13 +623,14 @@ i40e_init_fpm(struct i40e_device *dev)
 
     /* Tx descriptors */
     struct i40e_tx_desc_data *txdesc;
-    for ( i = 0; i < 4; i++ ) {
+    for ( i = 0; i < I40E_TXQ_NUM; i++ ) {
         dev->txq[i].tail = 0;
         dev->txq[i].head_cache = 0;
         dev->txq[i].headwb = 0;
+        dev->txq[i].cnt = 0;
         /* up to 8 K minus 32 */
-        dev->txq[i].bufsz = (1<<11);
-        dev->txq[i].bufmask = (1<<11) - 1;
+        dev->txq[i].bufsz = (1<<10);
+        dev->txq[i].bufmask = (1<<10) - 1;
         /* ToDo: 16 bytes for alignment */
         dev->txq[i].base = (u64)kmalloc(dev->txq[i].bufsz * sizeof(struct i40e_tx_desc_data));
         for ( j = 0; j < dev->txq[i].bufsz; j++ ) {
@@ -612,7 +679,7 @@ i40e_init_fpm(struct i40e_device *dev)
     u64 rxbase;
     u32 cnt = 1536;
     u32 txobjsz = mmio_read32(dev->mmio, I40E_GLHMC_LANTXOBJSZ);
-    u32 rxobjsz = mmio_read32(dev->mmio, I40E_GLHMC_LANRXOBJSZ);
+    //u32 rxobjsz = mmio_read32(dev->mmio, I40E_GLHMC_LANRXOBJSZ);
 
     hmc = kmalloc(4 * 1024 * 1024);
     kmemset(hmc, 0, 4 * 1024 * 1024);
@@ -630,7 +697,7 @@ i40e_init_fpm(struct i40e_device *dev)
 #endif
 
     struct i40e_lan_txq_ctx *txq_ctx;
-    for ( i = 0; i < 4; i++ ){
+    for ( i = 0; i < I40E_TXQ_NUM; i++ ){
         txq_ctx = (struct i40e_lan_txq_ctx *)(hmcint + txbase * 512 + i * 128);
         txq_ctx->head = 0;
         txq_ctx->rsv1 = 0;
@@ -643,7 +710,7 @@ i40e_init_fpm(struct i40e_device *dev)
         txq_ctx->tphrdesc = 1;
         txq_ctx->tphrpacket = 1;
         txq_ctx->tphwdesc = 1;
-        txq_ctx->rdylist = 0;
+        txq_ctx->rdylist = 0x0;
     }
 
     struct i40e_lan_rxq_ctx *rxq_ctx;
@@ -686,7 +753,7 @@ i40e_init_fpm(struct i40e_device *dev)
             *(u32 *)(hmc + 8), *(u32 *)(hmc + 12));
 #endif
 
-    for ( i = 0; i < 4; i++ ) {
+    for ( i = 0; i < I40E_TXQ_NUM; i++ ) {
         /* Clear QDIS flag */
         mmio_write32(dev->mmio, I40E_GLLAN_TXPRE_QDIS(0), (1<<31) | i);
 
@@ -870,6 +937,10 @@ i40e_tx_test3(struct netdev *netdev, u8 *pkt, int len, int blksize,
         }
     }
 
+    if ( blksize <= 0 ) {
+        return -1;
+    }
+
     for ( ;; ) {
 
         for ( i = frm; i < to; i++ ) {
@@ -892,10 +963,23 @@ i40e_tx_test3(struct netdev *netdev, u8 *pkt, int len, int blksize,
                     (dev->txq[i].base
                      + ((dev->txq[i].tail + j) & dev->txq[i].bufmask)
                      * sizeof(struct i40e_tx_desc_data));
+#if 0
+                if ( 0 == (j % 2) ) {
+                    txdesc->pkt_addr = 0;
+                    txdesc->l2tag = 0;
+                    txdesc->txbufsz_offset = 0;
+                    txdesc->rsv_cmd_dtyp = 0x01;
+                } else {
+#endif
                 txdesc->l2tag = 0;
                 txdesc->txbufsz_offset = (len << 18) | 14/2/* | ((20/4)<<7)*/;
-                txdesc->rsv_cmd_dtyp = 0 | (((1) /*| (1<<1)*/ | (1<<2)
+                txdesc->rsv_cmd_dtyp = 0 | (((1) /*| (1<<1)*/ /*| (1<<2)*/
                                              /*| (2<<5)*//*IPv4 w/o cso*/) << 4);
+                //txdesc->rsv_cmd_dtyp |= (1<<1)<<4;
+                dev->txq[i].cnt++;
+#if 0
+                }
+#endif
             }
             txdesc->rsv_cmd_dtyp |= (1<<1)<<4;
             dev->txq[i].tail = next_tail;
@@ -940,7 +1024,8 @@ i40e_forwarding_test(struct netdev *netdev1, struct netdev *netdev2)
             *(u32 *)(txpkt + 0) =  0x67664000LLU;
             *(u16 *)(txpkt + 4) =  0x2472LLU;
             /* src */
-            *(u16 *)(txpkt + 6) =  *((u16 *)netdev2->macaddr);
+            *(u8 *)(txpkt + 6) =  *((u8 *)netdev2->macaddr);
+            *(u8 *)(txpkt + 7) =  *((u8 *)netdev2->macaddr + 1);
             *(u32 *)(txpkt + 8) =  *((u32 *)(netdev2->macaddr + 2));
 
 #if 0
@@ -997,6 +1082,132 @@ i40e_forwarding_test(struct netdev *netdev1, struct netdev *netdev2)
     }
 
     return 0;
+}
+
+
+void
+_tohex(u32 x, u8 *buf)
+{
+    int c;
+    int i;
+
+    for ( i = 0; i < 8; i++ ) {
+        c = (x>>(28 - 4 * i)) & 0xf;
+        if ( c < 10 ) {
+            c += '0';
+        } else {
+            c += 'a' - 10;
+        }
+        buf[i] = c;
+    }
+    buf[i] = 0;
+}
+
+void
+i40e_test(struct netdev *netdev, struct tcp_session *sess)
+{
+    struct i40e_device *dev;
+    int idx;
+
+    dev = (struct i40e_device *)netdev->vendor;
+
+    u64 cnt = mmio_read64(dev->mmio, 0x0033C000 + 8 * 6); /*GLV_UPTCL*/
+    /* 0x00340000 GLSW_UPTCL */
+
+    if ( sess ) {
+        sess->send(sess, (u8 *)"***\n", 4);
+        u8 tmp[16];
+        _tohex(cnt >> 32, tmp);
+        tmp[8] = ' ';
+        sess->send(sess, tmp, 9);
+        sess->send(sess, (u8 *)" ", 4);
+        _tohex(cnt, tmp);
+        tmp[8] = '\n';
+        sess->send(sess, tmp, 9);
+        sess->send(sess, (u8 *)"***\n", 4);
+
+        _tohex(dev->txq[0].cnt >> 32, tmp);
+        tmp[8] = ' ';
+        sess->send(sess, tmp, 9);
+        sess->send(sess, (u8 *)" ", 4);
+        _tohex(dev->txq[0].cnt, tmp);
+        tmp[8] = '\n';
+        sess->send(sess, tmp, 9);
+        sess->send(sess, (u8 *)"***\n", 4);
+    }
+
+
+#if 1
+    idx = dev->atq.tail;
+    kmemset(dev->atq.bufset + (idx * 4096), 0, 4096);
+
+#if 1
+    /* Get switch config */
+    idx = dev->atq.tail;
+    dev->atq.base[idx].flags = (1<<9) | (1<<12);
+    dev->atq.base[idx].opcode = 0x0200;
+    dev->atq.base[idx].len = 4096;
+    dev->atq.base[idx].ret = 0;
+    dev->atq.base[idx].cookieh = 0xabcd;
+    dev->atq.base[idx].cookiel = 0xefab;
+    dev->atq.base[idx].param0 = 0;
+    dev->atq.base[idx].param1 = 0;
+#else
+    /* Get VSI parameters */
+    idx = dev->atq.tail;
+    dev->atq.base[idx].flags = /*(1<<9) |*/ (1<<12);
+    dev->atq.base[idx].opcode = 0x0212;
+    dev->atq.base[idx].len = 0x80;
+    dev->atq.base[idx].ret = 0;
+    dev->atq.base[idx].cookieh = 0xabcd;
+    dev->atq.base[idx].cookiel = 0xefab;
+    dev->atq.base[idx].param0 = 0x0206;
+    dev->atq.base[idx].param1 = 0;
+#endif
+    dev->atq.base[idx].addrh = (u64)(dev->atq.bufset + (idx * 4096)) >> 32;
+    dev->atq.base[idx].addrl = (u64)(dev->atq.bufset + (idx * 4096));
+    dev->atq.tail++;
+    mmio_write32(dev->mmio, I40E_PF_ATQT, dev->atq.tail);
+    while ( !(dev->atq.base[idx].flags & 0x1) ) {
+        arch_busy_usleep(10);
+    }
+
+    if ( sess ) {
+        sess->send(sess, (u8 *)"***\n", 4);
+        u8 tmp[16];
+        _tohex(dev->atq.base[idx].ret, tmp);
+        tmp[8] = '\n';
+        sess->send(sess, tmp, 9);
+        sess->send(sess, (u8 *)"***\n", 4);
+        _tohex(dev->atq.base[idx].param0, tmp);
+        tmp[8] = '\n';
+        sess->send(sess, tmp, 9);
+        sess->send(sess, (u8 *)"***\n", 4);
+        _tohex(dev->atq.base[idx].param1, tmp);
+        tmp[8] = '\n';
+        sess->send(sess, tmp, 9);
+        sess->send(sess, (u8 *)"***\n", 4);
+        _tohex(mmio_read32(dev->mmio, I40E_PF_ARQH), tmp);
+        tmp[8] = '\n';
+        sess->send(sess, tmp, 9);
+        sess->send(sess, (u8 *)"***\n", 4);
+
+        u32 *x = (u32 *)(dev->atq.bufset + (idx * 4096));
+        u32 y;
+        u8 buf[4096];
+        int i;
+        for ( i = 0; i < 32; i++ ) {
+            y = *(u32 *)(x + i);
+            _tohex(y, buf + (i * 9));
+            if ( 3 == (i % 4) ) {
+                buf[(i + 1) * 9 - 1] = '\n';
+            } else {
+                buf[(i + 1) * 9 - 1] = ' ';
+            }
+        }
+        sess->send(sess, buf, 32 * 9);
+    }
+#endif
 }
 
 /*
