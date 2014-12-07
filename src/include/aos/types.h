@@ -11,8 +11,9 @@
 
 typedef signed long long ssize_t;
 typedef unsigned long long size_t;
+typedef int pid_t;
 
-#endif /* __H */
+#endif /* _TYPES_H */
 
 /*
  * Local variables:

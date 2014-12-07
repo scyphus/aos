@@ -18,6 +18,11 @@ static struct ktask_queue *ktaskq;
 struct ktask_table *ktasks;
 struct ktltask_table *ktltasks;
 
+struct proc_table *procs;
+
+/* Root */
+struct proc_tree_node *proc_tree_root;
+
 extern struct processor_table *processors;
 
 int ktask_idle_main(int argc, char *argv[]);
@@ -213,10 +218,34 @@ ktask_init(void)
     struct ktask *t;
     char **argv;
     int ret;
+    struct kcontext *ctx;
+
+    /* Allocate and initialize the process table */
+    procs = kmalloc(sizeof(struct proc_table));
+    if ( NULL == procs ) {
+        return -1;
+    }
+    (void)kmemset(procs->procs, 0, sizeof(struct proc *) * PROC_TABLE_SIZE);
+    procs->last = -1;
+
+    /* Context for idle task */
+    ctx = ktask_ctx_new(TASK_POLICY_KERNEL);
+    if ( NULL == ctx ) {
+        return -1;
+    }
 
     /* Assign an idle task to each processor */
     for ( i = 0; i < processors->n; i++ ) {
-        t = ktask_alloc(TASK_POLICY_KERNEL);
+        t = ktask_alloc(ctx);
+        if ( NULL == t ) {
+            i--;
+            for ( ; i >= 0; i-- ) {
+                ktask_free(processors->prs[i].idle);
+                processors->prs[i].idle = NULL;
+            }
+            ktask_ctx_free(ctx);
+            return -1;
+        }
         t->main = &ktask_idle_main;
         t->id = -1;
         t->name = "[idle]";
@@ -278,6 +307,7 @@ ktask_fork_execv(int policy, int (*main)(int, char *[]), char **argv)
     struct ktask *t;
     int i;
     int tid;
+    struct kcontext *ctx;
 
     /* Disable interrupts and lock */
     arch_spin_lock_intr(&ktask_fork_lock);
@@ -298,8 +328,15 @@ ktask_fork_execv(int policy, int (*main)(int, char *[]), char **argv)
         return -1;
     }
 
+    /* Allocate new context */
+    ctx = ktask_ctx_new(policy);
+    if ( NULL == ctx ) {
+        arch_spin_unlock_intr(&ktask_fork_lock);
+        return -1;
+    }
+
     /* Allocate task */
-    t = ktask_alloc(policy);
+    t = ktask_alloc(ctx);
     if ( NULL == t ) {
         arch_spin_unlock_intr(&ktask_fork_lock);
         return -1;
@@ -375,12 +412,11 @@ ktask_entry(struct ktask *t)
     arch_idle();
 }
 
-
 /*
  * Allocate a task
  */
 struct ktask *
-ktask_alloc(int policy)
+ktask_alloc(struct kcontext *ctx)
 {
     struct ktask *t;
 
@@ -394,10 +430,13 @@ ktask_alloc(int policy)
     t->cred = 0;
     t->scheduled = -1;
     t->state = TASK_STATE_ALLOC;
-    t->arch = arch_alloc_task(t, &ktask_entry, policy);
+    t->arch = arch_alloc_task(t, &ktask_entry, ctx->policy);
 
     t->main = NULL;
     t->argv = NULL;
+
+    /* Context */
+    t->ctx = NULL;
 
     return t;
 }
@@ -412,25 +451,127 @@ ktask_free(struct ktask *t)
     kfree(t);
 }
 
-
 /*
- * Add a task to task table
+ * Allocate new context
  */
-struct ktask *
-ktask_new(char *name, int (*main)(int, char **))
+struct kcontext *
+ktask_ctx_new(int policy)
 {
-    return NULL;
+    struct kcontext *ctx;
+
+    /* Allocate new context */
+    ctx = kmalloc(sizeof(struct kcontext));
+    if ( NULL == ctx ) {
+        return NULL;
+    }
+
+    /* Allocate for pointers to belonging tasks */
+    ctx->tasks.nr = 16;
+    ctx->tasks.ptrs = kmalloc(sizeof(struct ktask *) * ctx->tasks.nr);
+    if ( NULL == ctx->tasks.ptrs ) {
+        kfree(ctx);
+        return NULL;
+    }
+    kmemset(ctx->tasks.ptrs, 0, sizeof(struct ktask *) * ctx->tasks.nr);
+
+    /* Set policy */
+    ctx->policy = policy;
+
+    return ctx;
 }
 
 /*
- * Exit a task
+ * Free the context
  */
 int
-ktask_destroy(struct ktask *t)
+ktask_ctx_free(struct kcontext *ctx)
 {
+    int i;
+
+    /* Check the belonging tasks */
+    for ( i = 0; i < ctx->tasks.nr; i++ ) {
+        if ( NULL != ctx->tasks.ptrs[i] ) {
+            return -1;
+        }
+    }
+
+    /* Free */
+    kfree(ctx->tasks.ptrs);
+    kfree(ctx);
+
     return 0;
 }
 
+/*
+ * Allocate new process
+ */
+struct proc *
+proc_new(int policy)
+{
+    struct proc *proc;
+    int i;
+
+    /* Allocate process structure */
+    proc = kmalloc(sizeof(struct proc));
+    if ( NULL == proc ) {
+        return NULL;
+    }
+    proc->id = 0;
+    proc->name = NULL;
+
+    /* Task */
+    proc->task = NULL;
+
+    /* Context */
+    proc->ctx.policy = policy;
+    proc->ctx.pgt = NULL;
+    for ( i = 0; i < FD_SIZE; i++ ) {
+        proc->ctx.fds[i].type = FD_TYPE_FREE;
+    }
+
+    return proc;
+}
+
+pid_t
+kgetpid(void)
+{
+    struct ktask *t;
+
+    t = arch_get_current_task();
+
+    return t->proc->id;
+}
+pid_t
+kgetppid(void)
+{
+    struct ktask *t;
+
+    t = arch_get_current_task();
+    if ( NULL == t->proc->node->parent ) {
+        return -1;
+    } else {
+        return t->proc->node->parent->proc->id;
+    }
+}
+pid_t
+kfork(void)
+{
+    //struct ktask *t;
+    //struct proc *proc;
+
+    //t = arch_get_current_task();
+    //proc = proc_new(t->proc->ctx.policy);
+
+    arch_scall(SYSCALL_FORK);
+
+    return 0;
+    //return proc->id;
+}
+int
+kexecv(const char *path, char *const argv[])
+{
+    return -1;
+}
 
 
 
@@ -444,6 +585,7 @@ ktltask_fork_execv(int policy, int pid, int (*main)(int, char *[]), char **argv)
     struct ktask *t;
     int i;
     int tid;
+    struct kcontext *ctx;
 
     /* Check the processor ID */
     if ( PROCESSOR_AP_TICKLESS != processor_get(pid)->type ) {
@@ -469,8 +611,15 @@ ktltask_fork_execv(int policy, int pid, int (*main)(int, char *[]), char **argv)
         return -1;
     }
 
+    /* Allocate new context */
+    ctx = ktask_ctx_new(policy);
+    if ( NULL == ctx ) {
+        arch_spin_unlock_intr(&ktask_fork_lock);
+        return -1;
+    }
+
     /* Allocate task */
-    t = ktask_alloc(policy);
+    t = ktask_alloc(ctx);
     if ( NULL == t ) {
         arch_spin_unlock_intr(&ktask_fork_lock);
         return -1;
@@ -531,6 +680,8 @@ ktask_kernel_main(int argc, char *argv[])
     if ( tid < 0 ) {
         kprintf("Cannot fork-exec a shell.\r\n");
     }
+
+    kfork();
 
 #if 0
     /* Notify to all processors except for BSP */

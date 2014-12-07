@@ -11,6 +11,7 @@
 #define _KERNEL_H
 
 #include <aos/const.h>
+#include <aos/types.h>
 
 #define MAX_PROCESSORS  256
 
@@ -27,6 +28,7 @@
 #define SYSCALL_HLT     0x01
 #define SYSCALL_READ    0x02
 #define SYSCALL_WRITE   0x03
+#define SYSCALL_FORK    0x04
 
 
 #if 0
@@ -515,6 +517,9 @@ u32 rng_random(void);
 #define TASK_QUEUE_LEN          0x10
 
 #define TL_TASK_TABLE_SIZE      0x100
+
+#define PROC_TABLE_SIZE         0x10000
+
 void task_restart(void);
 void halt(void);
 
@@ -542,6 +547,64 @@ struct kmsg {
 #define TASK_STATE_RUNNING      2
 #define TASK_STATE_BLOCKED      3
 
+#define FD_SIZE  0x10
+
+#define FD_TYPE_FREE            -1
+#define FD_TYPE_STDIN           0
+#define FD_TYPE_STDOUT          1
+#define FD_TYPE_STDERR          2
+#define FD_TYPE_FILE            3
+#define FD_TYPE_SOCK            4
+#define FD_TYPE_BLKDEV          5
+#define FD_TYPE_CHARDEV         6
+
+/* File descriptor */
+struct filedesc {
+    struct ktask *owner;
+    int stat;
+    u8 *buf;
+    int rpos;
+    int wpos;
+    int n;
+};
+
+struct fd_file {
+    void *file;
+    int inode;
+};
+struct fd_sock {
+    int type;
+    union {
+        struct tcp_sess *stream;
+    } u;
+};
+struct fd {
+    int type;
+    union {
+        struct fd_file file;
+        struct fd_sock sock;
+    } u;
+    int opt;
+    /* Reverse pointer */
+    //struct kcontext *ctx;
+};
+
+/*
+ * Context
+ */
+struct kcontext {
+    int policy;
+    /* Page table */
+    u8 *pgt;
+    /* File descriptors */
+    struct fd fds[FD_SIZE];
+    /* Tasks belonging to this context */
+    struct {
+        int nr;
+        struct ktask **ptrs;
+    } tasks;
+};
+
 /*
  * Task
  */
@@ -553,6 +616,8 @@ struct ktask {
     /* Main routine */
     int (*main)(int argc, char *argv[]);
     char **argv;
+
+    pid_t (*fork)(void);
 
     /* For scheduler */
     int pri;
@@ -573,6 +638,10 @@ struct ktask {
 
     /* Queue entry */
     struct ktask_queue_entry *qe;
+
+    /* Context */
+    struct kcontext *ctx;
+    struct proc *proc;
 };
 
 /*
@@ -602,6 +671,46 @@ struct ktltask_table {
     /* Kernel tasks */
     struct ktask *tasks[TL_TASK_TABLE_SIZE];
 };
+
+/*
+ * Process
+ */
+struct proc {
+    /* ID */
+    pid_t id;
+    /* Process name */
+    const char *name;
+
+    /* Main task */
+    struct ktask *task;
+
+    /* Context */
+    struct kcontext ctx;
+
+    struct proc_tree_node *node;
+};
+
+/*
+ * Process tree
+ */
+struct proc_tree_node {
+    struct proc *proc;
+    struct proc_tree_node *parent;
+    struct {
+        int nr;
+        struct proc_tree_node **nodes;
+    } children;
+};
+
+/*
+ * Proces table
+ */
+struct proc_table {
+    struct proc *procs[PROC_TABLE_SIZE];
+    /* Last assigned ID */
+    int last;
+};
+
 
 /*
  * Semaphore
@@ -718,9 +827,13 @@ void kexit(void);
 int kprintf(const char *, ...);
 int kvprintf(const char *, va_list);
 void panic(const char *);
-struct ktask * ktask_alloc(int);
+
+/* in task.c */
+struct ktask * ktask_alloc(struct kcontext *);
 int ktask_kernel_main(int argc, char *argv[]);
 int ktask_idle_main(int argc, char *argv[]);
+struct kcontext * ktask_ctx_new(int policy);
+int ktask_ctx_free(struct kcontext *);
 
 void syscall_init(void);
 
@@ -729,12 +842,12 @@ void syscall_init(void);
 int kstrcmp(const char *, const char *);
 int kstrncmp(const char *, const char *, int);
 int kmemcmp(const u8 *, const u8 *, int);
-void * kmemcpy(void *, const void *, u64);
-void * kmemset(void *, int, u64);
+void * kmemcpy(void *, const void *, size_t);
+void * kmemset(void *, int, size_t);
 void kmem_init(void);
 void * kmalloc(u64);
 void kfree(void *);
-int kstrlen(const char *);
+size_t kstrlen(const char *);
 char * kstrdup(const char *);
 
 int register_irq_handler(int, void (*)(int, void *), void *);

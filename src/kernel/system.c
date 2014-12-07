@@ -10,18 +10,7 @@
 #include <aos/types.h>
 #include "kernel.h"
 
-#define FD_SIZE  0x10
 #define FD_BUF  4096 * 16
-
-/* File descriptor: character device */
-struct filedesc {
-    struct ktask *owner;
-    int stat;
-    u8 *buf;
-    int rpos;
-    int wpos;
-    int n;
-};
 
 struct filedesc fds[FD_SIZE];
 
