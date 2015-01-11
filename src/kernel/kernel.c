@@ -16,9 +16,9 @@ struct syscall *syscall_table;
 
 /* FIXME */
 struct ptcam *tcam;
-#if DXR
 struct dxr *dxr;
-#endif
+struct sail *sail;
+struct mbt *mbt;
 
 /*
  * Temporary: Keyboard drivers
@@ -89,10 +89,10 @@ kmain(void)
     kprintf("\r\nStarting a shell.  Press Esc to power off the machine:\r\n");
 
     /* FIXME */
-    tcam = ptcam_init();
-#if DXR
-    dxr = dxr_init();
-#endif
+    //tcam = ptcam_init();
+    //dxr = dxr_init();
+    //sail = sail_init();
+    mbt = mbt_init(20, 22);
 
     syscall_init();
 

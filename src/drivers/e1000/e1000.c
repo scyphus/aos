@@ -369,7 +369,7 @@ e1000_setup_rx_desc(struct e1000_device *dev)
     int i;
 
     dev->rx_tail = 0;
-    dev->rx_bufsz = 768;
+    dev->rx_bufsz = 128;
 
     /* Cache */
     dev->rx_head_cache = 0;
@@ -421,7 +421,7 @@ e1000_setup_tx_desc(struct e1000_device *dev)
     int i;
 
     dev->tx_tail = 0;
-    dev->tx_bufsz = 768;
+    dev->tx_bufsz = 128;
 
     /* ToDo: 16 bytes for alignment */
     dev->tx_base = (u64)kmalloc(dev->tx_bufsz

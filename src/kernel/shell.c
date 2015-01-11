@@ -543,11 +543,12 @@ _mgmt_operate(u8 *data)
     u64 t1;
 
     if ( data[0] == 1 ) {
-        prefix = ((((u64)data[1]) << 56) | (((u64)data[2]) << 48)
-                  | (((u64)data[3]) << 40) | (((u64)data[4]) << 32));
+        prefix = ((((u64)data[1]) << 24) | (((u64)data[2]) << 16)
+                  | (((u64)data[3]) << 8) | (((u64)data[4]) << 0));
         prefixlen = data[5];
-        ipaddr = ((((u64)data[6]) << 56) | (((u64)data[7]) << 48)
-                  | (((u64)data[8]) << 40) | (((u64)data[9]) << 32));
+        ipaddr = ((((u64)data[6]) << 24) | (((u64)data[7]) << 16)
+                  | (((u64)data[8]) << 8) | (((u64)data[9]) << 0));
+#if 0
         found = -1;
         for ( i = 0; i < fib.n; i++ ) {
             if ( fib.ipaddr[i] == ipaddr ) {
@@ -564,6 +565,11 @@ _mgmt_operate(u8 *data)
             //ipaddr, fib.macaddr[found], found);
             ptcam_add_entry(tcam, prefix, prefixlen, fib.macaddr[found]);
         }
+#endif
+        t0 = rdtsc();
+        mbt_route_add(mbt, prefix, prefixlen, ipaddr);
+        //dxr_route_add(dxr, prefix, prefixlen, ipaddr);
+        //sail_route_add(sail, prefix, prefixlen, ipaddr);
         t1 = rdtsc();
         ret = t1 - t0;
     } else if ( data[0] == 2 ) {
@@ -597,14 +603,17 @@ _mgmt_operate(u8 *data)
         /* Commit */
         kprintf("Commit start %x\r\n", globaldata);
         t0 = rdtsc();
-        ptcam_commit(tcam);
+        //ptcam_commit(tcam);
+        mbt_commit(mbt);
+        //dxr_commit(dxr);
+        //sail_commit(sail);
         t1 = rdtsc();
         kprintf("Commit done. %x\r\n", t1 - t0);
         ret = t1 - t0;
     } else if ( data[0] == 4 ) {
         /* Lookup */
-        ipaddr = ((((u64)data[1]) << 56) | (((u64)data[2]) << 48)
-                  | (((u64)data[3]) << 40) | (((u64)data[4]) << 32));
+        ipaddr = ((((u64)data[1]) << 24) | (((u64)data[2]) << 16)
+                  | (((u64)data[3]) << 8) | (((u64)data[4]) << 0));
 
         u64 cc = 0;
         u64 aa = 0;
@@ -629,7 +638,10 @@ _mgmt_operate(u8 *data)
 
         __asm__ __volatile__ ("movq $1,%%rcx;mfence;rdpmc" : "=a"(aa), "=d"(dd) );
         t0 = (dd<<32) | aa;
-        globaldata = ptcam_lookup(tcam, ipaddr);
+        //globaldata = ptcam_lookup(tcam, ipaddr);
+        globaldata = mbt_lookup(mbt, ipaddr);
+        //globaldata = dxr_lookup(dxr, ipaddr);
+        //globaldata = sail_lookup(sail, ipaddr);
         __asm__ __volatile__ ("movq $1,%%rcx;mfence;rdpmc" : "=a"(aa), "=d"(dd) );
         t1 = (dd<<32) | aa;
 
@@ -667,75 +679,18 @@ _mgmt_operate(u8 *data)
         t1 = (dd<<32) | aa;
         ret = t1 - t0;
     } else if ( data[0] == 7 ) {
-        /* Lookup */
-        ipaddr = ((((u64)data[1]) << 56) | (((u64)data[2]) << 48)
-                  | (((u64)data[3]) << 40) | (((u64)data[4]) << 32));
-        u64 tmp;
-        t0 = rdtsc();
-        globaldata = ptcam_lookup(tcam, ipaddr);
-        t1 = rdtsc();
-        ret = t1 - t0;
-
-#if DXR
-    } else if ( data[0] == 10 ) {
-        /* Commit */
-        kprintf("Commit start\r\n");
-        t0 = rdtsc();
-        dxr_commit(dxr);
-        t1 = rdtsc();
-        kprintf("Commit done. %x\r\n", t1 - t0);
-        ret = t1 - t0;
-    } else if ( data[0] == 11 ) {
-        u64 a1;
-        u64 a2;
-        u64 a3;
-        a1 = ((((u64)data[1]) << 24) | (((u64)data[2]) << 16)
-                  | (((u64)data[3]) << 8) | (((u64)data[4]) << 0));
-        a2 = ((((u64)data[5]) << 24) | (((u64)data[6]) << 16)
-                  | (((u64)data[7]) << 8) | (((u64)data[8]) << 0));
-        a3 = ((((u64)data[9]) << 24) | (((u64)data[10]) << 16)
-                  | (((u64)data[11]) << 8) | (((u64)data[12]) << 0));
-        t0 = rdtsc();
-        dxr_add_range(dxr, a1, a2, a3);
-        t1 = rdtsc();
-        ret = t1 - t0;
-    } else if ( data[0] == 12 ) {
-        /* Lookup */
-        ipaddr = ((((u64)data[1]) << 24) | (((u64)data[2]) << 16)
-                  | (((u64)data[3]) << 8) | (((u64)data[4]) << 0));
-
-        u64 cc = 0;
-        u64 aa = 0;
-        u64 dd = 0;
-        u64 cm0;
-        u64 cf0;
-        u64 cm1;
-        u64 cf1;
-        cc = 0;
-        __asm__ __volatile__ ("rdpmc" : "=a"(aa), "=d"(dd)  : "c"(cc) );
-        cm0 = (dd<<32) | aa;
-        cc = 1;
-        __asm__ __volatile__ ("rdpmc" : "=a"(aa), "=d"(dd)  : "c"(cc) );
-        cf0 = (dd<<32) | aa;
-
-        u64 tmp;
-
-        __asm__ __volatile__ ("movq $1,%%rcx;mfence;rdpmc" : "=a"(aa), "=d"(dd) );
-        t0 = (dd<<32) | aa;
-        globaldata = dxr_lookup(dxr, ipaddr);
-        __asm__ __volatile__ ("movq $1,%%rcx;mfence;rdpmc" : "=a"(aa), "=d"(dd) );
-        t1 = (dd<<32) | aa;
-        ret = t1 - t0;
-    } else if ( data[0] == 12 ) {
-        /* Lookup */
+        /* Lookup (TSC) */
         ipaddr = ((((u64)data[1]) << 24) | (((u64)data[2]) << 16)
                   | (((u64)data[3]) << 8) | (((u64)data[4]) << 0));
         u64 tmp;
         t0 = rdtsc();
-        globaldata = dxr_lookup(dxr, ipaddr);
+        //globaldata = ptcam_lookup(tcam, ipaddr);
+        globaldata = mbt_lookup(mbt, ipaddr);
+        //globaldata = dxr_lookup(dxr, ipaddr);
+        //globaldata = sail_lookup(sail, ipaddr);
         t1 = rdtsc();
         ret = t1 - t0;
-#endif
+
     } else {
         t0 = rdtsc();
         arch_busy_usleep(1000 * 1000);
@@ -749,6 +704,8 @@ _mgmt_operate(u8 *data)
 int
 _mgmt_main(int argc, char *argv[])
 {
+    __asm__ __volatile__ ("cli");
+
     /* Search network device for management */
     struct netdev_list *list;
     u8 pkt[512];
@@ -765,8 +722,8 @@ _mgmt_main(int argc, char *argv[])
     u64 msr = 0x186;
     __asm__ __volatile__ ("wrmsr" :: "a"(pmc), "c"(msr), "d"(zero) );
     msr = 0x187;
-    //pmc = (1<<22) | (0<<21) | (1<<17) | (1<<16) | (0x4f << 8) | 0x2e;
-    pmc = (1<<22) | (0<<21) | (1<<17) | (1<<16) | (0x00 << 8) | 0x3c;
+    //pmc = (1<<22) | (0<<21) | (1<<17) | (1<<16) | (0x4f << 8) | 0x2e; // cache
+    pmc = (1<<22) | (0<<21) | (1<<17) | (1<<16) | (0x00 << 8) | 0x3c; // cyles
     __asm__ __volatile__ ("wrmsr" :: "a"(pmc), "c"(msr), "d"(zero) );
 
     /* FIXME */
@@ -1297,6 +1254,8 @@ _exec_cmdbuf(char *cmd)
         ret = _builtin_test(argv);
     } else if ( 0 == kstrcmp("test2", argv[0]) ) {
         ret = _builtin_test2(argv);
+    } else if ( 0 == kstrcmp("eval", argv[0]) ) {
+        ret = _mgmt_main(0, NULL);
     } else {
         kprintf("%s: Command not found.\r\n", argv[0]);
         ret = -1;
@@ -1374,7 +1333,7 @@ shell_main(int argc, char *argv[])
     }
 
     /* Start-up script */
-    _exec_cmdbuf("start mgmt 0 e0 192.168.56.11/24 192.168.56.1");
+    //_exec_cmdbuf("start mgmt 0 e0 192.168.56.11/24 192.168.56.1");
     //_exec_cmdbuf("start mgmt 1 e0 192.168.56.11/24 192.168.56.1");
     //_exec_cmdbuf("test 64 128");
 

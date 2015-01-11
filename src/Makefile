@@ -69,7 +69,6 @@ kpack: kernel/arch/$(ARCH)/asm.o \
 	kernel/arch/$(ARCH)/cmos.o \
 	kernel/arch/$(ARCH)/i8254.o \
 	kernel/netsc.o \
-	kernel/ptcam.o \
 	drivers/kbd/kbd.o \
 	drivers/rng/rng.o \
 	drivers/net/net.o \
@@ -80,7 +79,12 @@ kpack: kernel/arch/$(ARCH)/asm.o \
 	drivers/ixgbe/ixgbe.o \
 	drivers/i40e/i40e.o \
 	drivers/ahci/ahci.o \
-	drivers/pci/pci.o
+	drivers/pci/pci.o \
+	kernel/ptcam.o \
+	kernel/dxr.o \
+	kernel/mbt.o \
+	kernel/buddy.o \
+	kernel/sail.o
 	$(LD) -N -e kstart64 -Ttext=0x10000 --oformat binary -o $@ $^
 
 #drivers/net/kuhash.o: CFLAGS=-I./include \

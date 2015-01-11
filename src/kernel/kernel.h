@@ -94,6 +94,26 @@ u64 ptcam_lookup(struct ptcam *, u64);
 extern struct ptcam *tcam;
 
 
+/*
+ * Node of radix tree
+ */
+struct radix_node {
+    int valid;
+    struct radix_node *parent;
+    struct radix_node *left;
+    struct radix_node *right;
+    /* Next hop */
+    u32 nexthop;
+    /* Prefix information */
+    int len;
+
+    /* Propagated route */
+    struct radix_node *ext;
+    /* Dirty */
+    int mark;
+};
+
+
 
 struct dxr_next_hop {
     u64 addr;
@@ -124,11 +144,147 @@ struct dxr {
     u32 *lut;
     u8 *rt;
     u64 *nh;
+
+    struct radix_node *radix;
 };
+#define NH_NOENTRY 0
+struct dxr * dxr_init(void);
 u64 dxr_lookup(struct dxr *, u32);
 int dxr_commit(struct dxr *);
-int dxr_add_range(struct dxr *, u32 , u32 , u64);
+int dxr_route_add(struct dxr *, u32, int, u32);
 extern struct dxr *dxr;
+
+
+
+
+
+#define MBT_K   6
+#define MBT_L   6
+#define MBT_S   16
+#define MBT_LEAF_COMPRESSION    1
+#define MBT_LEAF_PULL           1
+typedef u16 leaf_t;
+typedef u64 vec;
+/*
+ * Buddy system
+ */
+struct buddy {
+    /* Size of buddy system (# of blocks) */
+    int sz;
+    /* Size of each block */
+    int bsz;
+    /* Bitmap */
+    u8 *b;
+    /* Memory blocks */
+    void *blocks;
+    /* Level */
+    int level;
+    /* Heads */
+    u32 *buddy;
+};
+
+/*
+ * MBT node
+ */
+struct mbt_node {
+#if MBT_LEAF_COMPRESSION
+    vec lvector;
+#endif
+    vec vector;
+    u32 base0;
+    u32 base1;
+} __attribute__ ((packed));
+
+struct mbt_mgt_leaf {
+    u32 nexthop;
+} __attribute__ ((packed));
+
+/*
+ * Management node
+ */
+struct mbt_mgt_node {
+    u32 x;
+} __attribute__ ((packed));
+
+struct mbt {
+    /* Root */
+    u32 root;
+
+    /* FIB */
+    struct mbt_node *nodes;
+    leaf_t *leaves;
+
+    /* Management */
+    struct buddy mnodes;
+    struct buddy mleaves;
+
+    /* Size */
+    int inodesz;
+    int lnodesz;
+
+    /* Bitmap */
+    u8 *b;
+
+    /* Count */
+    int cnt0;
+    int cnt1;
+
+    /* NEW OPTIMIZATION? */
+    u32 *lut;
+
+    /* Radix trie */
+    struct radix_node *radix;
+
+    /* FIB */
+    struct {
+        u64 *entries;
+        int n;
+        int sz;
+    } fib;
+};
+
+struct mbt * mbt_init(int, int);
+int mbt_route_add(struct mbt *, u32, int, u32);
+int mbt_commit(struct mbt *);
+u64 mbt_lookup(struct mbt *, u32);
+
+int buddy_init(struct buddy *, int, int, int);
+void buddy_release(struct buddy *);
+void * buddy_alloc(struct buddy *, int);
+int buddy_alloc2(struct buddy *, int);
+void buddy_free(struct buddy *, void *);
+void buddy_free2(struct buddy *, int);
+extern struct mbt *mbt;
+
+
+/* SAIL */
+struct sail {
+    u16 *bcn16;
+    u16 *bn24;
+    u16 *c24;
+    u16 *n32;
+
+    /* Radix trie */
+    struct radix_node *radix;
+
+    /* FIB */
+    struct {
+        u64 *entries;
+        int n;
+        int sz;
+    } fib;
+};
+
+struct sail * sail_init(void);
+int sail_route_add(struct sail *, u32, int, u32);
+int sail_commit(struct sail *);
+u64 sail_lookup(struct sail *, u32);
+extern struct sail *sail;
+
+
+
+
+
 
 
 
