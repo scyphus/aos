@@ -97,9 +97,9 @@ sail_route_add(struct sail *sail, u32 prefix, int len, u32 nexthop)
         }
     }
     if ( i == sail->fib.n ) {
-        sail->fib.n++;
         n = sail->fib.n;
         sail->fib.entries[n] = nexthop;
+        sail->fib.n++;
     }
 
     /* Insert to the radix tree */

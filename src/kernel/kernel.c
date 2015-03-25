@@ -90,9 +90,9 @@ kmain(void)
 
     /* FIXME */
     //tcam = ptcam_init();
-    //dxr = dxr_init();
+    //mbt = mbt_init(20, 22);
+    dxr = dxr_init();
     //sail = sail_init();
-    mbt = mbt_init(20, 22);
 
     syscall_init();
 

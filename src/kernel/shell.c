@@ -567,8 +567,8 @@ _mgmt_operate(u8 *data)
         }
 #endif
         t0 = rdtsc();
-        mbt_route_add(mbt, prefix, prefixlen, ipaddr);
-        //dxr_route_add(dxr, prefix, prefixlen, ipaddr);
+        //mbt_route_add(mbt, prefix, prefixlen, ipaddr);
+        dxr_route_add(dxr, prefix, prefixlen, ipaddr);
         //sail_route_add(sail, prefix, prefixlen, ipaddr);
         t1 = rdtsc();
         ret = t1 - t0;
@@ -604,8 +604,8 @@ _mgmt_operate(u8 *data)
         kprintf("Commit start %x\r\n", globaldata);
         t0 = rdtsc();
         //ptcam_commit(tcam);
-        mbt_commit(mbt);
-        //dxr_commit(dxr);
+        //mbt_commit(mbt);
+        dxr_commit(dxr);
         //sail_commit(sail);
         t1 = rdtsc();
         kprintf("Commit done. %x\r\n", t1 - t0);
@@ -639,8 +639,8 @@ _mgmt_operate(u8 *data)
         __asm__ __volatile__ ("movq $1,%%rcx;mfence;rdpmc" : "=a"(aa), "=d"(dd) );
         t0 = (dd<<32) | aa;
         //globaldata = ptcam_lookup(tcam, ipaddr);
-        globaldata = mbt_lookup(mbt, ipaddr);
-        //globaldata = dxr_lookup(dxr, ipaddr);
+        //globaldata = mbt_lookup(mbt, ipaddr);
+        globaldata = dxr_lookup(dxr, ipaddr);
         //globaldata = sail_lookup(sail, ipaddr);
         __asm__ __volatile__ ("movq $1,%%rcx;mfence;rdpmc" : "=a"(aa), "=d"(dd) );
         t1 = (dd<<32) | aa;
@@ -685,8 +685,8 @@ _mgmt_operate(u8 *data)
         u64 tmp;
         t0 = rdtsc();
         //globaldata = ptcam_lookup(tcam, ipaddr);
-        globaldata = mbt_lookup(mbt, ipaddr);
-        //globaldata = dxr_lookup(dxr, ipaddr);
+        //globaldata = mbt_lookup(mbt, ipaddr);
+        globaldata = dxr_lookup(dxr, ipaddr);
         //globaldata = sail_lookup(sail, ipaddr);
         t1 = rdtsc();
         ret = t1 - t0;
