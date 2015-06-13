@@ -233,6 +233,7 @@ arch_bsp_init(void)
     arch_busy_usleep(200);
 
     /* ToDo: Synchronize all processors */
+    arch_busy_usleep(100000);
 
 #if 0
     /* Performance monitoring registers */

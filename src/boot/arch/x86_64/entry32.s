@@ -47,8 +47,9 @@ entry32:
 	movl	%eax,%esp
 
 	/* Enable PAE */
-	movl	$0x20,%eax		/* CR4[bit 5] = PAE */
-	movl	%eax,%cr4
+	/* Enable PAE and SSE */
+	movl	$0x00000220,%eax        /* CR4[bit 5] = PAE */
+	movl	%eax,%cr4               /* CR4[bit 9] = OSFXSR */
 
 /* Create 64bit page table */
 pg_setup:
@@ -65,11 +66,18 @@ pg_setup:
 	leal	0x1000(%ebx),%edi
 	leal	0x2007(%ebx),%eax
 	movl	$4,%ecx
-pg_setup.1:
+pg_setup.1a:
 	movl	%eax,(%edi)
 	addl	$8,%edi
 	addl	$0x1000,%eax
-	loop	pg_setup.1
+	loop	pg_setup.1a
+	movl	$508,%ecx
+	/* PDPE: 4G-512G */
+	movl	$0x183,%eax
+pg_setup.1b:
+	movl	%eax,(%edi)
+	addl	$8,%edi
+	loop	pg_setup.1b
 /* Page directories (PDE) */
 	leal	0x2000(%ebx),%edi
 	movl	$0x183,%eax

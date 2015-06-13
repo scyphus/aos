@@ -130,6 +130,10 @@
 	.globl	_sem_up
 	.globl	_sem_down
 
+	.globl	_kmemcmp
+	.globl	_kmemcpy
+	.globl	_kmemset
+
 	.code64
 
 /*
@@ -1021,6 +1025,39 @@ _sem_down:
 	ret
 
 
+_kmemcmp:
+        xorq    %rax,%rax
+        movq    %rdx,%rcx       /* n */
+        cld                     /* Ensure the DF cleared */
+        repe    cmpsb           /* Compare byte at (%rsi) with byte at (%rdi) */
+        jz      1f
+        decq    %rdi            /* rollback one */
+        decq    %rsi            /* rollback one */
+        movb    (%rdi),%al      /* *s1 */
+        subb    (%rsi),%al      /* *s1 - *s2 */
+1:
+        ret
+
+/* int kmemcpy(void *__restrict dst, void *__restrict src, size_t n) */
+_kmemcpy:
+        movq    %rdi,%rax       /* Return value */
+        movq    %rdx,%rcx       /* n */
+        cld                     /* Ensure the DF cleared */
+        rep     movsb           /* Copy byte at (%rsi) to (%rdi) */
+        ret
+
+/* void * kmemset(void *b, int c, size_t len) */
+_kmemset:
+        pushq   %rdi
+        pushq   %rsi
+        movl    %esi,%eax       /* c */
+        movq    %rdx,%rcx       /* len */
+        cld                     /* Ensure the DF cleared */
+        rep     stosb           /* Set %al to (%rdi)-(%rdi+%rcx) */
+        popq    %rsi
+        popq    %rdi
+        movq    %rdi,%rax       /* Restore for the return value */
+        ret
 
 	.data
 apic_base:

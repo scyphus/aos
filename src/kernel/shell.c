@@ -321,6 +321,8 @@ int ixgbe_tx_test2(struct netdev *, u8 *, int, int);
 int ixgbe_tx_test3(struct netdev *, u8 *, int, int);
 int ixgbe_tx_test4(struct netdev *, struct netdev *, struct netdev *,
                    struct netdev *, u8 *, int, int);
+int ixgbe_tx_test100g(struct netdev_list *, u8 *, int, int);
+int ixgbe_tx_test100g_m2(struct netdev_list *, int, int);
 int i40e_tx_test(struct netdev *, u8 *, int, int);
 int i40e_tx_test2(struct netdev *, u8 *, int, int, int, int);
 int i40e_tx_test3(struct netdev *, u8 *, int, int, int, int);
@@ -476,6 +478,7 @@ int ixgbe_forwarding_test(struct netdev *, struct netdev *);
 int ixgbe_forwarding_test_sub(struct netdev *, struct netdev *);
 int ixgbe_routing_test(struct netdev *);
 int i40e_forwarding_test(struct netdev *, struct netdev *);
+int ixgbe_100g_routing(struct netdev_list *, int);
 int
 _builtin_test2(char *const argv[])
 {
@@ -816,13 +819,17 @@ static int
 _routing_main(int argc, char *argv[])
 {
     struct netdev_list *list;
+    int q = atoi(argv[1]);
 
     list = netdev_head;
 
-    kprintf("Started routing: %s => %s\r\n", list->next->netdev->name,
-            list->next->netdev->name);
+    //kprintf("Started routing: %s => %s\r\n", list->next->netdev->name,
+    //list->next->netdev->name);
     //ixgbe_forwarding_test(list->next->netdev, list->next->next->netdev);
-    i40e_forwarding_test(list->next->netdev, list->next->netdev);
+    //i40e_forwarding_test(list->next->netdev, list->next->netdev);
+
+    kprintf("Started routing: %d\r\n", q);
+    ixgbe_100g_routing(list, q);
 
     return 0;
 }
@@ -866,7 +873,7 @@ _tx_main(int argc, char *argv[])
 
     pkt = kmalloc(9200);
 
-    list = netdev_head->next;
+    list = netdev_head;//->next;
     /* dst (multicast) */
 #if 0
     pkt[0] = 0x01;
@@ -990,6 +997,7 @@ _tx_main(int argc, char *argv[])
     pkt[24] = cs & 0xff;
     pkt[25] = cs >> 8;
 
+#if 0
     //ixgbe_tx_test(list->netdev, pkt, pktsz + 18 - 4, blk);
     //ixgbe_tx_test2(list->netdev, pkt, pktsz + 18 - 4, blk);
 #if 0
@@ -1001,9 +1009,80 @@ _tx_main(int argc, char *argv[])
 #endif
     //kprintf("%llx: pkt\r\n", list->netdev);
     //list->netdev->sendpkt(pkt, pktsz + 18 - 4, list->netdev);
+#endif
+
+    ixgbe_tx_test100g(list, pkt, pktsz + 18 - 4, blk);
 
     return 0;
 }
+
+
+int
+_tx2_main(int argc, char *argv[])
+{
+    struct netdev_list *list;
+    u8 *pkt;
+    int i;
+    int sz;
+    int blk;
+    char *s;
+
+    s = argv[1];
+    sz = 0;
+    while ( *s ) {
+        sz *= 10;
+        sz += *s - '0';
+        s++;
+    }
+    s = argv[2];
+    blk = 0;
+    while ( *s ) {
+        blk *= 10;
+        blk += *s - '0';
+        s++;
+    }
+    kprintf("Testing: %d/%d\r\n", sz, blk);
+
+    int pktsz = sz - 18;
+    list = netdev_head;
+    ixgbe_tx_100g_m2(list, pktsz + 18 - 4, blk);
+
+    return 0;
+}
+
+int
+_tx3_main(int argc, char *argv[])
+{
+    struct netdev_list *list;
+    u8 *pkt;
+    int i;
+    int sz;
+    int blk;
+    char *s;
+
+    s = argv[1];
+    sz = 0;
+    while ( *s ) {
+        sz *= 10;
+        sz += *s - '0';
+        s++;
+    }
+    s = argv[2];
+    blk = 0;
+    while ( *s ) {
+        blk *= 10;
+        blk += *s - '0';
+        s++;
+    }
+    kprintf("Testing: %d/%d\r\n", sz, blk);
+
+    int pktsz = sz - 18;
+    list = netdev_head->next->next;
+    ixgbe_tx_100g_m2(list, pktsz + 18 - 4, blk);
+
+    return 0;
+}
+
 int net_rx(struct net *, struct net_port *, u8 *, int, int);
 int net_sc_rx_ether(struct net *, u8 *, int, void *);
 int net_sc_rx_port_host(struct net *, u8 *, int, void *);
@@ -1056,9 +1135,55 @@ _builtin_start(char *const argv[])
             char s[] = "Launched tx*\n";
             saved_sess->send(saved_sess, (u8 *)s, kstrlen(s));
         }
+    } else if ( 0 == kstrcmp("tx2", argv[1]) ) {
+        /* Start Tx */
+        char **nargv = kmalloc(sizeof(char *) * 4);
+        nargv[0] = "tx2";
+        nargv[1] = argv[3] ? kstrdup(argv[3]) : NULL;
+        nargv[2] = argv[4] ? kstrdup(argv[4]) : NULL;
+        nargv[3] = NULL;
+        ret = ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_tx2_main, nargv);
+        if ( ret < 0 ) {
+            if ( saved_sess ) {
+                char *s = "Cannot launch tx\n";
+                saved_sess->send(saved_sess, (u8 *)s, kstrlen(s));
+            }
+            kprintf("Cannot launch tx\r\n");
+            return -1;
+        }
+        kprintf("Launch tx @ CPU #%d\r\n", id);
+        if ( saved_sess ) {
+            char s[] = "Launched tx*\n";
+            saved_sess->send(saved_sess, (u8 *)s, kstrlen(s));
+        }
+    } else if ( 0 == kstrcmp("tx3", argv[1]) ) {
+        /* Start Tx */
+        char **nargv = kmalloc(sizeof(char *) * 4);
+        nargv[0] = "tx3";
+        nargv[1] = argv[3] ? kstrdup(argv[3]) : NULL;
+        nargv[2] = argv[4] ? kstrdup(argv[4]) : NULL;
+        nargv[3] = NULL;
+        ret = ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_tx3_main, nargv);
+        if ( ret < 0 ) {
+            if ( saved_sess ) {
+                char *s = "Cannot launch tx\n";
+                saved_sess->send(saved_sess, (u8 *)s, kstrlen(s));
+            }
+            kprintf("Cannot launch tx\r\n");
+            return -1;
+        }
+        kprintf("Launch tx @ CPU #%d\r\n", id);
+        if ( saved_sess ) {
+            char s[] = "Launched tx*\n";
+            saved_sess->send(saved_sess, (u8 *)s, kstrlen(s));
+        }
     } else if ( 0 == kstrcmp("routing", argv[1]) ) {
         /* Start routing */
-        ret = ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_routing_main, NULL);
+        char **nargv = kmalloc(sizeof(char *) * 3);
+        nargv[0] = "routing";
+        nargv[1] = argv[3] ? kstrdup(argv[3]) : NULL;
+        nargv[2] = NULL;
+        ret = ktltask_fork_execv(TASK_POLICY_KERNEL, id, &_routing_main, nargv);
         if ( ret < 0 ) {
             kprintf("Cannot launch routing\r\n");
             return -1;
@@ -1336,6 +1461,21 @@ shell_main(int argc, char *argv[])
     //_exec_cmdbuf("start mgmt 0 e0 192.168.56.11/24 192.168.56.1");
     //_exec_cmdbuf("start mgmt 1 e0 192.168.56.11/24 192.168.56.1");
     //_exec_cmdbuf("test 64 128");
+
+    //_exec_cmdbuf("start tx 44 64 32");
+    _exec_cmdbuf("start tx2 2 512 32");
+    _exec_cmdbuf("start tx3 4 512 32");
+    //_exec_cmdbuf("start routing 44");
+#if 0
+    _exec_cmdbuf("start routing 2 0");
+    _exec_cmdbuf("start routing 4 1");
+    _exec_cmdbuf("start routing 6 2");
+    _exec_cmdbuf("start routing 8 3");
+    _exec_cmdbuf("start routing 32 4");
+    _exec_cmdbuf("start routing 34 5");
+    _exec_cmdbuf("start routing 36 6");
+    _exec_cmdbuf("start routing 38 7");
+#endif
 
     for ( ;; ) {
         c = 0;

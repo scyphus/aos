@@ -90,8 +90,8 @@ kmain(void)
 
     /* FIXME */
     //tcam = ptcam_init();
-    //mbt = mbt_init(20, 22);
-    dxr = dxr_init();
+    //mbt = mbt_init(19, 22);
+    //dxr = dxr_init();
     //sail = sail_init();
 
     syscall_init();
@@ -99,10 +99,10 @@ kmain(void)
     net_init(&gnet);
 
     /* Initialize drivers */
-    e1000_init();
-    e1000e_init();
+    //e1000_init();
+    //e1000e_init();
     ixgbe_init();
-    i40e_init();
+    //i40e_init();
 
     /* Initialize kernel task */
     ktask_init();

@@ -670,6 +670,7 @@ kstrdup(const char *s)
     return ns;
 }
 
+#if 0
 /*
  * Compare memory
  */
@@ -689,7 +690,9 @@ kmemcmp(const u8 *a, const u8 *b, int n)
 
     return 0;
 }
+#endif
 
+#if 0
 /*
  * Copy string to string
  */
@@ -698,7 +701,9 @@ kmemcpy(void *a, const void *b, size_t sz)
 {
     return arch_memcpy(a, b, sz);
 }
+#endif
 
+#if 0
 /*
  * Fill a byte string with a byte value
  */
@@ -713,6 +718,7 @@ kmemset(void *b, int c, size_t len)
 
     return b;
 }
+#endif
 
 
 
