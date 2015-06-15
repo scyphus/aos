@@ -1463,18 +1463,18 @@ shell_main(int argc, char *argv[])
     //_exec_cmdbuf("test 64 128");
 
     //_exec_cmdbuf("start tx 44 64 32");
-    _exec_cmdbuf("start tx2 2 512 32");
-    _exec_cmdbuf("start tx3 4 512 32");
+    //_exec_cmdbuf("start tx2 2 64 32");
+    //_exec_cmdbuf("start tx3 4 64 32");
     //_exec_cmdbuf("start routing 44");
-#if 0
+#if 1
     _exec_cmdbuf("start routing 2 0");
     _exec_cmdbuf("start routing 4 1");
-    _exec_cmdbuf("start routing 6 2");
-    _exec_cmdbuf("start routing 8 3");
-    _exec_cmdbuf("start routing 32 4");
-    _exec_cmdbuf("start routing 34 5");
-    _exec_cmdbuf("start routing 36 6");
-    _exec_cmdbuf("start routing 38 7");
+    //_exec_cmdbuf("start routing 6 2");
+    //_exec_cmdbuf("start routing 8 3");
+    //_exec_cmdbuf("start routing 32 4");
+    //_exec_cmdbuf("start routing 34 5");
+    //_exec_cmdbuf("start routing 36 6");
+    //_exec_cmdbuf("start routing 38 7");
 #endif
 
     for ( ;; ) {
