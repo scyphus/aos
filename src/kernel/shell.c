@@ -479,6 +479,8 @@ int ixgbe_forwarding_test_sub(struct netdev *, struct netdev *);
 int ixgbe_routing_test(struct netdev *);
 int i40e_forwarding_test(struct netdev *, struct netdev *);
 int ixgbe_100g_routing(struct netdev_list *, int);
+int ixgbe_100g_routing_1core(struct netdev_list *);
+#if 0
 int
 _builtin_test2(char *const argv[])
 {
@@ -488,7 +490,7 @@ _builtin_test2(char *const argv[])
     ixgbe_forwarding_test(list->netdev, list->next->netdev);
     return 0;
 }
-
+#endif
 
 int
 atoi(const char *s)
@@ -828,8 +830,10 @@ _routing_main(int argc, char *argv[])
     //ixgbe_forwarding_test(list->next->netdev, list->next->next->netdev);
     //i40e_forwarding_test(list->next->netdev, list->next->netdev);
 
+    arch_busy_usleep(10);
     kprintf("Started routing: %d\r\n", q);
     ixgbe_100g_routing(list, q);
+    //ixgbe_100g_routing_1core(list);
 
     return 0;
 }
@@ -1377,8 +1381,10 @@ _exec_cmdbuf(char *cmd)
         ret = _builtin_debug(argv);
     } else if ( 0 == kstrcmp("test", argv[0]) ) {
         ret = _builtin_test(argv);
+#if 0
     } else if ( 0 == kstrcmp("test2", argv[0]) ) {
         ret = _builtin_test2(argv);
+#endif
     } else if ( 0 == kstrcmp("eval", argv[0]) ) {
         ret = _mgmt_main(0, NULL);
     } else {
@@ -1463,14 +1469,16 @@ shell_main(int argc, char *argv[])
     //_exec_cmdbuf("test 64 128");
 
     //_exec_cmdbuf("start tx 44 64 32");
-    _exec_cmdbuf("start tx2 2 512 32");
-    _exec_cmdbuf("start tx3 4 512 32");
+    //_exec_cmdbuf("start tx2 2 64 32");
+    //_exec_cmdbuf("start tx3 4 64 32");
     //_exec_cmdbuf("start routing 44");
-#if 0
+#if 1
     _exec_cmdbuf("start routing 2 0");
     _exec_cmdbuf("start routing 4 1");
     _exec_cmdbuf("start routing 6 2");
     _exec_cmdbuf("start routing 8 3");
+    //_exec_cmdbuf("start routing 10 4");
+    //_exec_cmdbuf("start routing 12 5");
     _exec_cmdbuf("start routing 32 4");
     _exec_cmdbuf("start routing 34 5");
     _exec_cmdbuf("start routing 36 6");

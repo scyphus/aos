@@ -667,8 +667,8 @@ u32 rng_random(void);
 #define TASK_POLICY_DRIVER      1
 #define TASK_POLICY_USER        3
 #define TASK_TABLE_SIZE         0x100
-#define TASK_KSTACK_SIZE        4096
-#define TASK_USTACK_SIZE        4096 * 0x10
+#define TASK_KSTACK_SIZE        4096 * 0x10
+#define TASK_USTACK_SIZE        4096 * 0x40
 #define TASK_STACK_GUARD        16
 #define TASK_QUEUE_LEN          0x10
 

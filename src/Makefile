@@ -18,7 +18,7 @@ bootx64.efi: CFLAGS=-Wall -mno-sse3 -fleading-underscore -nostdlib -m64
 pxeboot: ASFLAGS=-nostdlib -I./boot/arch/$(ARCH)/
 kpack: ASFLAGS=-nostdlib -I./kernel/arch/$(ARCH)/
 kpack: CFLAGS=-I./include \
-	-Wall -fleading-underscore -nostdlib -O3 -m64 -mno-sse2 -mno-sse3 -mno-sse4.1 -mno-sse4.2
+	-Wall -fleading-underscore -nostdlib -O3 -m64
 
 ## MBR
 diskboot: boot/arch/$(ARCH)/diskboot.o
