@@ -618,7 +618,8 @@ lba2chs:
 	movb	%dl,%cl		/* Sector */
 /* Compute head and track */
 	xorw	%dx,%dx
-	movw	heads,%bx
+	movb	%dx,%bx
+	movb	heads,%bl
 	divw	%bx		/* %dx:%ax / %bx */
 	movw	%dx,%bx		/* Save the remainder to %bx */
 	popw	%dx		/* Restore %dx*/
